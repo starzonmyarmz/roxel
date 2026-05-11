@@ -96,8 +96,7 @@ fn setup_scene(
     let mesh_handle = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));
     let mat = materials.add(StandardMaterial {
         base_color: Color::WHITE,
-        perceptual_roughness: 0.95,
-        reflectance: 0.05,
+        unlit: true,
         ..default()
     });
     commands.spawn((
