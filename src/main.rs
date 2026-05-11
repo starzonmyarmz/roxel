@@ -20,7 +20,7 @@ use crate::gizmo::{
 };
 use crate::grid::{GRID, VoxelGrid};
 use crate::history::History;
-use crate::lighting::{LightControls, spawn_lights, update_light_system};
+use crate::lighting::spawn_lights;
 use crate::mesh::{VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
 use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::ui::{PendingDialog, apply_style, poll_dialogs_system, ui_system};
@@ -43,8 +43,8 @@ fn main() {
         .add_plugins(PanOrbitCameraPlugin)
         .insert_resource(ClearColor(Color::srgb(0.07, 0.08, 0.10)))
         .insert_resource(bevy::light::GlobalAmbientLight {
-            color: Color::srgb(0.85, 0.9, 1.0),
-            brightness: 200.0,
+            color: Color::WHITE,
+            brightness: 350.0,
             ..default()
         })
         .init_resource::<VoxelGrid>()
@@ -53,7 +53,6 @@ fn main() {
         .init_resource::<CurrentColor>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
-        .init_resource::<LightControls>()
         .init_resource::<PendingDialog>()
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
@@ -66,7 +65,6 @@ fn main() {
                 tool_input_system,
                 tool_shortcut_system,
                 undo_redo_system,
-                update_light_system,
                 regenerate_mesh_system,
                 poll_dialogs_system,
                 sync_gizmo_camera,

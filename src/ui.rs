@@ -1,7 +1,6 @@
 use crate::grid::VoxelGrid;
 use crate::history::History;
 use crate::io;
-use crate::lighting::LightControls;
 use crate::tools::{CurrentColor, RecentColors, Tool, ToolState};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
@@ -192,7 +191,6 @@ pub fn ui_system(
     mut tool: ResMut<ToolState>,
     mut color: ResMut<CurrentColor>,
     recent: Res<RecentColors>,
-    mut light: ResMut<LightControls>,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
     mut pending: ResMut<PendingDialog>,
@@ -485,16 +483,6 @@ pub fn ui_system(
                     });
                 });
 
-                // Light section
-                section(ui, "Light", |ui| {
-                    let az_deg = light.azimuth.to_degrees();
-                    let el_deg = light.elevation.to_degrees();
-                    labeled_slider(ui, "Azimuth", &mut light.azimuth, 0.0..=std::f32::consts::TAU, format!("{az_deg:>3.0}°"));
-                    labeled_slider(ui, "Elevation", &mut light.elevation, 0.05..=std::f32::consts::FRAC_PI_2 - 0.05, format!("{el_deg:>3.0}°"));
-                    let pct = (light.intensity / 40_000.0 * 100.0).round();
-                    labeled_slider(ui, "Intensity", &mut light.intensity, 0.0..=40_000.0, format!("{pct:>3.0}%"));
-                });
-
                 // Scene section
                 section(ui, "Scene", |ui| {
                     stat_row(ui, "Voxels", grid.count().to_string());
@@ -616,27 +604,6 @@ fn section<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) ->
         .inner;
     ui.add_space(12.0);
     r
-}
-
-fn labeled_slider(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &mut f32,
-    range: std::ops::RangeInclusive<f32>,
-    suffix: String,
-) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).color(TEXT_DIM).size(12.0));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                egui::RichText::new(suffix)
-                    .monospace()
-                    .color(TEXT)
-                    .size(12.0),
-            );
-        });
-    });
-    ui.add(egui::Slider::new(value, range).show_value(false));
 }
 
 fn stat_row(ui: &mut egui::Ui, label: &str, value: String) {
