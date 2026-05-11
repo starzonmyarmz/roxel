@@ -47,14 +47,50 @@ impl RecentColors {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct StrokeAnchor {
+    pub axis: usize,
+    pub plane_world: f32,
+    pub target_layer: i32,
+}
+
 #[derive(Resource, Default)]
 pub struct PointerState {
     pub stroking: bool,
+    pub anchor: Option<StrokeAnchor>,
+}
+
+fn axis_of_normal(n: IVec3) -> usize {
+    if n.x != 0 { 0 } else if n.y != 0 { 1 } else { 2 }
+}
+
+fn anchor_target(anchor: &StrokeAnchor, origin: Vec3, dir: Vec3) -> Option<IVec3> {
+    let d_arr = dir.to_array();
+    let o_arr = origin.to_array();
+    let denom = d_arr[anchor.axis];
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+    let t = (anchor.plane_world - o_arr[anchor.axis]) / denom;
+    if t < 0.0 {
+        return None;
+    }
+    let p = (origin + dir * t).to_array();
+    let mut cell = [0i32; 3];
+    for i in 0..3 {
+        cell[i] = if i == anchor.axis {
+            anchor.target_layer
+        } else {
+            p[i].floor() as i32
+        };
+    }
+    Some(IVec3::new(cell[0], cell[1], cell[2]))
 }
 
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     cameras: Query<(&Camera, &GlobalTransform), With<bevy_panorbit_camera::PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut grid: ResMut<VoxelGrid>,
@@ -79,9 +115,16 @@ pub fn tool_input_system(
     if state.stroking && (lmb_released || !lmb_pressed) {
         history.end();
         state.stroking = false;
+        state.anchor = None;
     }
 
     if egui_wants_pointer || gizmo_drag.active {
+        return;
+    }
+
+    // Space held = pan modifier for the camera; suppress tool input so a pan
+    // drag doesn't also paint.
+    if keys.pressed(KeyCode::Space) {
         return;
     }
 
@@ -95,45 +138,61 @@ pub fn tool_input_system(
     }
 
     let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
-    let Some(hit) = pick(&grid, origin, dir) else { return; };
 
     // Single-click tools (eyedropper).
     if lmb_just && tool.current == Tool::Eyedropper {
-        if hit.hit_voxel {
-            if let Some(c) = grid.get(hit.cell) {
-                color.0 = c;
-                recent.push(c);
+        if let Some(hit) = pick(&grid, origin, dir) {
+            if hit.hit_voxel {
+                if let Some(c) = grid.get(hit.cell) {
+                    color.0 = c;
+                    recent.push(c);
+                }
             }
         }
         tool.current = tool.previous;
         return;
     }
 
-    // Stroke-based tools (brush, erase, paint).
+    // Stroke start: anchor a build plane based on the first hit, then stick to it
+    // for the duration of the stroke. Prevents runaway stacking when the freshly
+    // placed voxel becomes the next frame's pick target.
     if lmb_just {
+        let Some(hit) = pick(&grid, origin, dir) else { return; };
+        let axis = axis_of_normal(hit.normal);
+        let cell_arr = hit.cell.to_array();
+        let n_arr = hit.normal.to_array();
+        let plane_world = cell_arr[axis] as f32 + if n_arr[axis] > 0 { 1.0 } else { 0.0 };
+        let target_layer = match tool.current {
+            Tool::Brush => cell_arr[axis] + n_arr[axis],
+            _ => cell_arr[axis],
+        };
         history.begin();
         state.stroking = true;
+        state.anchor = Some(StrokeAnchor { axis, plane_world, target_layer });
         recent.push(color.0);
     }
+
     if !state.stroking {
+        return;
+    }
+    let Some(anchor) = state.anchor else { return; };
+    let Some(target) = anchor_target(&anchor, origin, dir) else { return; };
+    if !VoxelGrid::in_bounds(target) {
         return;
     }
 
     match tool.current {
         Tool::Brush => {
-            let target = hit.cell + hit.normal;
-            if VoxelGrid::in_bounds(target) {
-                history.record(&mut grid, target, Some(color.0));
-            }
+            history.record(&mut grid, target, Some(color.0));
         }
         Tool::Erase => {
-            if hit.hit_voxel {
-                history.record(&mut grid, hit.cell, None);
+            if grid.get(target).is_some() {
+                history.record(&mut grid, target, None);
             }
         }
         Tool::Paint => {
-            if hit.hit_voxel {
-                history.record(&mut grid, hit.cell, Some(color.0));
+            if grid.get(target).is_some() {
+                history.record(&mut grid, target, Some(color.0));
             }
         }
         Tool::Eyedropper => {}

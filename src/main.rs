@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 
-use crate::camera::spawn_camera;
+use crate::camera::{frame_view_system, spawn_camera};
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
@@ -70,6 +70,7 @@ fn main() {
                 sync_gizmo_camera,
                 gizmo_drag_system,
                 update_gizmo_hover,
+                frame_view_system,
             ),
         )
         .add_systems(

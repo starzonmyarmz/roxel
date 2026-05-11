@@ -1,4 +1,4 @@
-use crate::grid::GRID;
+use crate::grid::{GRID, VoxelGrid};
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -18,9 +18,61 @@ pub fn spawn_camera(commands: &mut Commands) {
             pitch_upper_limit: Some(std::f32::consts::FRAC_PI_2 - 0.05),
             pitch_lower_limit: Some(-std::f32::consts::FRAC_PI_2 + 0.05),
             button_orbit: MouseButton::Right,
-            button_pan: MouseButton::Right,
-            modifier_pan: Some(KeyCode::ShiftLeft),
+            button_pan: MouseButton::Left,
+            modifier_pan: Some(KeyCode::Space),
+            pan_sensitivity: 1.0,
+            zoom_lower_limit: 0.5,
             ..default()
         },
     ));
+}
+
+fn voxel_bounds(grid: &VoxelGrid) -> Option<(IVec3, IVec3)> {
+    let mut min = IVec3::splat(i32::MAX);
+    let mut max = IVec3::splat(i32::MIN);
+    let mut any = false;
+    for x in 0..GRID {
+        for y in 0..GRID {
+            for z in 0..GRID {
+                if grid.cells[x][y][z].is_some() {
+                    any = true;
+                    let p = IVec3::new(x as i32, y as i32, z as i32);
+                    min = min.min(p);
+                    max = max.max(p);
+                }
+            }
+        }
+    }
+    if any { Some((min, max)) } else { None }
+}
+
+pub fn frame_view_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+    grid: Res<VoxelGrid>,
+) {
+    if !keys.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+    let modded = keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight);
+    if modded {
+        return;
+    }
+
+    let (centroid, radius) = if let Some((min, max)) = voxel_bounds(&grid) {
+        let centroid = (min.as_vec3() + max.as_vec3() + Vec3::ONE) * 0.5;
+        let extent = (max - min).as_vec3().max_element() + 1.0;
+        (centroid, (extent * 1.6).max(4.0))
+    } else {
+        let center = Vec3::splat(GRID as f32 / 2.0);
+        (center, 120.0)
+    };
+
+    for mut cam in &mut cameras {
+        cam.target_focus = centroid;
+        cam.target_radius = radius;
+    }
 }
