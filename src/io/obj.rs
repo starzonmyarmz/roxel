@@ -1,0 +1,74 @@
+use crate::grid::{GRID, VoxelGrid};
+use anyhow::Result;
+use std::io::Write;
+use std::path::Path;
+
+// Naive face-emit identical to renderer mesher; writes OBJ with per-vertex colors
+// (Blender-style "v x y z r g b" extension).
+pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+    writeln!(file, "# Exported by Roxel")?;
+
+    let faces: [([i32; 3], [[i32; 3]; 4]); 6] = [
+        ([1, 0, 0],   [[1,0,0],[1,0,1],[1,1,1],[1,1,0]]),
+        ([-1, 0, 0],  [[0,0,0],[0,1,0],[0,1,1],[0,0,1]]),
+        ([0, 1, 0],   [[0,1,0],[1,1,0],[1,1,1],[0,1,1]]),
+        ([0, -1, 0],  [[0,0,0],[0,0,1],[1,0,1],[1,0,0]]),
+        ([0, 0, 1],   [[0,0,1],[0,1,1],[1,1,1],[1,0,1]]),
+        ([0, 0, -1],  [[0,0,0],[1,0,0],[1,1,0],[0,1,0]]),
+    ];
+
+    let mut vert_idx: u32 = 1; // OBJ indices are 1-based.
+    let mut normal_idx: u32 = 1;
+    let mut faces_buf: Vec<(u32, u32, u32, u32, u32)> = Vec::new();
+
+    for x in 0..GRID {
+        for y in 0..GRID {
+            for z in 0..GRID {
+                let Some(rgba) = grid.cells[x][y][z] else { continue; };
+                let cx = x as i32;
+                let cy = y as i32;
+                let cz = z as i32;
+                let r = rgba[0] as f32 / 255.0;
+                let g = rgba[1] as f32 / 255.0;
+                let b = rgba[2] as f32 / 255.0;
+
+                for (n, corners) in &faces {
+                    let nx = cx + n[0];
+                    let ny = cy + n[1];
+                    let nz = cz + n[2];
+                    let neighbor_filled = nx >= 0 && nx < GRID as i32
+                        && ny >= 0 && ny < GRID as i32
+                        && nz >= 0 && nz < GRID as i32
+                        && grid.cells[nx as usize][ny as usize][nz as usize].is_some();
+                    if neighbor_filled {
+                        continue;
+                    }
+                    writeln!(file, "vn {} {} {}", n[0], n[1], n[2])?;
+                    let n_id = normal_idx;
+                    normal_idx += 1;
+
+                    let mut quad = [0u32; 4];
+                    for (i, c) in corners.iter().enumerate() {
+                        writeln!(
+                            file,
+                            "v {} {} {} {:.3} {:.3} {:.3}",
+                            cx + c[0],
+                            cy + c[1],
+                            cz + c[2],
+                            r, g, b
+                        )?;
+                        quad[i] = vert_idx;
+                        vert_idx += 1;
+                    }
+                    faces_buf.push((quad[0], quad[1], quad[2], quad[3], n_id));
+                }
+            }
+        }
+    }
+
+    for (a, b, c, d, n) in faces_buf {
+        writeln!(file, "f {a}//{n} {b}//{n} {c}//{n} {d}//{n}")?;
+    }
+    Ok(())
+}
