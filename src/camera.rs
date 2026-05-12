@@ -3,16 +3,29 @@ use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
 
+/// Default camera focus: center of the floor plane, not the cubic-grid centroid.
+/// Centering on the floor makes the ground plane sit in the middle of the
+/// viewport on launch instead of dropping into the lower half.
+pub fn default_camera_focus() -> Vec3 {
+    Vec3::new(GRID as f32 / 2.0, 0.0, GRID as f32 / 2.0)
+}
+
+/// Iso camera offset from focus: equal contribution per axis gives the
+/// canonical isometric direction (azimuth 45°, elevation arctan(1/√2) ≈ 35.26°).
+pub fn iso_camera_offset() -> Vec3 {
+    Vec3::splat(80.0)
+}
+
 pub fn spawn_camera(commands: &mut Commands) {
-    let center = Vec3::splat(GRID as f32 / 2.0);
+    let focus = default_camera_focus();
+    let offset = iso_camera_offset();
     commands.spawn((
         Camera3d::default(),
-        Transform::from_translation(center + Vec3::new(80.0, 80.0, 80.0))
-            .looking_at(center, Vec3::Y),
+        Transform::from_translation(focus + offset).looking_at(focus, Vec3::Y),
         PrimaryEguiContext,
         PanOrbitCamera {
-            focus: center,
-            radius: Some(120.0),
+            focus,
+            radius: Some(offset.length()),
             yaw_upper_limit: None,
             yaw_lower_limit: None,
             pitch_upper_limit: Some(std::f32::consts::FRAC_PI_2 - 0.05),
@@ -74,6 +87,38 @@ pub fn frame_view_system(
     for mut cam in &mut cameras {
         cam.target_focus = centroid;
         cam.target_radius = radius;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iso_offset_is_equal_per_axis() {
+        let o = iso_camera_offset();
+        assert!((o.x - o.y).abs() < 1e-6);
+        assert!((o.y - o.z).abs() < 1e-6);
+        assert!(o.x > 0.0);
+    }
+
+    #[test]
+    fn iso_offset_yields_iso_elevation_and_azimuth() {
+        // azimuth from +X around +Y should be 45°, elevation 35.264°.
+        let o = iso_camera_offset();
+        let len = o.length();
+        let elevation = (o.y / len).asin().to_degrees();
+        let azimuth = o.z.atan2(o.x).to_degrees();
+        assert!((elevation - 35.2643).abs() < 1e-3, "elevation={elevation}");
+        assert!((azimuth - 45.0).abs() < 1e-3, "azimuth={azimuth}");
+    }
+
+    #[test]
+    fn default_focus_sits_on_floor_centered_in_grid() {
+        let f = default_camera_focus();
+        assert_eq!(f.y, 0.0);
+        assert_eq!(f.x, GRID as f32 / 2.0);
+        assert_eq!(f.z, GRID as f32 / 2.0);
     }
 }
 

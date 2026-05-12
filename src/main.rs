@@ -30,16 +30,21 @@ use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
-use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
+use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system};
 use crate::tools::{CurrentColor, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::theme::{
-    PreferencesWindow, install_fonts, load_preferences, refresh_theme_system, resolve_theme,
+    Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
+    resolve_canvas_color, resolve_theme,
 };
 use crate::ui::{PaletteChoice, Palettes, PendingDialog, poll_dialogs_system, ui_system};
 
 fn main() {
     let prefs = load_preferences();
     let theme = resolve_theme(prefs.theme);
+    let initial_canvas = {
+        let [r, g, b] = resolve_canvas_color(&prefs, &theme);
+        Color::srgb_u8(r, g, b)
+    };
     App::new()
         .insert_resource(prefs)
         .insert_resource(theme)
@@ -58,7 +63,7 @@ fn main() {
             ..default()
         })
         .add_plugins(PanOrbitCameraPlugin)
-        .insert_resource(ClearColor(Color::srgb(0.07, 0.08, 0.10)))
+        .insert_resource(ClearColor(initial_canvas))
         .insert_resource(bevy::light::GlobalAmbientLight {
             color: Color::WHITE,
             brightness: 350.0,
@@ -103,7 +108,14 @@ fn main() {
         )
         .add_systems(
             Update,
-            (crate::icon::set_window_icon, refresh_theme_system, zoom_click_system),
+            (
+                crate::icon::set_window_icon,
+                refresh_theme_system,
+                zoom_click_system,
+                apply_canvas_bg_system,
+                apply_floor_visibility_system,
+                apply_walls_visibility_system,
+            ),
         )
         .add_systems(
             PreUpdate,
@@ -158,6 +170,72 @@ fn setup_scene(
         Transform::from_xyz(GRID as f32 / 2.0, -0.01, GRID as f32 / 2.0),
         GroundPlane,
     ));
+
+    // Wall planes: back wall (z=0, normal +Z) and left wall (x=0, normal +X).
+    // Slightly outside the grid so they don't z-fight with edge voxels.
+    let half = GRID as f32 / 2.0;
+    let wall_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.13, 0.14, 0.17),
+        perceptual_roughness: 1.0,
+        reflectance: 0.0,
+        ..default()
+    });
+    let back_wall = meshes.add(Mesh::from(
+        bevy::math::primitives::Plane3d::new(Vec3::Z, Vec2::splat(half)).mesh(),
+    ));
+    commands.spawn((
+        Mesh3d(back_wall),
+        MeshMaterial3d(wall_mat.clone()),
+        Transform::from_xyz(half, half, -0.01),
+        Visibility::Hidden,
+        WallPlane,
+    ));
+    let left_wall = meshes.add(Mesh::from(
+        bevy::math::primitives::Plane3d::new(Vec3::X, Vec2::splat(half)).mesh(),
+    ));
+    commands.spawn((
+        Mesh3d(left_wall),
+        MeshMaterial3d(wall_mat),
+        Transform::from_xyz(-0.01, half, half),
+        Visibility::Hidden,
+        WallPlane,
+    ));
+}
+
+fn apply_canvas_bg_system(
+    prefs: Res<Preferences>,
+    theme: Res<Theme>,
+    mut clear: ResMut<ClearColor>,
+) {
+    let [r, g, b] = resolve_canvas_color(&prefs, &theme);
+    let next = Color::srgb_u8(r, g, b);
+    if clear.0 != next {
+        clear.0 = next;
+    }
+}
+
+fn apply_floor_visibility_system(
+    prefs: Res<Preferences>,
+    mut floor: Query<&mut Visibility, With<GroundPlane>>,
+) {
+    let want = if prefs.show_floor { Visibility::Inherited } else { Visibility::Hidden };
+    for mut v in &mut floor {
+        if *v != want {
+            *v = want;
+        }
+    }
+}
+
+fn apply_walls_visibility_system(
+    prefs: Res<Preferences>,
+    mut walls: Query<&mut Visibility, With<WallPlane>>,
+) {
+    let want = if prefs.show_walls { Visibility::Inherited } else { Visibility::Hidden };
+    for mut v in &mut walls {
+        if *v != want {
+            *v = want;
+        }
+    }
 }
 
 fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {

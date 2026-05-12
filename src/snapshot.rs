@@ -22,6 +22,9 @@ use bevy_panorbit_camera::PanOrbitCamera;
 pub struct GroundPlane;
 
 #[derive(Component)]
+pub struct WallPlane;
+
+#[derive(Component)]
 pub struct SnapshotCamera;
 
 #[derive(Resource, Default)]
@@ -44,6 +47,7 @@ pub fn start_snapshot_system(
     >,
     mut images: ResMut<Assets<Image>>,
     mut ground: Query<(Entity, &mut Visibility), With<GroundPlane>>,
+    mut walls: Query<(Entity, &mut Visibility), (With<WallPlane>, Without<GroundPlane>)>,
 ) {
     let Some(path) = request.0.take() else { return };
     if session.camera.is_some() {
@@ -81,6 +85,12 @@ pub fn start_snapshot_system(
     for (e, mut vis) in ground.iter_mut() {
         *vis = Visibility::Hidden;
         session.hidden.push(e);
+    }
+    for (e, mut vis) in walls.iter_mut() {
+        if *vis != Visibility::Hidden {
+            *vis = Visibility::Hidden;
+            session.hidden.push(e);
+        }
     }
 
     let path_for_observer = path.clone();

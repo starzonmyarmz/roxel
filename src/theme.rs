@@ -28,7 +28,7 @@ pub struct Theme {
 impl Theme {
     pub const fn dark() -> Self {
         Self {
-            bg: egui::Color32::from_rgb(18, 20, 24),
+            bg: egui::Color32::from_rgb(0x19, 0x1A, 0x2E),
             panel: egui::Color32::from_rgb(26, 28, 34),
             surface: egui::Color32::from_rgb(38, 42, 50),
             surface_hover: egui::Color32::from_rgb(54, 60, 72),
@@ -64,9 +64,88 @@ impl Default for Theme {
     }
 }
 
-#[derive(Resource, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dark_bg_is_191a2e() {
+        assert_eq!(Theme::dark().bg, egui::Color32::from_rgb(0x19, 0x1A, 0x2E));
+    }
+
+    #[test]
+    fn dark_and_light_carry_correct_mode() {
+        assert_eq!(Theme::dark().mode, ThemeMode::Dark);
+        assert_eq!(Theme::light().mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn default_theme_is_dark() {
+        assert_eq!(Theme::default().mode, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn preferences_defaults() {
+        let p = Preferences::default();
+        assert_eq!(p.theme, ThemePref::System);
+        assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
+        assert!(p.show_floor);
+        assert!(!p.show_walls);
+    }
+
+    #[test]
+    fn resolve_canvas_match_theme_returns_theme_bg() {
+        let prefs = Preferences { canvas_bg: CanvasBgPref::MatchTheme, ..Default::default() };
+        let rgb = resolve_canvas_color(&prefs, &Theme::dark());
+        assert_eq!(rgb, [0x19, 0x1A, 0x2E]);
+    }
+
+    #[test]
+    fn resolve_canvas_custom_returns_custom() {
+        let prefs = Preferences {
+            canvas_bg: CanvasBgPref::Custom([10, 20, 30]),
+            ..Default::default()
+        };
+        assert_eq!(resolve_canvas_color(&prefs, &Theme::dark()), [10, 20, 30]);
+    }
+
+    #[test]
+    fn preferences_loads_with_missing_new_fields() {
+        // Old prefs file shape — only `theme` present. Serde defaults must fill
+        // in the rest so we don't wipe a user's existing preferences.ron.
+        let ron = "(theme: Dark)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.theme, ThemePref::Dark);
+        assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
+        assert!(p.show_floor);
+        assert!(!p.show_walls);
+    }
+}
+
+#[derive(Resource, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct Preferences {
     pub theme: ThemePref,
+    #[serde(default = "default_canvas_bg")]
+    pub canvas_bg: CanvasBgPref,
+    #[serde(default = "default_show_floor")]
+    pub show_floor: bool,
+    #[serde(default = "default_show_walls")]
+    pub show_walls: bool,
+}
+
+fn default_canvas_bg() -> CanvasBgPref { CanvasBgPref::MatchTheme }
+fn default_show_floor() -> bool { true }
+fn default_show_walls() -> bool { false }
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemePref::default(),
+            canvas_bg: default_canvas_bg(),
+            show_floor: default_show_floor(),
+            show_walls: default_show_walls(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
@@ -75,6 +154,21 @@ pub enum ThemePref {
     Dark,
     #[default]
     System,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub enum CanvasBgPref {
+    MatchTheme,
+    Custom([u8; 3]),
+}
+
+/// Resolve canvas (3D viewport) background color from preferences + theme.
+/// Returns sRGB 8-bit components for downstream `Color::srgb_u8` use.
+pub fn resolve_canvas_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
+    match prefs.canvas_bg {
+        CanvasBgPref::Custom(rgb) => rgb,
+        CanvasBgPref::MatchTheme => [theme.bg.r(), theme.bg.g(), theme.bg.b()],
+    }
 }
 
 #[derive(Resource, Default)]

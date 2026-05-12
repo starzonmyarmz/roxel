@@ -27,20 +27,20 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| `B` | Brush |
-| `E` | Erase |
-| `P` | Paint (recolor existing voxel) |
-| `I` | Eyedropper |
-| `Alt` (hold) | Temporary eyedropper; releases back to previous tool |
-| `Shift` + click | Draw a 3D line from the last placed voxel to the cursor |
-| `Space` + left-drag | Pan (Figma/Photoshop style) |
-| `Z` + left-click | Zoom in 2× toward target |
-| `Alt` + `Z` + left-click | Zoom out 2× |
-| `Cmd/Ctrl + Z` | Undo |
-| `Cmd/Ctrl + Shift + Z` | Redo |
-| `F` | Frame view on the voxel cluster |
+| Key                      | Action                                                  |
+| ------------------------ | ------------------------------------------------------- |
+| `B`                      | Brush                                                   |
+| `E`                      | Erase                                                   |
+| `P`                      | Paint (recolor existing voxel)                          |
+| `I`                      | Eyedropper                                              |
+| `Alt` (hold)             | Temporary eyedropper; releases back to previous tool    |
+| `Shift` + click          | Draw a 3D line from the last placed voxel to the cursor |
+| `Space` + left-drag      | Pan (Figma/Photoshop style)                             |
+| `Z` + left-click         | Zoom in 2× toward target                                |
+| `Alt` + `Z` + left-click | Zoom out 2×                                             |
+| `Cmd/Ctrl + Z`           | Undo                                                    |
+| `Cmd/Ctrl + Shift + Z`   | Redo                                                    |
+| `F`                      | Frame view on the voxel cluster                         |
 
 Cursor reflects the active modifier: crosshair (default), grab (Space), zoom-in/zoom-out (Z / Alt+Z), move (RMB orbit), pointing hand (Alt sticky-eyedropper).
 
@@ -71,18 +71,6 @@ src/
     fbx.rs      .fbx export (binary 7.4)
     svg.rs      .svg export of current view
     ase.rs      .ase palette import/export
-```
-
-## Tests
-
-```sh
-cargo test
-```
-
-Unit tests live as inline `#[cfg(test)] mod tests` blocks per source file (no `tests/` dir, no lib crate). A pre-commit hook at `.githooks/pre-commit` runs `cargo test` before every commit; enable it once per clone with:
-
-```sh
-git config core.hooksPath .githooks
 ```
 
 ## Packaging a macOS .app

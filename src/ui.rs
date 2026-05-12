@@ -3,8 +3,8 @@ use crate::history::History;
 use crate::io;
 use crate::snapshot::SnapshotRequest;
 use crate::theme::{
-    NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
-    save_preferences,
+    CanvasBgPref, NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref,
+    apply_egui_style, save_preferences,
 };
 use crate::shapes::ShapePrimitive;
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
@@ -262,6 +262,7 @@ pub fn ui_system(
     mut shape_options: ResMut<ShapeOptions>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    cameras: Query<&bevy_panorbit_camera::PanOrbitCamera>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -484,6 +485,17 @@ pub fn ui_system(
                     ))
                     .color(TEXT_DIM)
                     .size(12.0),
+                );
+                ui.add_space(12.0);
+                let dist = cameras
+                    .iter()
+                    .next()
+                    .map(|cam| cam.target_radius.round() as i32)
+                    .unwrap_or(0);
+                ui.label(
+                    egui::RichText::new(format!("Dist {dist}"))
+                        .color(TEXT_DIM)
+                        .size(12.0),
                 );
             });
         });
@@ -843,6 +855,47 @@ pub fn ui_system(
                     ui.radio_value(&mut prefs.theme, ThemePref::Light, "Light");
                     ui.radio_value(&mut prefs.theme, ThemePref::Dark, "Dark");
                 });
+                ui.add_space(12.0);
+
+                ui.label(
+                    egui::RichText::new("Canvas")
+                        .color(theme.text)
+                        .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
+                );
+                ui.add_space(4.0);
+
+                let mut is_custom = matches!(prefs.canvas_bg, CanvasBgPref::Custom(_));
+                ui.horizontal(|ui| {
+                    ui.label("Background");
+                    ui.add_space(8.0);
+                    if ui
+                        .radio(!is_custom, "Match theme")
+                        .clicked()
+                    {
+                        prefs.canvas_bg = CanvasBgPref::MatchTheme;
+                        is_custom = false;
+                    }
+                    if ui.radio(is_custom, "Custom").clicked() {
+                        let seed = match prefs.canvas_bg {
+                            CanvasBgPref::Custom(rgb) => rgb,
+                            CanvasBgPref::MatchTheme => {
+                                [theme.bg.r(), theme.bg.g(), theme.bg.b()]
+                            }
+                        };
+                        prefs.canvas_bg = CanvasBgPref::Custom(seed);
+                        is_custom = true;
+                    }
+                });
+                if let CanvasBgPref::Custom(ref mut rgb) = prefs.canvas_bg {
+                    ui.horizontal(|ui| {
+                        ui.add_space(8.0);
+                        ui.color_edit_button_srgb(rgb);
+                        ui.label(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
+                    });
+                }
+                ui.add_space(4.0);
+                ui.checkbox(&mut prefs.show_floor, "Show bottom plane");
+                ui.checkbox(&mut prefs.show_walls, "Show wall planes");
                 ui.add_space(8.0);
             });
         if !open_flag {
