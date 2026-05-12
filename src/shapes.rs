@@ -184,10 +184,11 @@ mod tests {
     fn ellipse_inscribed_in_rect() {
         let cells = ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(4, 0, 4), 1, true);
         assert!(!cells.is_empty());
-        // Center cell must be in.
-        assert!(set(cells.clone()).contains(&(2, 0, 2)));
-        // Far corner must be out.
-        assert!(!set(cells).contains(&(0, 0, 0)) || true);
+        let s = set(cells);
+        assert!(s.contains(&(2, 0, 2)));
+        // Corners of bounding rect lie outside an inscribed ellipse.
+        assert!(!s.contains(&(0, 0, 0)));
+        assert!(!s.contains(&(4, 0, 4)));
     }
 
     #[test]

@@ -81,7 +81,6 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::math::IVec3;
 
     fn rec(h: &mut History, g: &mut VoxelGrid, p: IVec3, c: Option<Color8>) {
         h.record(g, p, c);
