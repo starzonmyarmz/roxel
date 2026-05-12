@@ -9,6 +9,7 @@ mod mesh;
 mod picking;
 mod preview;
 mod snapshot;
+mod theme;
 mod tools;
 mod ui;
 
@@ -16,7 +17,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 
-use crate::camera::{frame_view_system, spawn_camera};
+use crate::camera::{frame_view_system, spawn_camera, zoom_click_system};
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
@@ -28,10 +29,18 @@ use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_syste
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
 use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
-use crate::ui::{PaletteChoice, Palettes, PendingDialog, apply_style, poll_dialogs_system, ui_system};
+use crate::theme::{
+    PreferencesWindow, install_fonts, load_preferences, refresh_theme_system, resolve_theme,
+};
+use crate::ui::{PaletteChoice, Palettes, PendingDialog, poll_dialogs_system, ui_system};
 
 fn main() {
+    let prefs = load_preferences();
+    let theme = resolve_theme(prefs.theme);
     App::new()
+        .insert_resource(prefs)
+        .insert_resource(theme)
+        .init_resource::<PreferencesWindow>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Roxel".into(),
@@ -68,7 +77,7 @@ fn main() {
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
         .init_gizmo_group::<AxisGizmoGroup>()
-        .add_systems(Startup, (style_startup, setup_scene, configure_axis_gizmo))
+        .add_systems(Startup, (setup_scene, configure_axis_gizmo))
         .add_systems(
             Update,
             (
@@ -86,16 +95,21 @@ fn main() {
                 start_snapshot_system,
             ),
         )
-        .add_systems(Update, crate::icon::set_window_icon)
+        .add_systems(
+            Update,
+            (crate::icon::set_window_icon, refresh_theme_system, zoom_click_system),
+        )
+        .add_systems(
+            PreUpdate,
+            font_setup
+                .after(bevy_egui::EguiPreUpdateSet::InitContexts)
+                .before(bevy_egui::EguiPreUpdateSet::BeginPass),
+        )
         .add_systems(
             bevy_egui::EguiPrimaryContextPass,
             (ui_system, update_gizmo_viewport.after(ui_system)),
         )
         .run();
-}
-
-fn style_startup(contexts: bevy_egui::EguiContexts) {
-    let _ = apply_style(contexts);
 }
 
 fn setup_scene(
@@ -137,4 +151,14 @@ fn setup_scene(
         Transform::from_xyz(GRID as f32 / 2.0, -0.01, GRID as f32 / 2.0),
         GroundPlane,
     ));
+}
+
+fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    if let Ok(ctx) = contexts.ctx_mut() {
+        install_fonts(ctx);
+        *done = true;
+    }
 }

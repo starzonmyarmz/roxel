@@ -2,6 +2,10 @@ use crate::grid::VoxelGrid;
 use crate::history::History;
 use crate::io;
 use crate::snapshot::SnapshotRequest;
+use crate::theme::{
+    NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
+    save_preferences,
+};
 use crate::tools::{CurrentColor, RecentColors, Tool, ToolState};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
@@ -112,15 +116,6 @@ pub fn poll_dialogs_system(
     }
 }
 
-const BG: egui::Color32 = egui::Color32::from_rgb(18, 20, 24);
-const PANEL: egui::Color32 = egui::Color32::from_rgb(26, 28, 34);
-const SURFACE: egui::Color32 = egui::Color32::from_rgb(38, 42, 50);
-const SURFACE_HOVER: egui::Color32 = egui::Color32::from_rgb(54, 60, 72);
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(110, 165, 255);
-const ACCENT_DIM: egui::Color32 = egui::Color32::from_rgb(60, 95, 155);
-const TEXT: egui::Color32 = egui::Color32::from_rgb(220, 225, 235);
-const TEXT_DIM: egui::Color32 = egui::Color32::from_rgb(150, 158, 172);
-const BORDER: egui::Color32 = egui::Color32::from_rgb(44, 48, 58);
 
 #[derive(Clone)]
 pub struct Palette {
@@ -246,77 +241,6 @@ fn tool_icon(t: Tool) -> egui::ImageSource<'static> {
     }
 }
 
-pub fn apply_style(mut contexts: EguiContexts) -> Result {
-    let ctx = contexts.ctx_mut()?;
-    egui_extras::install_image_loaders(ctx);
-    let mut visuals = egui::Visuals::dark();
-
-    visuals.override_text_color = Some(TEXT);
-    visuals.panel_fill = PANEL;
-    visuals.window_fill = PANEL;
-    visuals.extreme_bg_color = BG;
-    visuals.faint_bg_color = egui::Color32::from_rgb(32, 35, 42);
-
-    visuals.widgets.noninteractive.bg_fill = PANEL;
-    visuals.widgets.noninteractive.weak_bg_fill = PANEL;
-    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, BORDER);
-    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, TEXT_DIM);
-    visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
-
-    visuals.widgets.inactive.bg_fill = SURFACE;
-    visuals.widgets.inactive.weak_bg_fill = SURFACE;
-    visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, TEXT);
-    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
-
-    visuals.widgets.hovered.bg_fill = SURFACE_HOVER;
-    visuals.widgets.hovered.weak_bg_fill = SURFACE_HOVER;
-    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT_DIM);
-    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, TEXT);
-    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
-
-    visuals.widgets.active.bg_fill = ACCENT;
-    visuals.widgets.active.weak_bg_fill = ACCENT;
-    visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, ACCENT);
-    visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
-
-    visuals.widgets.open.bg_fill = SURFACE_HOVER;
-    visuals.widgets.open.weak_bg_fill = SURFACE_HOVER;
-    visuals.widgets.open.corner_radius = egui::CornerRadius::same(6);
-
-    visuals.selection.bg_fill = ACCENT_DIM;
-    visuals.selection.stroke = egui::Stroke::new(1.0, ACCENT);
-    visuals.hyperlink_color = ACCENT;
-    visuals.window_corner_radius = egui::CornerRadius::same(10);
-    visuals.menu_corner_radius = egui::CornerRadius::same(8);
-    visuals.window_stroke = egui::Stroke::new(1.0, BORDER);
-    visuals.window_shadow = egui::epaint::Shadow {
-        offset: [0, 4],
-        blur: 12,
-        spread: 0,
-        color: egui::Color32::from_black_alpha(120),
-    };
-    visuals.popup_shadow = visuals.window_shadow;
-
-    ctx.set_visuals(visuals);
-
-    let mut style: egui::Style = (*ctx.style()).clone();
-    style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-    style.spacing.button_padding = egui::vec2(12.0, 7.0);
-    style.spacing.menu_margin = egui::Margin::same(8);
-    style.spacing.window_margin = egui::Margin::same(12);
-    style.spacing.slider_width = 160.0;
-    style.spacing.interact_size.y = 26.0;
-
-    // Heading slightly tighter and accent-tinted.
-    if let Some(h) = style.text_styles.get_mut(&egui::TextStyle::Heading) {
-        h.size = 15.0;
-    }
-    ctx.set_style(style);
-    Ok(())
-}
-
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -327,9 +251,30 @@ pub fn ui_system(
     mut pending: ResMut<PendingDialog>,
     mut palette_choice: ResMut<PaletteChoice>,
     palettes: Res<Palettes>,
+    theme: Res<Theme>,
+    mut prefs: ResMut<Preferences>,
+    mut prefs_window: ResMut<PreferencesWindow>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
+    apply_egui_style(ctx, &theme);
+
+    // Local bindings shadow the previous module-level constants so that the
+    // rest of this function can stay as it was.
+    #[allow(non_snake_case)]
+    let BG = theme.bg;
+    #[allow(non_snake_case)]
+    let PANEL = theme.panel;
+    #[allow(non_snake_case)]
+    let ACCENT = theme.accent;
+    #[allow(non_snake_case)]
+    let TEXT = theme.text;
+    #[allow(non_snake_case)]
+    let TEXT_DIM = theme.text_dim;
+    #[allow(non_snake_case)]
+    let BORDER = theme.border;
 
     // ---------- Top bar ----------
     egui::TopBottomPanel::top("top_bar")
@@ -337,11 +282,11 @@ pub fn ui_system(
             egui::Frame::default()
                 .fill(PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 8))
-                .stroke(egui::Stroke::new(1.0, BORDER)),
+                .stroke(egui::Stroke::new(0.5, BORDER)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if icon_button(ui, icon_file_plus(), "New")
+                if icon_button(ui, &theme, icon_file_plus(), "New")
                     .on_hover_text("Clear the scene")
                     .clicked()
                 {
@@ -450,7 +395,7 @@ pub fn ui_system(
                 });
 
                 ui.add_space(8.0);
-                vertical_rule(ui);
+                vertical_rule(ui, &theme);
                 ui.add_space(4.0);
 
                 let undo_enabled = !history.undo.is_empty();
@@ -486,6 +431,17 @@ pub fn ui_system(
                     history.redo(&mut grid);
                 }
 
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new(
+                            egui::RichText::new("Preferences…").size(13.0),
+                        ))
+                        .on_hover_text("Appearance and other settings")
+                        .clicked()
+                    {
+                        prefs_window.open = !prefs_window.open;
+                    }
+                });
             });
         });
 
@@ -495,7 +451,7 @@ pub fn ui_system(
             egui::Frame::default()
                 .fill(BG)
                 .inner_margin(egui::Margin::symmetric(12, 6))
-                .stroke(egui::Stroke::new(1.0, BORDER)),
+                .stroke(egui::Stroke::new(0.5, BORDER)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -527,59 +483,63 @@ pub fn ui_system(
         });
 
     // ---------- Left tool rail ----------
-    egui::SidePanel::left("tools")
+    let left_resp = egui::SidePanel::left("tools")
         .resizable(false)
         .exact_width(56.0)
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(8, 10))
-                .stroke(egui::Stroke::new(1.0, BORDER)),
+                .inner_margin(egui::Margin::symmetric(8, 10)),
         )
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                tool_button(ui, &mut tool, Tool::Brush, "Brush", "B");
+                tool_button(ui, &theme, &mut tool, Tool::Brush, "Brush", "B");
                 ui.add_space(4.0);
-                tool_button(ui, &mut tool, Tool::Erase, "Erase", "E");
+                tool_button(ui, &theme, &mut tool, Tool::Erase, "Erase", "E");
                 ui.add_space(4.0);
-                tool_button(ui, &mut tool, Tool::Paint, "Paint", "P");
+                tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
                 ui.add_space(4.0);
-                tool_button(ui, &mut tool, Tool::Eyedropper, "Pick", "I");
+                tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
             });
         });
+    let left_rect = left_resp.response.rect;
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("left_panel_edge"),
+    ))
+    .vline(
+        left_rect.right(),
+        left_rect.y_range(),
+        egui::Stroke::new(0.5, BORDER),
+    );
 
     // ---------- Right inspector ----------
-    egui::SidePanel::right("right_panel")
+    let right_resp = egui::SidePanel::right("right_panel")
         .resizable(true)
         .default_width(260.0)
         .min_width(240.0)
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
-                .inner_margin(egui::Margin::same(12))
-                .stroke(egui::Stroke::new(1.0, BORDER)),
+                .inner_margin(egui::Margin::same(12)),
         )
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Color section
-                section(ui, "Color", |ui| {
+                section(ui, &theme, "Color", |ui| {
                     let mut srgba = egui::Color32::from_rgba_unmultiplied(
                         color.0[0], color.0[1], color.0[2], color.0[3],
                     );
                     let swatch_w = ui.available_width();
-                    let swatch_resp = ui.allocate_response(
-                        egui::vec2(swatch_w, 56.0),
-                        egui::Sense::click(),
-                    );
-                    let rect = swatch_resp.rect;
-                    ui.painter().rect_filled(rect, 8.0, srgba);
-                    let stroke = if swatch_resp.hovered() {
-                        egui::Stroke::new(1.5, ACCENT)
-                    } else {
-                        egui::Stroke::new(1.0, BORDER)
-                    };
-                    ui.painter().rect_stroke(rect, 8.0, stroke, egui::StrokeKind::Inside);
-                    swatch_resp.clone().on_hover_text("Click to edit color");
+                    let swatch_resp = ui
+                        .add_sized(
+                            [swatch_w, 56.0],
+                            egui::Button::new("")
+                                .fill(srgba)
+                                .stroke(egui::Stroke::new(0.5, theme.border))
+                                .corner_radius(egui::CornerRadius::same(8)),
+                        )
+                        .on_hover_text("Click to edit color");
                     egui::Popup::menu(&swatch_resp)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                         .show(|ui| {
@@ -680,26 +640,23 @@ pub fn ui_system(
                     ui.add_space(4.0);
                     let active_palette = palettes.0[palette_choice.0].colors.clone();
                     ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+                        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
                         for c in &active_palette {
                             let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
                             let is_current = color.0 == *c;
-                            let (rect, resp) = ui.allocate_exact_size(
-                                egui::vec2(20.0, 20.0),
-                                egui::Sense::click(),
-                            );
-                            ui.painter().rect_filled(rect, 4.0, col);
                             let stroke = if is_current {
                                 egui::Stroke::new(2.0, ACCENT)
-                            } else if resp.hovered() {
-                                egui::Stroke::new(1.0, TEXT)
                             } else {
-                                egui::Stroke::new(1.0, BORDER)
+                                egui::Stroke::new(0.5, theme.border)
                             };
-                            ui.painter().rect_stroke(
-                                rect,
-                                4.0,
-                                stroke,
-                                egui::StrokeKind::Inside,
+                            let resp = ui.add_sized(
+                                [20.0, 20.0],
+                                egui::Button::new("")
+                                    .fill(col)
+                                    .stroke(stroke)
+                                    .corner_radius(egui::CornerRadius::same(4)),
                             );
                             if resp.clicked() {
                                 color.0 = *c;
@@ -715,26 +672,23 @@ pub fn ui_system(
                     ui.label(egui::RichText::new("Recent").color(TEXT_DIM).size(11.0));
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+                        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
                         for c in &recent.0 {
                             let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
                             let is_current = color.0 == *c;
-                            let (rect, resp) = ui.allocate_exact_size(
-                                egui::vec2(24.0, 24.0),
-                                egui::Sense::click(),
-                            );
-                            ui.painter().rect_filled(rect, 5.0, col);
                             let stroke = if is_current {
                                 egui::Stroke::new(2.0, ACCENT)
-                            } else if resp.hovered() {
-                                egui::Stroke::new(1.0, TEXT)
                             } else {
-                                egui::Stroke::new(1.0, BORDER)
+                                egui::Stroke::new(0.5, theme.border)
                             };
-                            ui.painter().rect_stroke(
-                                rect,
-                                5.0,
-                                stroke,
-                                egui::StrokeKind::Inside,
+                            let resp = ui.add_sized(
+                                [24.0, 24.0],
+                                egui::Button::new("")
+                                    .fill(col)
+                                    .stroke(stroke)
+                                    .corner_radius(egui::CornerRadius::same(5)),
                             );
                             if resp.clicked() {
                                 color.0 = *c;
@@ -755,35 +709,101 @@ pub fn ui_system(
                 });
 
                 // Scene section
-                section(ui, "Scene", |ui| {
-                    stat_row(ui, "Voxels", grid.count().to_string());
+                section(ui, &theme, "Scene", |ui| {
+                    stat_row(ui, &theme, "Voxels", grid.count().to_string());
                     stat_row(
                         ui,
+                        &theme,
                         "Grid",
                         format!(
                             "{g} × {g} × {g}",
                             g = crate::grid::GRID
                         ),
                     );
-                    stat_row(ui, "Undo", history.undo.len().to_string());
-                    stat_row(ui, "Redo", history.redo.len().to_string());
+                    stat_row(ui, &theme, "Undo", history.undo.len().to_string());
+                    stat_row(ui, &theme, "Redo", history.redo.len().to_string());
                 });
             });
         });
+    let right_rect = right_resp.response.rect;
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("right_panel_edge"),
+    ))
+    .vline(
+        right_rect.left(),
+        right_rect.y_range(),
+        egui::Stroke::new(0.5, BORDER),
+    );
 
     // Reflect tool in cursor when pointer is over the viewport.
     if !ctx.is_pointer_over_area() {
-        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+        let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+        let z = keys.pressed(KeyCode::KeyZ);
+        let cursor = if mouse.pressed(MouseButton::Right) {
+            egui::CursorIcon::Move
+        } else if z {
+            if alt {
+                egui::CursorIcon::ZoomOut
+            } else {
+                egui::CursorIcon::ZoomIn
+            }
+        } else if keys.pressed(KeyCode::Space) {
+            if mouse.pressed(MouseButton::Left) {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::Grab
+            }
+        } else if alt {
+            egui::CursorIcon::PointingHand
+        } else {
+            egui::CursorIcon::Crosshair
+        };
+        ctx.set_cursor_icon(cursor);
+    }
+
+    if prefs_window.open {
+        let before = *prefs;
+        let mut open_flag = true;
+        egui::Window::new("Preferences")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open_flag)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.set_min_width(280.0);
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("Appearance")
+                        .color(theme.text)
+                        .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label("Theme");
+                    ui.add_space(8.0);
+                    ui.radio_value(&mut prefs.theme, ThemePref::System, "System");
+                    ui.radio_value(&mut prefs.theme, ThemePref::Light, "Light");
+                    ui.radio_value(&mut prefs.theme, ThemePref::Dark, "Dark");
+                });
+                ui.add_space(8.0);
+            });
+        if !open_flag {
+            prefs_window.open = false;
+        }
+        if *prefs != before {
+            save_preferences(&prefs);
+        }
     }
 
     Ok(())
 }
 
-fn vertical_rule(ui: &mut egui::Ui) {
+fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(1.0, 20.0), egui::Sense::hover());
     ui.painter()
-        .vline(rect.center().x, rect.y_range(), egui::Stroke::new(1.0, BORDER));
+        .vline(rect.center().x, rect.y_range(), egui::Stroke::new(0.5, theme.border));
 }
 
 fn tool_label(t: Tool) -> &'static str {
@@ -797,37 +817,34 @@ fn tool_label(t: Tool) -> &'static str {
 
 fn tool_button(
     ui: &mut egui::Ui,
+    theme: &Theme,
     tool: &mut ToolState,
     kind: Tool,
     label: &str,
     shortcut: &str,
 ) {
     let active = tool.current == kind;
-    let size = egui::vec2(40.0, 40.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-
-    let (fill, stroke, fg) = if active {
-        (ACCENT, egui::Stroke::new(0.5, ACCENT), egui::Color32::WHITE)
-    } else if resp.hovered() {
-        (SURFACE_HOVER, egui::Stroke::new(0.5, ACCENT_DIM), TEXT)
+    let (fill, fg) = if active {
+        (theme.accent, egui::Color32::WHITE)
     } else {
-        (SURFACE, egui::Stroke::new(0.5, BORDER), TEXT)
+        (theme.surface, theme.text)
     };
-
-    ui.painter().rect_filled(rect, 6.0, fill);
-    ui.painter()
-        .rect_stroke(rect, 6.0, stroke, egui::StrokeKind::Inside);
-
-    let icon_size = 18.0;
-    let icon_rect = egui::Rect::from_center_size(
-        rect.center(),
-        egui::vec2(icon_size, icon_size),
-    );
-    egui::Image::new(tool_icon(kind))
-        .fit_to_exact_size(egui::vec2(icon_size, icon_size))
-        .tint(fg)
-        .paint_at(ui, icon_rect);
-
+    let icon = egui::Image::new(tool_icon(kind))
+        .fit_to_exact_size(egui::vec2(18.0, 18.0))
+        .tint(fg);
+    let resp = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+            ui.add_sized(
+                [40.0, 40.0],
+                egui::Button::image(icon)
+                    .fill(fill)
+                    .stroke(egui::Stroke::NONE)
+                    .corner_radius(egui::CornerRadius::same(6)),
+            )
+        })
+        .inner;
     if resp.clicked() && tool.current != kind {
         tool.previous = tool.current;
         tool.current = kind;
@@ -837,33 +854,41 @@ fn tool_button(
 
 fn icon_button(
     ui: &mut egui::Ui,
+    theme: &Theme,
     icon: egui::ImageSource<'static>,
     label: &str,
 ) -> egui::Response {
     ui.add(egui::Button::image_and_text(
         egui::Image::new(icon)
             .fit_to_exact_size(egui::vec2(14.0, 14.0))
-            .tint(TEXT),
+            .tint(theme.text),
         egui::RichText::new(label).size(13.0),
     ))
 }
 
-fn section<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    ui.add_space(4.0);
+fn section<R>(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    title: &str,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
     ui.label(
-        egui::RichText::new(title.to_uppercase())
-            .color(TEXT_DIM)
-            .size(11.0)
-            .strong(),
+        egui::RichText::new(title)
+            .color(theme.text)
+            .size(13.0)
+            .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
     );
-    ui.add_space(4.0);
-    let r = egui::Frame::default()
-        .fill(egui::Color32::from_rgb(32, 35, 42))
-        .stroke(egui::Stroke::new(1.0, BORDER))
-        .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::same(10))
-        .show(ui, |ui| add(ui))
-        .inner;
+    ui.add_space(8.0);
+    let r = add(ui);
+    ui.add_space(12.0);
+    let sep_rect = ui
+        .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
+        .0;
+    ui.painter().hline(
+        ui.clip_rect().x_range(),
+        sep_rect.center().y,
+        egui::Stroke::new(0.5, theme.border),
+    );
     ui.add_space(12.0);
     r
 }
@@ -876,14 +901,14 @@ fn sanitize_filename(s: &str) -> String {
     if cleaned.is_empty() { "palette".into() } else { cleaned }
 }
 
-fn stat_row(ui: &mut egui::Ui, label: &str, value: String) {
+fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).color(TEXT_DIM).size(12.0));
+        ui.label(egui::RichText::new(label).color(theme.text_dim).size(12.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 egui::RichText::new(value)
                     .monospace()
-                    .color(TEXT)
+                    .color(theme.text)
                     .size(12.0),
             );
         });
