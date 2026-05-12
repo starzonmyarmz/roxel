@@ -73,6 +73,18 @@ src/
     ase.rs      .ase palette import/export
 ```
 
+## Tests
+
+```sh
+cargo test
+```
+
+Unit tests live as inline `#[cfg(test)] mod tests` blocks per source file (no `tests/` dir, no lib crate). A pre-commit hook at `.githooks/pre-commit` runs `cargo test` before every commit; enable it once per clone with:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## Packaging a macOS .app
 
 ```sh
@@ -97,4 +109,4 @@ struct ProjectFile {
 
 ## License
 
-Unlicensed / personal project.
+MIT — see [LICENSE](LICENSE).

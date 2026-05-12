@@ -7,9 +7,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cargo run` — launch the editor (dev profile; opt-level=1 for the crate, 3 for deps via `[profile.dev.package."*"]`)
 - `cargo run --release` — release build, slow to compile, fast at runtime
 - `cargo check` — fast type/borrow check; use this in iteration, not `cargo build`
+- `cargo test` — unit tests (inline `#[cfg(test)] mod tests` per source file)
 - `cargo fmt` / `cargo clippy` — standard Rust toolchain
 
-There are no tests in this crate.
+## Tests
+
+Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (bounds/get/set/clear), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + floor fallback), `mesh` (sRGB roundtrip, greedy quad counts), `io::project` (save/load roundtrip). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
+
+**Always add or update tests when adding or modifying a feature** — `cargo test` runs as a pre-commit gate (see below), so untested feature work is incomplete.
+
+## Pre-commit hook
+
+`.githooks/pre-commit` runs `cargo test` and is tracked in the repo. Fresh clones must opt in once:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+A local copy at `.git/hooks/pre-commit` is what git invokes by default; the canonical, tracked copy is `.githooks/pre-commit`. Bypass with `git commit --no-verify` when intentional (rare).
 
 ## Architecture
 
