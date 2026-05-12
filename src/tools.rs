@@ -180,6 +180,11 @@ pub fn tool_input_system(
         return;
     }
 
+    // Z held = zoom modifier (handled by zoom_click_system); suppress tools.
+    if keys.pressed(KeyCode::KeyZ) {
+        return;
+    }
+
     // Suppress tool clicks that land on the gizmo viewport rect.
     if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
         && let Some(c) = window.cursor_position()

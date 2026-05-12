@@ -76,3 +76,26 @@ pub fn frame_view_system(
         cam.target_radius = radius;
     }
 }
+
+pub fn zoom_click_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut contexts: bevy_egui::EguiContexts,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    if !keys.pressed(KeyCode::KeyZ) || !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let egui_wants_pointer = contexts
+        .ctx_mut()
+        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
+        .unwrap_or(false);
+    if egui_wants_pointer {
+        return;
+    }
+    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let factor = if alt { 2.0 } else { 0.5 };
+    for mut cam in &mut cameras {
+        cam.target_radius = (cam.target_radius * factor).max(cam.zoom_lower_limit);
+    }
+}
