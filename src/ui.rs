@@ -521,10 +521,23 @@ pub fn ui_system(
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
-                .inner_margin(egui::Margin::same(12)),
+                .inner_margin(egui::Margin {
+                    left: 12,
+                    right: 0,
+                    top: 12,
+                    bottom: 12,
+                }),
         )
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
+                let inner_frame = egui::Frame::default()
+                    .inner_margin(egui::Margin {
+                        left: 0,
+                        right: 12,
+                        top: 0,
+                        bottom: 0,
+                    });
+                inner_frame.show(ui, |ui| {
                 // Color section
                 section(ui, &theme, "Color", |ui| {
                     let mut srgba = egui::Color32::from_rgba_unmultiplied(
@@ -722,6 +735,7 @@ pub fn ui_system(
                     );
                     stat_row(ui, &theme, "Undo", history.undo.len().to_string());
                     stat_row(ui, &theme, "Redo", history.redo.len().to_string());
+                });
                 });
             });
         });
