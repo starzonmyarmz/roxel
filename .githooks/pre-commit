@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Block commit if `cargo test` fails. Skip with `git commit --no-verify`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+echo "pre-commit: cargo test"
+cargo test --quiet
