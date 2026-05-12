@@ -1,4 +1,5 @@
 use crate::grid::{GRID, VoxelGrid};
+use crate::mesh::FACES;
 use anyhow::Result;
 use std::io::Write;
 use std::path::Path;
@@ -8,15 +9,6 @@ use std::path::Path;
 pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
     writeln!(file, "# Exported by Roxel")?;
-
-    let faces: [([i32; 3], [[i32; 3]; 4]); 6] = [
-        ([1, 0, 0],   [[1,0,0],[1,0,1],[1,1,1],[1,1,0]]),
-        ([-1, 0, 0],  [[0,0,0],[0,1,0],[0,1,1],[0,0,1]]),
-        ([0, 1, 0],   [[0,1,0],[1,1,0],[1,1,1],[0,1,1]]),
-        ([0, -1, 0],  [[0,0,0],[0,0,1],[1,0,1],[1,0,0]]),
-        ([0, 0, 1],   [[0,0,1],[0,1,1],[1,1,1],[1,0,1]]),
-        ([0, 0, -1],  [[0,0,0],[1,0,0],[1,1,0],[0,1,0]]),
-    ];
 
     let mut vert_idx: u32 = 1; // OBJ indices are 1-based.
     let mut normal_idx: u32 = 1;
@@ -33,10 +25,10 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                 let g = rgba[1] as f32 / 255.0;
                 let b = rgba[2] as f32 / 255.0;
 
-                for (n, corners) in &faces {
-                    let nx = cx + n[0];
-                    let ny = cy + n[1];
-                    let nz = cz + n[2];
+                for f in &FACES {
+                    let nx = cx + f.d.x;
+                    let ny = cy + f.d.y;
+                    let nz = cz + f.d.z;
                     let neighbor_filled = nx >= 0 && nx < GRID as i32
                         && ny >= 0 && ny < GRID as i32
                         && nz >= 0 && nz < GRID as i32
@@ -44,12 +36,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                     if neighbor_filled {
                         continue;
                     }
-                    writeln!(file, "vn {} {} {}", n[0], n[1], n[2])?;
+                    writeln!(file, "vn {} {} {}", f.d.x, f.d.y, f.d.z)?;
                     let n_id = normal_idx;
                     normal_idx += 1;
 
                     let mut quad = [0u32; 4];
-                    for (i, c) in corners.iter().enumerate() {
+                    for (i, c) in f.corners.iter().enumerate() {
                         writeln!(
                             file,
                             "v {} {} {} {:.3} {:.3} {:.3}",

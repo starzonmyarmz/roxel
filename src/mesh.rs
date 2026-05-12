@@ -6,7 +6,7 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 #[derive(Component)]
 pub struct VoxelMesh;
 
-const FACES: [Face; 6] = [
+pub const FACES: [Face; 6] = [
     Face { normal: [1.0, 0.0, 0.0],  d: IVec3::new(1, 0, 0),   corners: [[1,0,0],[1,0,1],[1,1,1],[1,1,0]] },
     Face { normal: [-1.0, 0.0, 0.0], d: IVec3::new(-1, 0, 0),  corners: [[0,0,0],[0,1,0],[0,1,1],[0,0,1]] },
     Face { normal: [0.0, 1.0, 0.0],  d: IVec3::new(0, 1, 0),   corners: [[0,1,0],[1,1,0],[1,1,1],[0,1,1]] },
@@ -15,10 +15,10 @@ const FACES: [Face; 6] = [
     Face { normal: [0.0, 0.0, -1.0], d: IVec3::new(0, 0, -1),  corners: [[0,0,0],[1,0,0],[1,1,0],[0,1,0]] },
 ];
 
-struct Face {
-    normal: [f32; 3],
-    d: IVec3,
-    corners: [[i32; 3]; 4],
+pub struct Face {
+    pub normal: [f32; 3],
+    pub d: IVec3,
+    pub corners: [[i32; 3]; 4],
 }
 
 fn face_shade(normal: [f32; 3]) -> f32 {

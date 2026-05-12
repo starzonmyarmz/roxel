@@ -240,7 +240,7 @@ fn pick_face(origin: Vec3, dir: Vec3) -> Option<usize> {
         if !in_bounds {
             continue;
         }
-        if best.map_or(true, |(bt, _)| t < bt) {
+        if best.is_none_or(|(bt, _)| t < bt) {
             best = Some((t, idx));
         }
     }
@@ -272,14 +272,12 @@ pub fn gizmo_drag_system(
         drag.active = false;
     }
 
-    if mouse.just_pressed(MouseButton::Left) {
-        if let Some(rect) = gizmo_rect.0 {
-            if rect.contains(cursor) {
+    if mouse.just_pressed(MouseButton::Left)
+        && let Some(rect) = gizmo_rect.0
+            && rect.contains(cursor) {
                 drag.active = true;
                 drag.last_cursor = cursor;
             }
-        }
-    }
 
     if !drag.active || !mouse.pressed(MouseButton::Left) {
         return;
