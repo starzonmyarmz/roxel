@@ -15,6 +15,7 @@ pub enum DialogResult {
     SaveProject(PathBuf),
     ExportVox(PathBuf),
     ExportObj(PathBuf),
+    ExportFbx(PathBuf),
     ExportPng(PathBuf),
     ExportSvg(PathBuf),
     ImportAse(PathBuf),
@@ -71,6 +72,11 @@ pub fn poll_dialogs_system(
         Some(DialogResult::ExportObj(path)) => {
             if let Err(e) = io::obj::export(&path, &grid) {
                 eprintln!("Export .obj failed: {e:?}");
+            }
+        }
+        Some(DialogResult::ExportFbx(path)) => {
+            if let Err(e) = io::fbx::export(&path, &grid) {
+                eprintln!("Export .fbx failed: {e:?}");
             }
         }
         Some(DialogResult::ExportPng(path)) => {
@@ -405,6 +411,17 @@ pub fn ui_system(
                                 .save_file()
                                 .await
                                 .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
+                        });
+                        ui.close();
+                    }
+                    if ui.add_enabled(!dialog_busy, egui::Button::new("Autodesk .fbx…")).clicked() {
+                        pending.spawn(async move {
+                            rfd::AsyncFileDialog::new()
+                                .add_filter("Autodesk FBX", &["fbx"])
+                                .set_file_name("model.fbx")
+                                .save_file()
+                                .await
+                                .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
                         });
                         ui.close();
                     }
