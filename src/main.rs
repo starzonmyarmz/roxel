@@ -2,6 +2,7 @@ mod camera;
 mod gizmo;
 mod grid;
 mod history;
+mod icon;
 mod io;
 mod lighting;
 mod mesh;
@@ -85,6 +86,7 @@ fn main() {
                 start_snapshot_system,
             ),
         )
+        .add_systems(Update, crate::icon::set_window_icon)
         .add_systems(
             bevy_egui::EguiPrimaryContextPass,
             (ui_system, update_gizmo_viewport.after(ui_system)),
