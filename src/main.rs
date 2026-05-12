@@ -19,7 +19,9 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 
-use crate::camera::{frame_view_system, spawn_camera, zoom_click_system};
+use crate::camera::{
+    ViewportRect, frame_view_system, spawn_camera, update_viewport_rect, zoom_click_system,
+};
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
@@ -86,6 +88,7 @@ fn main() {
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
+        .init_resource::<ViewportRect>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .add_systems(Startup, (setup_scene, configure_axis_gizmo))
         .add_systems(
@@ -127,7 +130,11 @@ fn main() {
         )
         .add_systems(
             bevy_egui::EguiPrimaryContextPass,
-            (ui_system, update_gizmo_viewport.after(ui_system)),
+            (
+                ui_system,
+                update_gizmo_viewport.after(ui_system),
+                update_viewport_rect.after(ui_system),
+            ),
         )
         .run();
 }

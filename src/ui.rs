@@ -9,6 +9,7 @@ use crate::theme::{
 use crate::shapes::ShapePrimitive;
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 use bevy::prelude::*;
+use bevy::ecs::system::SystemParam;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, egui};
@@ -246,6 +247,11 @@ fn tool_icon(t: Tool) -> egui::ImageSource<'static> {
     }
 }
 
+#[derive(SystemParam)]
+pub struct ZoomReadout<'w, 's> {
+    cameras: Query<'w, 's, &'static PanOrbitCamera>,
+}
+
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -262,7 +268,7 @@ pub fn ui_system(
     mut shape_options: ResMut<ShapeOptions>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    cameras: Query<&bevy_panorbit_camera::PanOrbitCamera>,
+    zoom: ZoomReadout,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -486,17 +492,18 @@ pub fn ui_system(
                     .color(TEXT_DIM)
                     .size(12.0),
                 );
-                ui.add_space(12.0);
-                let dist = cameras
-                    .iter()
-                    .next()
-                    .map(|cam| cam.target_radius.round() as i32)
-                    .unwrap_or(0);
-                ui.label(
-                    egui::RichText::new(format!("Dist {dist}"))
-                        .color(TEXT_DIM)
-                        .size(12.0),
-                );
+                if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
+                    && let Some(cam) = zoom.cameras.iter().next()
+                {
+                    let zoom_pct =
+                        (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
+                    ui.add_space(12.0);
+                    ui.label(
+                        egui::RichText::new(format!("Zoom {zoom_pct}%"))
+                            .color(TEXT_DIM)
+                            .size(12.0),
+                    );
+                }
             });
         });
 

@@ -59,10 +59,22 @@ fn voxel_bounds(grid: &VoxelGrid) -> Option<(IVec3, IVec3)> {
     if any { Some((min, max)) } else { None }
 }
 
+/// Focus + orbit radius that frames every occupied voxel. Returns `None`
+/// when the grid is empty so callers (UI zoom readout, F-fit) can fall
+/// back to a default or hide the value.
+pub fn fit_view(grid: &VoxelGrid) -> Option<(Vec3, f32)> {
+    let (min, max) = voxel_bounds(grid)?;
+    let centroid = (min.as_vec3() + max.as_vec3() + Vec3::ONE) * 0.5;
+    let extent = (max - min).as_vec3().max_element() + 1.0;
+    Some((centroid, (extent * 1.6).max(4.0)))
+}
+
 pub fn frame_view_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mut cameras: Query<&mut PanOrbitCamera>,
+    mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
     grid: Res<VoxelGrid>,
+    windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+    viewport: Res<ViewportRect>,
 ) {
     if !keys.just_pressed(KeyCode::KeyF) {
         return;
@@ -75,17 +87,39 @@ pub fn frame_view_system(
         return;
     }
 
-    let (centroid, radius) = if let Some((min, max)) = voxel_bounds(&grid) {
-        let centroid = (min.as_vec3() + max.as_vec3() + Vec3::ONE) * 0.5;
-        let extent = (max - min).as_vec3().max_element() + 1.0;
-        (centroid, (extent * 1.6).max(4.0))
-    } else {
+    let (centroid, radius) = fit_view(&grid).unwrap_or_else(|| {
         let center = Vec3::splat(GRID as f32 / 2.0);
         (center, 120.0)
-    };
+    });
 
-    for mut cam in &mut cameras {
-        cam.target_focus = centroid;
+    // Compute world-space offset that lands the centroid at the visible
+    // viewport center (not the window center) once the camera is moved.
+    let panel_offset = (|| -> Option<Vec3> {
+        let win = windows.single().ok()?;
+        let rect = viewport.0?;
+        let (_, xform, projection) = cameras.iter().next()?;
+        let Projection::Perspective(persp) = projection else {
+            return None;
+        };
+        let win_center = Vec2::new(win.width() * 0.5, win.height() * 0.5);
+        let avail_center = (rect.min + rect.max) * 0.5;
+        let delta = win_center - avail_center;
+        if delta.length_squared() < 1e-4 {
+            return None;
+        }
+        let world_per_pixel = 2.0 * radius * (persp.fov * 0.5).tan() / win.height();
+        let view_right = xform.right().as_vec3();
+        let view_up = xform.up().as_vec3();
+        Some(
+            view_right * (delta.x * world_per_pixel)
+                + view_up * (-delta.y * world_per_pixel),
+        )
+    })()
+    .unwrap_or(Vec3::ZERO);
+
+    let target_focus = centroid + panel_offset;
+    for (mut cam, _, _) in &mut cameras {
+        cam.target_focus = target_focus;
         cam.target_radius = radius;
     }
 }
@@ -119,6 +153,44 @@ mod tests {
         assert_eq!(f.y, 0.0);
         assert_eq!(f.x, GRID as f32 / 2.0);
         assert_eq!(f.z, GRID as f32 / 2.0);
+    }
+
+    #[test]
+    fn fit_view_empty_grid_returns_none() {
+        let grid = VoxelGrid::default();
+        assert!(fit_view(&grid).is_none());
+    }
+
+    #[test]
+    fn fit_view_single_voxel_returns_centered_radius() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
+        let (focus, radius) = fit_view(&grid).expect("non-empty grid");
+        assert!((focus.x - 10.5).abs() < 1e-5);
+        assert!((focus.y - 10.5).abs() < 1e-5);
+        assert!((focus.z - 10.5).abs() < 1e-5);
+        // extent = 1, raw radius = 1.6, clamped to 4.0
+        assert!((radius - 4.0).abs() < 1e-5);
+    }
+}
+
+/// Logical-point rect (egui coordinates) describing the visible 3D viewport
+/// area, i.e. window minus side/top/bottom panels. Populated each frame from
+/// `ctx.available_rect()`; read by `frame_view_system` to compensate F's
+/// centering for asymmetric UI panel layout.
+#[derive(Resource, Default)]
+pub struct ViewportRect(pub Option<bevy::math::Rect>);
+
+pub fn update_viewport_rect(
+    mut contexts: bevy_egui::EguiContexts,
+    mut rect_res: ResMut<ViewportRect>,
+) {
+    if let Ok(ctx) = contexts.ctx_mut() {
+        let r = ctx.available_rect();
+        rect_res.0 = Some(bevy::math::Rect {
+            min: Vec2::new(r.min.x, r.min.y),
+            max: Vec2::new(r.max.x, r.max.y),
+        });
     }
 }
 
