@@ -94,10 +94,23 @@ mod tests {
     }
 
     #[test]
-    fn resolve_canvas_match_theme_returns_theme_bg() {
+    fn resolve_canvas_match_theme_uses_neutral_dark_not_theme_bg() {
+        // Important: must not pick up the bluish UI panel bg (#191A2E).
+        // Voxel hues stay true when the canvas is near-neutral grey.
         let prefs = Preferences { canvas_bg: CanvasBgPref::MatchTheme, ..Default::default() };
-        let rgb = resolve_canvas_color(&prefs, &Theme::dark());
-        assert_eq!(rgb, [0x19, 0x1A, 0x2E]);
+        let dark = resolve_canvas_color(&prefs, &Theme::dark());
+        assert_eq!(dark, [0x1C, 0x1C, 0x1E]);
+        let light = resolve_canvas_color(&prefs, &Theme::light());
+        assert_eq!(light, [0xFC, 0xFC, 0xFD]);
+    }
+
+    #[test]
+    fn dark_canvas_is_near_neutral() {
+        // R, G, B channels within 4/255 of each other = effectively neutral.
+        let [r, g, b] = canvas_match_color(ThemeMode::Dark);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        assert!(max - min <= 4, "dark canvas not neutral: r={r} g={g} b={b}");
     }
 
     #[test]
@@ -162,12 +175,22 @@ pub enum CanvasBgPref {
     Custom([u8; 3]),
 }
 
+/// Per-mode default canvas color used when `CanvasBgPref::MatchTheme` is set.
+/// Dark canvas is deliberately neutral grey (not the bluish UI panel bg) so
+/// voxel hues aren't tinted; light canvas mirrors the UI bg.
+pub fn canvas_match_color(mode: ThemeMode) -> [u8; 3] {
+    match mode {
+        ThemeMode::Dark => [0x1C, 0x1C, 0x1E],
+        ThemeMode::Light => [0xFC, 0xFC, 0xFD],
+    }
+}
+
 /// Resolve canvas (3D viewport) background color from preferences + theme.
 /// Returns sRGB 8-bit components for downstream `Color::srgb_u8` use.
 pub fn resolve_canvas_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
     match prefs.canvas_bg {
         CanvasBgPref::Custom(rgb) => rgb,
-        CanvasBgPref::MatchTheme => [theme.bg.r(), theme.bg.g(), theme.bg.b()],
+        CanvasBgPref::MatchTheme => canvas_match_color(theme.mode),
     }
 }
 
