@@ -24,7 +24,7 @@ use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
-use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, tool_input_system, tool_shortcut_system, undo_redo_system};
+use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::ui::{PendingDialog, apply_style, poll_dialogs_system, ui_system};
 
 fn main() {
@@ -65,6 +65,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                alt_eyedropper_system,
                 tool_input_system,
                 tool_shortcut_system,
                 undo_redo_system,

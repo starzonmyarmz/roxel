@@ -5,7 +5,7 @@ pub const GRID_I: i32 = GRID as i32;
 
 pub type Color8 = [u8; 4];
 
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct VoxelGrid {
     pub cells: Box<[[[Option<Color8>; GRID]; GRID]; GRID]>,
     pub dirty: bool,
