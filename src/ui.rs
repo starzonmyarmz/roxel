@@ -473,37 +473,35 @@ pub fn ui_system(
                         .color(ACCENT)
                         .size(12.0),
                 );
-                ui.add_space(12.0);
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{n} voxel{s}",
-                        n = grid.count(),
-                        s = if grid.count() == 1 { "" } else { "s" }
-                    ))
-                    .color(TEXT_DIM)
-                    .size(12.0),
-                );
-                ui.add_space(12.0);
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Grid {g}×{g}×{g}",
-                        g = crate::grid::GRID
-                    ))
-                    .color(TEXT_DIM)
-                    .size(12.0),
-                );
-                if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
-                    && let Some(cam) = zoom.cameras.iter().next()
-                {
-                    let zoom_pct =
-                        (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
-                    ui.add_space(12.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
-                        egui::RichText::new(format!("Zoom {zoom_pct}%"))
+                        egui::RichText::new(format!("Grid {g}×{g}×{g}", g = crate::grid::GRID))
                             .color(TEXT_DIM)
                             .size(12.0),
                     );
-                }
+                    ui.add_space(12.0);
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{n} voxel{s}",
+                            n = grid.count(),
+                            s = if grid.count() == 1 { "" } else { "s" }
+                        ))
+                        .color(TEXT_DIM)
+                        .size(12.0),
+                    );
+                    if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
+                        && let Some(cam) = zoom.cameras.iter().next()
+                    {
+                        let zoom_pct =
+                            (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
+                        ui.add_space(12.0);
+                        ui.label(
+                            egui::RichText::new(format!("Zoom {zoom_pct}%"))
+                                .color(TEXT_DIM)
+                                .size(12.0),
+                        );
+                    }
+                });
             });
         });
 
