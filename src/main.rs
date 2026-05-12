@@ -7,6 +7,7 @@ mod lighting;
 mod mesh;
 mod picking;
 mod preview;
+mod snapshot;
 mod tools;
 mod ui;
 
@@ -24,6 +25,7 @@ use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
+use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
 use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::ui::{PaletteChoice, Palettes, PendingDialog, apply_style, poll_dialogs_system, ui_system};
 
@@ -59,6 +61,8 @@ fn main() {
         .init_resource::<PendingDialog>()
         .init_resource::<PaletteChoice>()
         .init_resource::<Palettes>()
+        .init_resource::<SnapshotRequest>()
+        .init_resource::<SnapshotSession>()
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
@@ -78,6 +82,7 @@ fn main() {
                 update_gizmo_hover,
                 frame_view_system,
                 brush_preview_system.before(regenerate_mesh_system),
+                start_snapshot_system,
             ),
         )
         .add_systems(
@@ -128,5 +133,6 @@ fn setup_scene(
         Mesh3d(plane),
         MeshMaterial3d(plane_mat),
         Transform::from_xyz(GRID as f32 / 2.0, -0.01, GRID as f32 / 2.0),
+        GroundPlane,
     ));
 }

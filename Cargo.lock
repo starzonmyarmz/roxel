@@ -4793,6 +4793,7 @@ dependencies = [
  "bevy_panorbit_camera",
  "dot_vox",
  "egui_extras",
+ "image",
  "rfd",
  "ron",
  "serde",

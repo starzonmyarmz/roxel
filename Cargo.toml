@@ -13,6 +13,7 @@ ron = "0.12"
 anyhow = "1"
 rfd = "0.17"
 egui_extras = { version = "0.33.3", features = ["svg"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Faster dev iteration: optimize deps, leave own crate at -O1.
 [profile.dev]

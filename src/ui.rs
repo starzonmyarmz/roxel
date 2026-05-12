@@ -1,6 +1,7 @@
 use crate::grid::VoxelGrid;
 use crate::history::History;
 use crate::io;
+use crate::snapshot::SnapshotRequest;
 use crate::tools::{CurrentColor, RecentColors, Tool, ToolState};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
@@ -12,6 +13,7 @@ pub enum DialogResult {
     SaveProject(PathBuf),
     ExportVox(PathBuf),
     ExportObj(PathBuf),
+    ExportPng(PathBuf),
     ImportAse(PathBuf),
     ExportAse(PathBuf, String, Vec<[u8; 4]>),
 }
@@ -37,6 +39,7 @@ pub fn poll_dialogs_system(
     mut history: ResMut<History>,
     mut palettes: ResMut<Palettes>,
     mut palette_choice: ResMut<PaletteChoice>,
+    mut snapshot: ResMut<SnapshotRequest>,
 ) {
     let Some(task) = pending.0.as_mut() else { return; };
     let Some(result) = block_on(future::poll_once(task)) else { return; };
@@ -64,6 +67,9 @@ pub fn poll_dialogs_system(
             if let Err(e) = io::obj::export(&path, &grid) {
                 eprintln!("Export .obj failed: {e:?}");
             }
+        }
+        Some(DialogResult::ExportPng(path)) => {
+            snapshot.0 = Some(path);
         }
         Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
             Ok((name, colors)) => {
@@ -384,6 +390,17 @@ pub fn ui_system(
                                 .save_file()
                                 .await
                                 .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
+                        });
+                        ui.close();
+                    }
+                    if ui.add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…")).clicked() {
+                        pending.spawn(async move {
+                            rfd::AsyncFileDialog::new()
+                                .add_filter("PNG image", &["png"])
+                                .set_file_name("roxel.png")
+                                .save_file()
+                                .await
+                                .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
                         });
                         ui.close();
                     }
