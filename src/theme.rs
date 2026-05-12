@@ -172,6 +172,7 @@ mod tests {
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor);
         assert!(!p.show_walls);
+        assert!(p.preview_outline);
     }
 }
 
@@ -188,12 +189,15 @@ pub struct Preferences {
     pub show_floor: bool,
     #[serde(default = "default_show_walls")]
     pub show_walls: bool,
+    #[serde(default = "default_preview_outline")]
+    pub preview_outline: bool,
 }
 
 fn default_canvas_bg() -> CanvasBgPref { CanvasBgPref::MatchTheme }
 fn default_plane_color() -> PlaneColorPref { PlaneColorPref::MatchTheme }
 fn default_show_floor() -> bool { true }
 fn default_show_walls() -> bool { false }
+fn default_preview_outline() -> bool { true }
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -204,6 +208,7 @@ impl Default for Preferences {
             wall_color: default_plane_color(),
             show_floor: default_show_floor(),
             show_walls: default_show_walls(),
+            preview_outline: default_preview_outline(),
         }
     }
 }

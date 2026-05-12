@@ -3,10 +3,23 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use bevy_panorbit_camera::PanOrbitCamera;
 
-use crate::grid::VoxelGrid;
+use crate::grid::{Color8, VoxelGrid};
 use crate::mesh::PreviewHide;
 use crate::picking::{cursor_ray, pick};
+use crate::theme::Preferences;
 use crate::tools::{CurrentColor, PointerState, Tool, ToolState};
+
+pub fn outline_color_for(c: Color8) -> Color {
+    let r = c[0] as f32 / 255.0;
+    let g = c[1] as f32 / 255.0;
+    let b = c[2] as f32 / 255.0;
+    let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if lum > 0.55 {
+        Color::srgba(0.0, 0.0, 0.0, 0.45)
+    } else {
+        Color::srgba(1.0, 1.0, 1.0, 0.5)
+    }
+}
 
 #[derive(Component)]
 pub struct BrushPreview;
@@ -52,6 +65,8 @@ pub fn brush_preview_system(
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
     gizmo_drag: Res<crate::gizmo::GizmoDrag>,
     gizmo_rect: Res<crate::gizmo::GizmoRect>,
+    prefs: Res<Preferences>,
+    mut gizmos: Gizmos,
 ) {
     let Ok((mut tf, mut vis)) = q.single_mut() else { return };
 
@@ -94,17 +109,22 @@ pub fn brush_preview_system(
                 return;
             }
             let c = color.0;
-            let col = Color::srgba(
-                c[0] as f32 / 255.0,
-                c[1] as f32 / 255.0,
-                c[2] as f32 / 255.0,
-                0.45,
-            );
             let pos = target.as_vec3() + Vec3::splat(0.5);
-            *tf = Transform::from_translation(pos).with_scale(Vec3::splat(1.0));
+            *tf = Transform::from_translation(pos);
             *vis = Visibility::Visible;
             if let Some(m) = materials.get_mut(&mat_handle.0) {
-                m.base_color = col;
+                m.base_color = Color::srgba(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.45,
+                );
+            }
+            if prefs.preview_outline {
+                gizmos.cube(
+                    Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
+                    outline_color_for(c),
+                );
             }
         }
         Tool::Erase => {
@@ -118,5 +138,39 @@ pub fn brush_preview_system(
         _ => {
             clear(&mut vis, &mut hide);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn linear_rgb(c: Color) -> [f32; 3] {
+        let lin = c.to_linear();
+        [lin.red, lin.green, lin.blue]
+    }
+
+    #[test]
+    fn outline_color_white_voxel_is_dark() {
+        let rgb = linear_rgb(outline_color_for([255, 255, 255, 255]));
+        assert!(rgb[0] < 0.1 && rgb[1] < 0.1 && rgb[2] < 0.1);
+    }
+
+    #[test]
+    fn outline_color_black_voxel_is_light() {
+        let rgb = linear_rgb(outline_color_for([0, 0, 0, 255]));
+        assert!(rgb[0] > 0.9 && rgb[1] > 0.9 && rgb[2] > 0.9);
+    }
+
+    #[test]
+    fn outline_color_dark_blue_voxel_is_light() {
+        let rgb = linear_rgb(outline_color_for([20, 30, 200, 255]));
+        assert!(rgb[0] > 0.9 && rgb[1] > 0.9 && rgb[2] > 0.9);
+    }
+
+    #[test]
+    fn outline_color_bright_yellow_voxel_is_dark() {
+        let rgb = linear_rgb(outline_color_for([255, 240, 80, 255]));
+        assert!(rgb[0] < 0.1 && rgb[1] < 0.1 && rgb[2] < 0.1);
     }
 }

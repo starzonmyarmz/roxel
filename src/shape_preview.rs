@@ -2,7 +2,11 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
+use std::collections::HashSet;
+
+use crate::preview::outline_color_for;
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
+use crate::theme::Preferences;
 use crate::tools::{CurrentColor, ShapeOptions, ShapeState, Tool, ToolState};
 
 #[derive(Component)]
@@ -57,6 +61,8 @@ pub fn shape_preview_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
+    prefs: Res<Preferences>,
+    mut gizmos: Gizmos,
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
@@ -97,7 +103,44 @@ pub fn shape_preview_system(
         );
     }
 
+    if prefs.preview_outline {
+        draw_silhouette(&mut gizmos, &cells, outline_color_for(color.0));
+    }
+
     *vis = Visibility::Visible;
+}
+
+fn draw_silhouette(gizmos: &mut Gizmos, cells: &[IVec3], color: Color) {
+    const OFFSETS: [(usize, f32, IVec3); 6] = [
+        (0, 1.0, IVec3::X),
+        (0, 0.0, IVec3::NEG_X),
+        (1, 1.0, IVec3::Y),
+        (1, 0.0, IVec3::NEG_Y),
+        (2, 1.0, IVec3::Z),
+        (2, 0.0, IVec3::NEG_Z),
+    ];
+    const UV: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let set: HashSet<IVec3> = cells.iter().copied().collect();
+    for &cell in cells {
+        let p = cell.as_vec3();
+        for &(axis, face_coord, off) in &OFFSETS {
+            if set.contains(&(cell + off)) {
+                continue;
+            }
+            let u_axis = (axis + 1) % 3;
+            let v_axis = (axis + 2) % 3;
+            let corners = UV.map(|uv| {
+                let mut a = [0.0f32; 3];
+                a[axis] = face_coord;
+                a[u_axis] = uv[0];
+                a[v_axis] = uv[1];
+                p + Vec3::from_array(a)
+            });
+            for i in 0..4 {
+                gizmos.line(corners[i], corners[(i + 1) % 4], color);
+            }
+        }
+    }
 }
 
 fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {

@@ -900,6 +900,7 @@ pub fn ui_system(
                 ui.add_space(4.0);
                 ui.checkbox(&mut prefs.show_floor, "Show bottom plane");
                 ui.checkbox(&mut prefs.show_walls, "Show wall planes");
+                ui.checkbox(&mut prefs.preview_outline, "Show preview outline");
                 ui.add_space(8.0);
             });
         if !open_flag {
