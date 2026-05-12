@@ -1,4 +1,4 @@
-use crate::grid::{GRID, VoxelGrid};
+use crate::grid::VoxelGrid;
 use crate::mesh::FACES;
 use anyhow::Result;
 use std::io::Write;
@@ -38,9 +38,10 @@ fn build_mesh(grid: &VoxelGrid) -> (Vec<f64>, Vec<i32>, Vec<f64>, Vec<f64>) {
     let mut colors: Vec<f64> = Vec::new();
     let mut vidx: i32 = 0;
 
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    let size_i = grid.size_i();
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 let Some(rgba) = grid.cell(x, y, z) else {
                     continue;
                 };
@@ -57,11 +58,11 @@ fn build_mesh(grid: &VoxelGrid) -> (Vec<f64>, Vec<i32>, Vec<f64>, Vec<f64>) {
                     let ny = cy + f.d.y;
                     let nz = cz + f.d.z;
                     let neighbor_filled = nx >= 0
-                        && nx < GRID as i32
+                        && nx < size_i
                         && ny >= 0
-                        && ny < GRID as i32
+                        && ny < size_i
                         && nz >= 0
-                        && nz < GRID as i32
+                        && nz < size_i
                         && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
                     if neighbor_filled {
                         continue;

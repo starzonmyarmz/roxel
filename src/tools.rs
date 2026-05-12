@@ -233,7 +233,7 @@ fn shape_commit(
     let cells = extrude(&base, anchor.axis, state.thickness.max(1), state.normal_sign);
     history.begin();
     for cell in cells {
-        if VoxelGrid::in_bounds(cell) {
+        if grid.in_bounds(cell) {
             history.record(grid, cell, Some(color));
         }
     }
@@ -439,12 +439,12 @@ pub fn tool_input_system(
                 Tool::Erase | Tool::Paint if hit.hit_voxel => hit.cell,
                 _ => return,
             };
-            if !VoxelGrid::in_bounds(target) {
+            if !grid.in_bounds(target) {
                 return;
             }
             history.begin();
             for cell in line3d(from, target) {
-                if !VoxelGrid::in_bounds(cell) {
+                if !grid.in_bounds(cell) {
                     continue;
                 }
                 match tool.current {
@@ -507,14 +507,14 @@ pub fn tool_input_system(
                 None => grid_ref.get(p),
             }
         };
-        match (tool.current, pick_with(read, origin, dir)) {
+        match (tool.current, pick_with(read, grid_ref.size_i(), origin, dir)) {
             (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,
         }
     };
 
-    if !VoxelGrid::in_bounds(target) {
+    if !grid.in_bounds(target) {
         return;
     }
 
@@ -524,7 +524,7 @@ pub fn tool_input_system(
     };
 
     for cell in path {
-        if !VoxelGrid::in_bounds(cell) {
+        if !grid.in_bounds(cell) {
             continue;
         }
         match tool.current {

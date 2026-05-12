@@ -1,4 +1,4 @@
-use crate::grid::{Color8, GRID_I, VoxelGrid};
+use crate::grid::{Color8, VoxelGrid};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -22,13 +22,18 @@ pub fn cursor_ray(
 }
 
 pub fn pick(grid: &VoxelGrid, origin: Vec3, dir: Vec3) -> Option<Hit> {
-    pick_with(|p| grid.get(p), origin, dir)
+    pick_with(|p| grid.get(p), grid.size_i(), origin, dir)
+}
+
+#[inline]
+fn in_box(p: IVec3, size_i: i32) -> bool {
+    p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < size_i && p.y < size_i && p.z < size_i
 }
 
 /// DDA voxel raycaster parameterised by an arbitrary cell-reader. Used by the
 /// stroke path to overlay pre-stroke values from `History` over the live grid,
 /// so voxels placed earlier in the same stroke are invisible to the picker.
-pub fn pick_with<F>(read: F, origin: Vec3, dir: Vec3) -> Option<Hit>
+pub fn pick_with<F>(read: F, size_i: i32, origin: Vec3, dir: Vec3) -> Option<Hit>
 where
     F: Fn(IVec3) -> Option<Color8>,
 {
@@ -61,10 +66,10 @@ where
     );
 
     let mut normal = IVec3::ZERO;
-    let max_steps = GRID_I as usize * 3 + 16;
+    let max_steps = size_i as usize * 3 + 16;
 
     for _ in 0..max_steps {
-        if VoxelGrid::in_bounds(cell) && read(cell).is_some() {
+        if in_box(cell, size_i) && read(cell).is_some() {
             return Some(Hit { cell, normal, hit_voxel: true });
         }
         if t_max.x < t_max.y && t_max.x < t_max.z {
@@ -83,11 +88,11 @@ where
 
         // Early-out: walked off the grid and moving further away.
         if (cell.x < 0 && step.x <= 0)
-            || (cell.x >= GRID_I && step.x >= 0)
+            || (cell.x >= size_i && step.x >= 0)
             || (cell.y < 0 && step.y <= 0)
-            || (cell.y >= GRID_I && step.y >= 0)
+            || (cell.y >= size_i && step.y >= 0)
             || (cell.z < 0 && step.z <= 0)
-            || (cell.z >= GRID_I && step.z >= 0)
+            || (cell.z >= size_i && step.z >= 0)
         {
             break;
         }
@@ -99,7 +104,7 @@ where
         if t > 0.0 {
             let p = origin + dir * t;
             let floor_cell = IVec3::new(p.x.floor() as i32, 0, p.z.floor() as i32);
-            if VoxelGrid::in_bounds(floor_cell) {
+            if in_box(floor_cell, size_i) {
                 return Some(Hit {
                     cell: floor_cell + IVec3::new(0, -1, 0),
                     normal: IVec3::Y,
@@ -158,7 +163,7 @@ mod tests {
         let read = |p: IVec3| -> Option<Color8> {
             if p == IVec3::new(5, 0, 0) { None } else { g.get(p) }
         };
-        let hit = pick_with(read, Vec3::new(-1.0, 0.5, 0.5), Vec3::X);
+        let hit = pick_with(read, g.size_i(), Vec3::new(-1.0, 0.5, 0.5), Vec3::X);
         // No voxel hit; ray is purely +X so no floor fallback either.
         assert!(hit.is_none());
     }
@@ -175,7 +180,7 @@ mod tests {
                 g.get(p)
             }
         };
-        let hit = pick_with(read, Vec3::new(-1.0, 0.5, 0.5), Vec3::X).expect("hit");
+        let hit = pick_with(read, g.size_i(), Vec3::new(-1.0, 0.5, 0.5), Vec3::X).expect("hit");
         assert_eq!(hit.cell, IVec3::new(5, 0, 0));
     }
 

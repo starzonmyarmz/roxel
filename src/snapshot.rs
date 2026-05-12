@@ -21,8 +21,11 @@ use bevy_panorbit_camera::PanOrbitCamera;
 #[derive(Component)]
 pub struct GroundPlane;
 
-#[derive(Component)]
-pub struct WallPlane;
+/// 0 = back wall (constant Z), 1 = left wall (constant X). Used by
+/// `apply_new_project_system` to rebuild the right plane mesh + position on
+/// grid resize.
+#[derive(Component, Clone, Copy)]
+pub struct WallPlane(pub u8);
 
 #[derive(Component)]
 pub struct SnapshotCamera;

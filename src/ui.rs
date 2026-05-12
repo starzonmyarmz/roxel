@@ -1,4 +1,4 @@
-use crate::grid::VoxelGrid;
+use crate::grid::{ALLOWED_SIZES, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io;
 use crate::snapshot::SnapshotRequest;
@@ -296,6 +296,7 @@ pub fn ui_system(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     zoom: ZoomReadout,
+    mut new_project: ResMut<NewProject>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -333,12 +334,11 @@ pub fn ui_system(
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if icon_button(ui, &theme, icon_file_plus(), "New")
-                    .on_hover_text("Clear the scene")
+                    .on_hover_text("Start a new project")
                     .clicked()
                 {
-                    grid.clear();
-                    history.undo.clear();
-                    history.redo.clear();
+                    new_project.picker_size = grid.size;
+                    new_project.dialog_open = true;
                 }
                 let dialog_busy = pending.is_active();
                 if ui
@@ -512,7 +512,7 @@ pub fn ui_system(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add(
                         egui::Label::new(
-                            egui::RichText::new(format!("Grid {g}×{g}×{g}", g = crate::grid::GRID))
+                            egui::RichText::new(format!("Grid {g}×{g}×{g}", g = grid.size))
                                 .color(TEXT_DIM)
                                 .size(12.0),
                         )
@@ -1042,7 +1042,7 @@ pub fn ui_system(
                         "Grid",
                         format!(
                             "{g} × {g} × {g}",
-                            g = crate::grid::GRID
+                            g = grid.size
                         ),
                     );
                     stat_row(ui, &theme, "Undo", history.undo.len().to_string());
@@ -1174,6 +1174,52 @@ pub fn ui_system(
         }
         if *prefs != before {
             save_preferences(&prefs);
+        }
+    }
+
+    // New-project modal. Reborrow `dialog_open` separately so the body can
+    // mutate `picker_size` / `apply` on the same resource.
+    if new_project.dialog_open {
+        let mut open = true;
+        let mut create_clicked = false;
+        let mut cancel_clicked = false;
+        egui::Window::new("New project")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("Grid size")
+                        .color(theme.text_dim)
+                        .size(12.0),
+                );
+                ui.add_space(4.0);
+                for &s in &ALLOWED_SIZES {
+                    let label = format!("{s} × {s} × {s}");
+                    if ui
+                        .radio(new_project.picker_size == s, label)
+                        .clicked()
+                    {
+                        new_project.picker_size = s;
+                    }
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                    if ui.button("Create").clicked() {
+                        create_clicked = true;
+                    }
+                });
+            });
+        if create_clicked {
+            new_project.apply = Some(new_project.picker_size);
+            new_project.dialog_open = false;
+        } else if cancel_clicked || !open {
+            new_project.dialog_open = false;
         }
     }
 

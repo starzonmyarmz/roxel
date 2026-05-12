@@ -1,4 +1,4 @@
-use crate::grid::{Color8, GRID, VoxelGrid};
+use crate::grid::{Color8, VoxelGrid};
 use anyhow::Result;
 use dot_vox::{Color, DotVoxData, Model, Size, Voxel};
 use std::collections::HashMap;
@@ -10,9 +10,9 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let mut palette: Vec<Color> = Vec::new();
     let mut voxels: Vec<Voxel> = Vec::new();
 
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 let Some(c) = grid.cell(x, y, z) else { continue; };
                 let idx = if let Some(&i) = palette_map.get(&c) {
                     i
@@ -45,9 +45,9 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
         index_map: (0u8..=255u8).collect(),
         models: vec![Model {
             size: Size {
-                x: GRID as u32,
-                y: GRID as u32,
-                z: GRID as u32,
+                x: grid.size as u32,
+                y: grid.size as u32,
+                z: grid.size as u32,
             },
             voxels,
         }],

@@ -11,7 +11,7 @@
 // multiple `M ... Z` subpaths so the tag overhead doesn't dominate the file
 // size. The viewBox is trimmed to the projected voxel bounds.
 
-use crate::grid::{GRID, VoxelGrid};
+use crate::grid::VoxelGrid;
 use crate::mesh::{FACES, face_shade, linear_to_srgb, srgb_to_linear};
 use anyhow::Result;
 use bevy::math::{IVec3, Mat4, Vec2, Vec3, Vec4};
@@ -69,9 +69,9 @@ pub fn export(
 
 fn collect_cell_quads(grid: &VoxelGrid, camera_pos: Vec3) -> Vec<CellQuad> {
     let mut out = Vec::new();
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 let p = IVec3::new(x as i32, y as i32, z as i32);
                 let Some(rgba) = grid.get(p) else { continue };
                 let cell_center = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);

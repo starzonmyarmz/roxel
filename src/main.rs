@@ -26,10 +26,10 @@ use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
 };
-use crate::grid::{GRID, VoxelGrid};
+use crate::grid::{MAX_CHUNKS_PER_AXIS, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::lighting::spawn_lights;
-use crate::grid::CHUNKS_PER_AXIS;
+use bevy_panorbit_camera::PanOrbitCamera;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, VoxelMesh, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
@@ -90,6 +90,7 @@ fn main() {
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
+        .init_resource::<NewProject>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .add_systems(Startup, (setup_scene, configure_axis_gizmo))
         .add_systems(
@@ -108,6 +109,7 @@ fn main() {
                 brush_preview_system.before(regenerate_mesh_system),
                 shape_preview_system.before(regenerate_mesh_system),
                 start_snapshot_system,
+                apply_new_project_system.before(regenerate_mesh_system),
             ),
         )
         .add_systems(
@@ -158,7 +160,7 @@ fn setup_scene(
         unlit: true,
         ..default()
     });
-    let chunk_count = CHUNKS_PER_AXIS.pow(3);
+    let chunk_count = MAX_CHUNKS_PER_AXIS.pow(3);
     let mut chunk_handles = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
         let h = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));
@@ -173,7 +175,8 @@ fn setup_scene(
     commands.insert_resource(VoxelChunkMeshes { handles: chunk_handles });
 
     // Separate materials for floor vs walls so each can have its own color.
-    let half = GRID as f32 / 2.0;
+    let size = crate::grid::DEFAULT_SIZE as f32;
+    let half = size / 2.0;
     let floor_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.13, 0.14, 0.17),
         perceptual_roughness: 1.0,
@@ -187,11 +190,7 @@ fn setup_scene(
         ..default()
     });
 
-    let plane = meshes.add(Mesh::from(
-        bevy::math::primitives::Plane3d::default()
-            .mesh()
-            .size(GRID as f32, GRID as f32),
-    ));
+    let plane = meshes.add(floor_mesh(size));
     commands.spawn((
         Mesh3d(plane),
         MeshMaterial3d(floor_mat),
@@ -201,26 +200,82 @@ fn setup_scene(
 
     // Wall planes: back wall (z=0, normal +Z) and left wall (x=0, normal +X).
     // Slightly outside the grid so they don't z-fight with edge voxels.
-    let back_wall = meshes.add(Mesh::from(
-        bevy::math::primitives::Plane3d::new(Vec3::Z, Vec2::splat(half)).mesh(),
-    ));
+    let back_wall = meshes.add(wall_mesh(0, size));
     commands.spawn((
         Mesh3d(back_wall),
         MeshMaterial3d(wall_mat.clone()),
         Transform::from_xyz(half, half, -0.01),
         Visibility::Hidden,
-        WallPlane,
+        WallPlane(0),
     ));
-    let left_wall = meshes.add(Mesh::from(
-        bevy::math::primitives::Plane3d::new(Vec3::X, Vec2::splat(half)).mesh(),
-    ));
+    let left_wall = meshes.add(wall_mesh(1, size));
     commands.spawn((
         Mesh3d(left_wall),
         MeshMaterial3d(wall_mat),
         Transform::from_xyz(-0.01, half, half),
         Visibility::Hidden,
-        WallPlane,
+        WallPlane(1),
     ));
+}
+
+pub fn floor_mesh(size: f32) -> Mesh {
+    Mesh::from(
+        bevy::math::primitives::Plane3d::default()
+            .mesh()
+            .size(size, size),
+    )
+}
+
+pub fn wall_mesh(axis: u8, size: f32) -> Mesh {
+    let half = size / 2.0;
+    let normal = if axis == 0 { Vec3::Z } else { Vec3::X };
+    Mesh::from(bevy::math::primitives::Plane3d::new(normal, Vec2::splat(half)).mesh())
+}
+
+fn apply_new_project_system(
+    mut new_project: ResMut<NewProject>,
+    mut grid: ResMut<VoxelGrid>,
+    mut history: ResMut<History>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
+    mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    let Some(new_size) = new_project.apply.take() else {
+        return;
+    };
+    grid.resize(new_size);
+    history.undo.clear();
+    history.redo.clear();
+    history.current = None;
+
+    let s = new_size as f32;
+    let half = s / 2.0;
+
+    // Replace floor mesh data + reposition.
+    for (mesh3d, mut tf) in &mut floor {
+        if let Some(m) = meshes.get_mut(&mesh3d.0) {
+            *m = floor_mesh(s);
+        }
+        *tf = Transform::from_xyz(half, -0.01, half);
+    }
+
+    // Walls: 0 = back (z=-0.01, centred at (half, half)), 1 = left (x=-0.01).
+    for (mesh3d, mut tf, plane) in &mut walls {
+        if let Some(m) = meshes.get_mut(&mesh3d.0) {
+            *m = wall_mesh(plane.0, s);
+        }
+        *tf = match plane.0 {
+            0 => Transform::from_xyz(half, half, -0.01),
+            _ => Transform::from_xyz(-0.01, half, half),
+        };
+    }
+
+    // Recenter the orbit camera on the new grid.
+    for mut cam in &mut cameras {
+        cam.target_focus = Vec3::new(half, 0.0, half);
+        cam.target_radius = s * 1.875;
+    }
 }
 
 fn apply_floor_color_system(

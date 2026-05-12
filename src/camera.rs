@@ -1,4 +1,4 @@
-use crate::grid::{GRID, VoxelGrid};
+use crate::grid::{DEFAULT_SIZE, VoxelGrid};
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -6,8 +6,8 @@ use bevy_panorbit_camera::PanOrbitCamera;
 /// Default camera focus: center of the floor plane, not the cubic-grid centroid.
 /// Centering on the floor makes the ground plane sit in the middle of the
 /// viewport on launch instead of dropping into the lower half.
-pub fn default_camera_focus() -> Vec3 {
-    Vec3::new(GRID as f32 / 2.0, 0.0, GRID as f32 / 2.0)
+pub fn default_camera_focus(size: usize) -> Vec3 {
+    Vec3::new(size as f32 / 2.0, 0.0, size as f32 / 2.0)
 }
 
 /// Iso camera offset from focus: equal contribution per axis gives the
@@ -17,7 +17,7 @@ pub fn iso_camera_offset() -> Vec3 {
 }
 
 pub fn spawn_camera(commands: &mut Commands) {
-    let focus = default_camera_focus();
+    let focus = default_camera_focus(DEFAULT_SIZE);
     let offset = iso_camera_offset();
     commands.spawn((
         Camera3d::default(),
@@ -44,9 +44,9 @@ fn voxel_bounds(grid: &VoxelGrid) -> Option<(IVec3, IVec3)> {
     let mut min = IVec3::splat(i32::MAX);
     let mut max = IVec3::splat(i32::MIN);
     let mut any = false;
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 if grid.cell(x, y, z).is_some() {
                     any = true;
                     let p = IVec3::new(x as i32, y as i32, z as i32);
@@ -88,8 +88,8 @@ pub fn frame_view_system(
     }
 
     let (centroid, radius) = fit_view(&grid).unwrap_or_else(|| {
-        let center = Vec3::splat(GRID as f32 / 2.0);
-        (center, 120.0)
+        let center = Vec3::splat(grid.size as f32 / 2.0);
+        (center, grid.size as f32 * 1.875)
     });
 
     // Compute world-space offset that lands the centroid at the visible
@@ -149,10 +149,10 @@ mod tests {
 
     #[test]
     fn default_focus_sits_on_floor_centered_in_grid() {
-        let f = default_camera_focus();
+        let f = default_camera_focus(DEFAULT_SIZE);
         assert_eq!(f.y, 0.0);
-        assert_eq!(f.x, GRID as f32 / 2.0);
-        assert_eq!(f.z, GRID as f32 / 2.0);
+        assert_eq!(f.x, DEFAULT_SIZE as f32 / 2.0);
+        assert_eq!(f.z, DEFAULT_SIZE as f32 / 2.0);
     }
 
     #[test]

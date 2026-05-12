@@ -1,4 +1,4 @@
-use crate::grid::{Color8, GRID, VoxelGrid};
+use crate::grid::{ALLOWED_SIZES, Color8, DEFAULT_SIZE, VoxelGrid};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -14,9 +14,9 @@ const VERSION: u32 = 1;
 
 pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let mut voxels = Vec::new();
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 if let Some(c) = grid.cell(x, y, z) {
                     voxels.push(([x as i32, y as i32, z as i32], c));
                 }
@@ -25,7 +25,7 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
     }
     let pf = ProjectFile {
         version: VERSION,
-        size: [GRID as u32; 3],
+        size: [grid.size as u32; 3],
         voxels,
     };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
@@ -36,7 +36,20 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
 pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let s = std::fs::read_to_string(path)?;
     let pf: ProjectFile = ron::from_str(&s)?;
-    grid.clear();
+    // Resize first so voxels falling inside the saved size land within bounds.
+    // If the file's size isn't one of the legal sizes (old project, hand
+    // edit), snap to the smallest legal size that fits.
+    let stored = pf.size[0] as usize;
+    let new_size = if ALLOWED_SIZES.contains(&stored) {
+        stored
+    } else {
+        ALLOWED_SIZES
+            .iter()
+            .copied()
+            .find(|&s| s >= stored)
+            .unwrap_or(DEFAULT_SIZE)
+    };
+    grid.resize(new_size);
     for ([x, y, z], c) in pf.voxels {
         let p = bevy::math::IVec3::new(x, y, z);
         grid.set(p, Some(c));
@@ -62,8 +75,9 @@ mod tests {
     }
 
     #[test]
-    fn save_load_roundtrip_preserves_voxels() {
+    fn save_load_roundtrip_preserves_voxels_and_size() {
         let mut g = VoxelGrid::default();
+        g.resize(64);
         let pts: [(IVec3, [u8; 4]); 3] = [
             (IVec3::new(0, 0, 0), [10, 20, 30, 255]),
             (IVec3::new(5, 6, 7), [200, 100, 50, 255]),
@@ -79,6 +93,7 @@ mod tests {
         loaded.set(IVec3::new(1, 1, 1), Some([9, 9, 9, 255])); // pre-existing data must be cleared
         load(&path, &mut loaded).expect("load");
 
+        assert_eq!(loaded.size, 64);
         for (p, c) in pts {
             assert_eq!(loaded.get(p), Some(c));
         }

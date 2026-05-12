@@ -104,7 +104,7 @@ pub fn brush_preview_system(
         Tool::Brush => {
             hide.set(None);
             let target = hit.cell + hit.normal;
-            if !VoxelGrid::in_bounds(target) {
+            if !grid.in_bounds(target) {
                 *vis = Visibility::Hidden;
                 return;
             }

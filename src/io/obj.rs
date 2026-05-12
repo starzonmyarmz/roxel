@@ -1,4 +1,4 @@
-use crate::grid::{GRID, VoxelGrid};
+use crate::grid::VoxelGrid;
 use crate::mesh::FACES;
 use anyhow::Result;
 use std::io::Write;
@@ -14,9 +14,10 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let mut normal_idx: u32 = 1;
     let mut faces_buf: Vec<(u32, u32, u32, u32, u32)> = Vec::new();
 
-    for x in 0..GRID {
-        for y in 0..GRID {
-            for z in 0..GRID {
+    let size_i = grid.size_i();
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
                 let Some(rgba) = grid.cell(x, y, z) else { continue; };
                 let cx = x as i32;
                 let cy = y as i32;
@@ -29,9 +30,9 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                     let nx = cx + f.d.x;
                     let ny = cy + f.d.y;
                     let nz = cz + f.d.z;
-                    let neighbor_filled = nx >= 0 && nx < GRID as i32
-                        && ny >= 0 && ny < GRID as i32
-                        && nz >= 0 && nz < GRID as i32
+                    let neighbor_filled = nx >= 0 && nx < size_i
+                        && ny >= 0 && ny < size_i
+                        && nz >= 0 && nz < size_i
                         && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
                     if neighbor_filled {
                         continue;
