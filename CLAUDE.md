@@ -42,15 +42,65 @@ Synchronous `rfd::FileDialog` calls **block winit's event loop on macOS** (spinn
 
 1. Button click → `pending.spawn(async move { rfd::AsyncFileDialog... })` on `AsyncComputeTaskPool`.
 2. `poll_dialogs_system` (registered in `Update`) calls `block_on(future::poll_once(task))` each frame.
-3. On `Some(DialogResult::*)`, dispatch to `io::project::{save,load}` / `io::vox::export` / `io::obj::export` / `io::ase::{import,export}`.
+3. On `Some(DialogResult::*)`, dispatch to `io::project::{save,load}` / `io::vox::export` / `io::obj::export` / `io::fbx::export` / `io::svg::export` / `io::ase::{import,export}` (PNG goes through `snapshot.rs` which spawns a transparent-clear render pass).
+
+`io::fbx::export` writes binary FBX 7.4 (Geometry + Model + Connections + Definitions + GlobalSettings + footer with the canonical magic). Per-face quads with vertex colors via `LayerElementColor` (`ByPolygonVertex`/`Direct`). Y-up to match Bevy and Blender's default importer expectations. The ASCII variant accepted by Maya / 3ds Max / Unity but not Blender was the first attempt — do not revive it without a reason.
 
 Buttons are disabled while `pending.is_active()` so only one dialog runs at a time. **Never** reintroduce sync `rfd::FileDialog::*` calls inside egui draw code.
 
 ### UI structure
 
-`apply_style` (Startup) sets the dark theme. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out four panels: top bar (file/edit), bottom status bar, left tool rail, right inspector (color swatch + popup picker, palette selector with built-ins + `.ase` import/export, recent colors, scene stats). The active palette lives in `Palettes` (resource) indexed by `PaletteChoice`; both are `init_resource`'d in `main.rs`.
+`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out four panels: top bar (file/edit + Preferences button on the right), bottom status bar, left tool rail, right inspector (color swatch + popup picker, palette selector with built-ins + `.ase` import/export, recent colors, scene stats). The active palette lives in `Palettes` (resource) indexed by `PaletteChoice`; both are `init_resource`'d in `main.rs`.
 
-The left rail uses a hand-painted `tool_button` (manual `allocate_exact_size` + `painter`) rather than `egui::Button`, to keep icons crisp at small sizes and to render the active/hover/inactive states with custom strokes.
+Sections in the inspector are flat: bold title, then content, then a thin full-width divider — no card frames. The divider spans the full panel width by painting at `ui.clip_rect().x_range()` rather than `ui.available_width()`. Side-panel left/right edges are drawn as a single 0.5-px vline via `ctx.layer_painter(LayerId::new(Order::Middle, …))` so popups (Foreground) draw over them; the panel `egui::Frame` itself has no stroke.
+
+`tool_button`, the big color swatch, palette swatches, and recent swatches use `egui::Button` wrapped in a `ui.scope` that zeroes `spacing.button_padding` and `spacing.interact_size`. This keeps them at their exact requested size while letting egui's AA tessellator render the rounded fills cleanly (the manual-painter version produced jaggies on Retina displays).
+
+### Theme + Preferences
+
+`Theme` (`theme.rs`) is a `Resource` carrying every egui color slot (bg / panel / surface / surface_hover / accent / accent_dim / text / text_dim / border / faint) plus a `mode: ThemeMode::{Light, Dark}` discriminator. `Theme::dark()` and `Theme::light()` are the two presets.
+
+`Preferences { theme: ThemePref }` (`ThemePref::{Light, Dark, System}`) is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`.
+
+`refresh_theme_system` runs every frame with a `NonSendMarker` (forces main-thread scheduling so `WINIT_WINDOWS` is accessible). It re-resolves `ThemePref::System` via `winit::Window::theme()` so the UI tracks live OS appearance changes without restart.
+
+### Fonts
+
+`install_fonts` (`theme.rs`) registers five static TTFs embedded via `include_bytes!`:
+
+- Nunito 400 / 500 / 600 / 700 (proportional default = 400; named families `Nunito500` / `Nunito600` / `Nunito700` for explicit weights)
+- DM Mono 400 (monospace default; used by `.monospace()` RichText for hex codes and stat values)
+
+For real bold (not faux), reference `egui::FontFamily::Name(NUNITO_700_FAMILY.into())` instead of `.strong()` — `.strong()` only adds an extra stroke pass, it doesn't switch font family.
+
+**Critical scheduling**: `font_setup` runs in `PreUpdate` between `EguiPreUpdateSet::InitContexts` and `EguiPreUpdateSet::BeginPass`. `Context::set_fonts` only takes effect on the next `begin_pass`, so if fonts are installed inside `EguiPrimaryContextPass` (which is after `begin_pass`), the first frame will panic with `"FontFamily::Name(\"Nunito700\") is not bound to any fonts"`.
+
+### App icon
+
+The icon lives in `assets/icons/`: `roxel.svg` (source), `roxel-256.png` (embedded via `include_bytes!`), `roxel.icns` (for bundling), and the `roxel.iconset/` directory of PNGs used to build the `.icns`.
+
+`set_window_icon` (`icon.rs`) reads the embedded PNG and applies it two ways:
+1. `winit::Window::set_window_icon` — works on Windows/Linux, **no-ops on macOS** for unbundled binaries.
+2. `NSApplication::setApplicationIconImage` (via `objc2` + `objc2-app-kit`) — this is the only way to get a dock icon for `cargo run --release` on macOS.
+
+The system accesses `WINIT_WINDOWS` via the thread-local `bevy::winit::WINIT_WINDOWS` (it's not a regular `NonSend` resource in Bevy 0.18). It must run on the main thread, enforced by a `NonSendMarker` system param.
+
+For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-bundle` at `roxel.icns`.
+
+### Cursor hints
+
+`ui_system` updates `egui::CursorIcon` each frame based on the active modifier (checked only when the pointer is not over an egui area):
+
+| Condition | Cursor |
+|-----------|--------|
+| RMB held | `Move` (orbit) |
+| `Z` held (no Alt) | `ZoomIn` |
+| `Alt` + `Z` held | `ZoomOut` |
+| `Space` held | `Grab` (or `Grabbing` if LMB also held) |
+| `Alt` held alone | `PointingHand` (sticky eyedropper) |
+| otherwise | `Crosshair` |
+
+The `Z`-modifier zoom is wired through `zoom_click_system` (`camera.rs`): on `KeyZ` + LMB-just-pressed, it halves (zoom in) or doubles (zoom out, when Alt is also held) `PanOrbitCamera.target_radius`, clamped to `zoom_lower_limit`. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
 
 ### Gizmo overlay
 

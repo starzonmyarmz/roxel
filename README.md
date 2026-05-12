@@ -11,8 +11,11 @@ Minimal voxel editor built with [Bevy](https://bevyengine.org/) and [egui](https
 - Orbit / pan / zoom camera (powered by `bevy_panorbit_camera`)
 - Undo / redo history
 - Save / load `.roxel` project files (RON)
-- Export to MagicaVoxel `.vox` and Wavefront `.obj`
+- Export to MagicaVoxel `.vox`, Wavefront `.obj`, Autodesk `.fbx` (binary 7.4), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
+- Light / Dark / System themes (persisted to `~/.config/roxel/preferences.ron`)
+- Custom UI fonts: Nunito (400/500/600/700) for UI text, DM Mono (400) for hex codes and stats
+- App icon for window/dock + bundled `.icns` for `cargo bundle`
 
 ## Run
 
@@ -33,9 +36,13 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 | `Alt` (hold) | Temporary eyedropper; releases back to previous tool |
 | `Shift` + click | Draw a 3D line from the last placed voxel to the cursor |
 | `Space` + left-drag | Pan (Figma/Photoshop style) |
+| `Z` + left-click | Zoom in 2× toward target |
+| `Alt` + `Z` + left-click | Zoom out 2× |
 | `Cmd/Ctrl + Z` | Undo |
 | `Cmd/Ctrl + Shift + Z` | Redo |
 | `F` | Frame view on the voxel cluster |
+
+Cursor reflects the active modifier: crosshair (default), grab (Space), zoom-in/zoom-out (Z / Alt+Z), move (RMB orbit), pointing hand (Alt sticky-eyedropper).
 
 Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
 
@@ -45,21 +52,36 @@ Left mouse drag in the viewport applies the current tool. Right mouse drag orbit
 src/
   main.rs       app + plugin setup
   ui.rs         egui panels, toolbar, palette UI, async file dialogs
+  theme.rs      Theme resource, Preferences (Light/Dark/System), font setup
+  icon.rs       window + macOS dock icon
   tools.rs      brush/erase/paint/eyedropper + line draw + shortcuts + undo
   preview.rs    translucent brush-target ghost cuboid
   picking.rs    ray → voxel hit testing
   grid.rs       VoxelGrid resource
   mesh.rs       voxel → mesh regeneration (sRGB-linear vertex colors)
-  camera.rs     pan-orbit camera setup
+  camera.rs     pan-orbit camera setup, frame-view, Z-key zoom
   lighting.rs   fixed scene lighting
   gizmo.rs      axis gizmo overlay
   history.rs    undo/redo stacks
+  snapshot.rs   transparent PNG export pipeline
   io/
     project.rs  .roxel save/load (RON)
     vox.rs      .vox export
     obj.rs      .obj export
+    fbx.rs      .fbx export (binary 7.4)
+    svg.rs      .svg export of current view
     ase.rs      .ase palette import/export
 ```
+
+## Packaging a macOS .app
+
+```sh
+cargo install cargo-bundle
+cargo bundle --release
+open target/release/bundle/osx/Roxel.app
+```
+
+The bundle picks up `assets/icons/roxel.icns` via `[package.metadata.bundle]` in `Cargo.toml`.
 
 ## File format
 
