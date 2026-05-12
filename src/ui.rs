@@ -5,7 +5,9 @@ use crate::snapshot::SnapshotRequest;
 use crate::tools::{CurrentColor, RecentColors, Tool, ToolState};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
+use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, egui};
+use bevy_panorbit_camera::PanOrbitCamera;
 use std::path::PathBuf;
 
 pub enum DialogResult {
@@ -14,6 +16,7 @@ pub enum DialogResult {
     ExportVox(PathBuf),
     ExportObj(PathBuf),
     ExportPng(PathBuf),
+    ExportSvg(PathBuf),
     ImportAse(PathBuf),
     ExportAse(PathBuf, String, Vec<[u8; 4]>),
 }
@@ -40,6 +43,8 @@ pub fn poll_dialogs_system(
     mut palettes: ResMut<Palettes>,
     mut palette_choice: ResMut<PaletteChoice>,
     mut snapshot: ResMut<SnapshotRequest>,
+    camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     let Some(task) = pending.0.as_mut() else { return; };
     let Some(result) = block_on(future::poll_once(task)) else { return; };
@@ -71,6 +76,16 @@ pub fn poll_dialogs_system(
         Some(DialogResult::ExportPng(path)) => {
             snapshot.0 = Some(path);
         }
+        Some(DialogResult::ExportSvg(path)) => match (camera.single(), windows.single()) {
+            (Ok((xform, projection)), Ok(window)) => {
+                let viewport = Vec2::new(window.width(), window.height());
+                if let Err(e) = io::svg::export(&path, &grid, xform, projection, viewport) {
+                    eprintln!("Export .svg failed: {e:?}");
+                }
+            }
+            (Err(e), _) => eprintln!("Export .svg failed: no camera found: {e:?}"),
+            (_, Err(e)) => eprintln!("Export .svg failed: no window: {e:?}"),
+        },
         Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
             Ok((name, colors)) => {
                 if colors.is_empty() {
@@ -401,6 +416,17 @@ pub fn ui_system(
                                 .save_file()
                                 .await
                                 .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
+                        });
+                        ui.close();
+                    }
+                    if ui.add_enabled(!dialog_busy, egui::Button::new("SVG…")).clicked() {
+                        pending.spawn(async move {
+                            rfd::AsyncFileDialog::new()
+                                .add_filter("SVG image", &["svg"])
+                                .set_file_name("roxel.svg")
+                                .save_file()
+                                .await
+                                .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
                         });
                         ui.close();
                     }
