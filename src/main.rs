@@ -83,7 +83,7 @@ fn main() {
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<PaletteChoice>()
-        .init_resource::<Palettes>()
+        .insert_resource(Palettes::with_user_loaded())
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<GizmoRect>()
