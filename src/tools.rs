@@ -1,6 +1,6 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
-use crate::picking::{cursor_ray, pick};
+use crate::picking::{cursor_ray, pick, pick_with};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -61,11 +61,6 @@ pub struct PointerState {
     pub stroking: bool,
     pub anchor: Option<StrokeAnchor>,
     pub last_placed: Option<IVec3>,
-    // Pre-stroke snapshot of the grid. Ray-picks during a stroke run against
-    // this snapshot, so voxels placed earlier in the same stroke are invisible
-    // to the picker — that's what prevents the freshly placed voxel from being
-    // re-hit and triggering runaway stacking. Pattern lifted from goxel.
-    pub snapshot: Option<VoxelGrid>,
 }
 
 #[derive(Resource, Clone, Copy)]
@@ -350,7 +345,6 @@ pub fn tool_input_system(
         history.end();
         state.stroking = false;
         state.anchor = None;
-        state.snapshot = None;
     }
 
     if tool.current != Tool::Shape && shape_state.phase.is_some() {
@@ -491,7 +485,6 @@ pub fn tool_input_system(
         state.stroking = true;
         state.anchor = Some(StrokeAnchor { axis, plane_world, target_layer });
         state.last_placed = None;
-        state.snapshot = Some(grid.clone());
         recent.push(color.0);
     }
 
@@ -501,14 +494,24 @@ pub fn tool_input_system(
     let Some(anchor) = state.anchor else { return; };
     let Some(anchored) = anchor_target(&anchor, origin, dir) else { return; };
 
-    // Goxel-style: pick against the pre-stroke snapshot, never the live grid.
-    // Voxels placed earlier in this stroke are invisible to the picker, so they
-    // can't become next frame's hit target — that's what kills the runaway.
-    let snap = state.snapshot.as_ref().unwrap_or(&grid);
-    let target = match (tool.current, pick(snap, origin, dir)) {
-        (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
-        (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
-        _ => anchored,
+    // Goxel-style: pick against the pre-stroke state, never the live grid.
+    // History tracks the pre-stroke value of every cell touched this stroke,
+    // so a brush placement made earlier this stroke reports as empty here —
+    // can't become next frame's hit target, no runaway stacking.
+    let history_ref: &History = &history;
+    let grid_ref: &VoxelGrid = &grid;
+    let target = {
+        let read = |p: IVec3| -> Option<Color8> {
+            match history_ref.pre_stroke_value(p) {
+                Some(prev) => prev,
+                None => grid_ref.get(p),
+            }
+        };
+        match (tool.current, pick_with(read, origin, dir)) {
+            (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
+            (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
+            _ => anchored,
+        }
     };
 
     if !VoxelGrid::in_bounds(target) {

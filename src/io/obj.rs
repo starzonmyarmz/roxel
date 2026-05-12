@@ -17,7 +17,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                let Some(rgba) = grid.cells[x][y][z] else { continue; };
+                let Some(rgba) = grid.cell(x, y, z) else { continue; };
                 let cx = x as i32;
                 let cy = y as i32;
                 let cz = z as i32;
@@ -32,7 +32,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                     let neighbor_filled = nx >= 0 && nx < GRID as i32
                         && ny >= 0 && ny < GRID as i32
                         && nz >= 0 && nz < GRID as i32
-                        && grid.cells[nx as usize][ny as usize][nz as usize].is_some();
+                        && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
                     if neighbor_filled {
                         continue;
                     }

@@ -29,7 +29,8 @@ use crate::gizmo::{
 use crate::grid::{GRID, VoxelGrid};
 use crate::history::History;
 use crate::lighting::spawn_lights;
-use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
+use crate::grid::CHUNKS_PER_AXIS;
+use crate::mesh::{PreviewHide, VoxelChunkMeshes, VoxelMesh, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system};
@@ -150,20 +151,26 @@ fn setup_scene(
     spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
     spawn_shape_preview(&mut commands, &mut meshes, &mut materials);
 
-    // Voxel mesh entity (empty initially; mesher fills it).
-    let mesh_handle = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));
+    // One mesh entity per chunk. Mesher rebuilds only flagged chunks each
+    // frame so a single-cell edit doesn't touch the whole grid.
     let mat = materials.add(StandardMaterial {
         base_color: Color::WHITE,
         unlit: true,
         ..default()
     });
-    commands.spawn((
-        Mesh3d(mesh_handle.clone()),
-        MeshMaterial3d(mat),
-        Transform::default(),
-        VoxelMesh,
-    ));
-    commands.insert_resource(VoxelMeshHandle(mesh_handle));
+    let chunk_count = CHUNKS_PER_AXIS.pow(3);
+    let mut chunk_handles = Vec::with_capacity(chunk_count);
+    for _ in 0..chunk_count {
+        let h = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));
+        commands.spawn((
+            Mesh3d(h.clone()),
+            MeshMaterial3d(mat.clone()),
+            Transform::default(),
+            VoxelMesh,
+        ));
+        chunk_handles.push(h);
+    }
+    commands.insert_resource(VoxelChunkMeshes { handles: chunk_handles });
 
     // Separate materials for floor vs walls so each can have its own color.
     let half = GRID as f32 / 2.0;

@@ -41,7 +41,7 @@ fn build_mesh(grid: &VoxelGrid) -> (Vec<f64>, Vec<i32>, Vec<f64>, Vec<f64>) {
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                let Some(rgba) = grid.cells[x][y][z] else {
+                let Some(rgba) = grid.cell(x, y, z) else {
                     continue;
                 };
                 let cx = x as i32;
@@ -62,7 +62,7 @@ fn build_mesh(grid: &VoxelGrid) -> (Vec<f64>, Vec<i32>, Vec<f64>, Vec<f64>) {
                         && ny < GRID as i32
                         && nz >= 0
                         && nz < GRID as i32
-                        && grid.cells[nx as usize][ny as usize][nz as usize].is_some();
+                        && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
                     if neighbor_filled {
                         continue;
                     }

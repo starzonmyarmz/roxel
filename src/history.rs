@@ -1,6 +1,6 @@
 use crate::grid::{Color8, VoxelGrid};
 use bevy::prelude::*;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CellDelta {
@@ -12,7 +12,10 @@ pub struct CellDelta {
 #[derive(Default)]
 pub struct Stroke {
     pub deltas: Vec<CellDelta>,
-    pub touched: HashSet<(i32, i32, i32)>,
+    // Pre-stroke value of every cell touched this stroke. Picker reads this
+    // mid-stroke so freshly placed voxels are invisible to the next pick —
+    // prevents runaway stacking. Replaces the old full-grid snapshot.
+    pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
 }
 
 #[derive(Resource, Default)]
@@ -32,7 +35,7 @@ impl History {
     pub fn record(&mut self, grid: &mut VoxelGrid, pos: IVec3, after: Option<Color8>) {
         let Some(stroke) = self.current.as_mut() else { return; };
         let key = (pos.x, pos.y, pos.z);
-        if stroke.touched.contains(&key) {
+        if stroke.touched.contains_key(&key) {
             // Already touched this stroke — overwrite without doubling history.
             grid.set(pos, after);
             if let Some(d) = stroke.deltas.iter_mut().find(|d| d.pos == pos) {
@@ -45,8 +48,18 @@ impl History {
             return;
         }
         grid.set(pos, after);
-        stroke.touched.insert(key);
+        stroke.touched.insert(key, before);
         stroke.deltas.push(CellDelta { pos, before, after });
+    }
+
+    /// Returns the cell's pre-stroke value if it was touched in the current
+    /// stroke, or `None` if not (caller should fall back to the live grid).
+    pub fn pre_stroke_value(&self, p: IVec3) -> Option<Option<Color8>> {
+        self.current
+            .as_ref()?
+            .touched
+            .get(&(p.x, p.y, p.z))
+            .copied()
     }
 
     pub fn end(&mut self) {
@@ -170,6 +183,35 @@ mod tests {
             h.end();
         }
         assert_eq!(h.undo.len(), 200);
+    }
+
+    #[test]
+    fn pre_stroke_value_returns_before_during_stroke() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let p = IVec3::new(2, 2, 2);
+        g.set(p, Some([7, 7, 7, 255]));
+        // Before begin: no current stroke, returns None regardless.
+        assert!(h.pre_stroke_value(p).is_none());
+        h.begin();
+        // Not yet recorded — still None.
+        assert!(h.pre_stroke_value(p).is_none());
+        h.record(&mut g, p, Some([1, 2, 3, 255]));
+        // Recorded — returns pre-stroke value.
+        assert_eq!(h.pre_stroke_value(p), Some(Some([7, 7, 7, 255])));
+        h.end();
+        // After end: current stroke is gone.
+        assert!(h.pre_stroke_value(p).is_none());
+    }
+
+    #[test]
+    fn pre_stroke_value_for_empty_cell_is_some_none() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let p = IVec3::new(0, 0, 0);
+        h.begin();
+        h.record(&mut g, p, Some([1, 1, 1, 255]));
+        assert_eq!(h.pre_stroke_value(p), Some(None));
     }
 
     #[test]

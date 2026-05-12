@@ -47,7 +47,7 @@ fn voxel_bounds(grid: &VoxelGrid) -> Option<(IVec3, IVec3)> {
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                if grid.cells[x][y][z].is_some() {
+                if grid.cell(x, y, z).is_some() {
                     any = true;
                     let p = IVec3::new(x as i32, y as i32, z as i32);
                     min = min.min(p);

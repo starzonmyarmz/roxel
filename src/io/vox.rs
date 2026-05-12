@@ -13,7 +13,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                let Some(c) = grid.cells[x][y][z] else { continue; };
+                let Some(c) = grid.cell(x, y, z) else { continue; };
                 let idx = if let Some(&i) = palette_map.get(&c) {
                     i
                 } else if palette.len() < 255 {

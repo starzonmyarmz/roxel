@@ -17,7 +17,7 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                if let Some(c) = grid.cells[x][y][z] {
+                if let Some(c) = grid.cell(x, y, z) {
                     voxels.push(([x as i32, y as i32, z as i32], c));
                 }
             }
