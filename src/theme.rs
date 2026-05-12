@@ -459,6 +459,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.slider_width = 160.0;
     style.spacing.interact_size.y = 26.0;
+    style.interaction.selectable_labels = false;
 
     use egui::{FontFamily, FontId, TextStyle};
     let bold = FontFamily::Name(NUNITO_700_FAMILY.into());

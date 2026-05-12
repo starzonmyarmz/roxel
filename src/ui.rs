@@ -468,26 +468,35 @@ pub fn ui_system(
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(tool_label(tool.current))
-                        .color(ACCENT)
-                        .size(12.0),
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tool_label(tool.current))
+                            .color(ACCENT)
+                            .size(12.0),
+                    )
+                    .selectable(true),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        egui::RichText::new(format!("Grid {g}×{g}×{g}", g = crate::grid::GRID))
-                            .color(TEXT_DIM)
-                            .size(12.0),
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("Grid {g}×{g}×{g}", g = crate::grid::GRID))
+                                .color(TEXT_DIM)
+                                .size(12.0),
+                        )
+                        .selectable(true),
                     );
                     ui.add_space(12.0);
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{n} voxel{s}",
-                            n = grid.count(),
-                            s = if grid.count() == 1 { "" } else { "s" }
-                        ))
-                        .color(TEXT_DIM)
-                        .size(12.0),
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "{n} voxel{s}",
+                                n = grid.count(),
+                                s = if grid.count() == 1 { "" } else { "s" }
+                            ))
+                            .color(TEXT_DIM)
+                            .size(12.0),
+                        )
+                        .selectable(true),
                     );
                     if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
                         && let Some(cam) = zoom.cameras.iter().next()
@@ -495,10 +504,13 @@ pub fn ui_system(
                         let zoom_pct =
                             (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
                         ui.add_space(12.0);
-                        ui.label(
-                            egui::RichText::new(format!("Zoom {zoom_pct}%"))
-                                .color(TEXT_DIM)
-                                .size(12.0),
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("Zoom {zoom_pct}%"))
+                                    .color(TEXT_DIM)
+                                    .size(12.0),
+                            )
+                            .selectable(true),
                         );
                     }
                 });
@@ -592,22 +604,28 @@ pub fn ui_system(
                         });
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "#{:02X}{:02X}{:02X}",
-                                color.0[0], color.0[1], color.0[2]
-                            ))
-                            .monospace()
-                            .size(13.0),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
+                        ui.add(
+                            egui::Label::new(
                                 egui::RichText::new(format!(
-                                    "{}, {}, {}",
+                                    "#{:02X}{:02X}{:02X}",
                                     color.0[0], color.0[1], color.0[2]
                                 ))
-                                .color(TEXT_DIM)
-                                .size(11.0),
+                                .monospace()
+                                .size(13.0),
+                            )
+                            .selectable(true),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!(
+                                        "{}, {}, {}",
+                                        color.0[0], color.0[1], color.0[2]
+                                    ))
+                                    .color(TEXT_DIM)
+                                    .size(11.0),
+                                )
+                                .selectable(true),
                             );
                         });
                     });
@@ -895,7 +913,16 @@ pub fn ui_system(
                     ui.horizontal(|ui| {
                         ui.add_space(8.0);
                         ui.color_edit_button_srgb(rgb);
-                        ui.label(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!(
+                                    "#{:02X}{:02X}{:02X}",
+                                    rgb[0], rgb[1], rgb[2]
+                                ))
+                                .monospace(),
+                            )
+                            .selectable(true),
+                        );
                     });
                 }
                 ui.add_space(4.0);
@@ -945,7 +972,16 @@ fn plane_color_row(
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             ui.color_edit_button_srgb(rgb);
-            ui.label(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(format!(
+                        "#{:02X}{:02X}{:02X}",
+                        rgb[0], rgb[1], rgb[2]
+                    ))
+                    .monospace(),
+                )
+                .selectable(true),
+            );
         });
     }
 }
@@ -1057,11 +1093,14 @@ fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).color(theme.text_dim).size(12.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                egui::RichText::new(value)
-                    .monospace()
-                    .color(theme.text)
-                    .size(12.0),
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(value)
+                        .monospace()
+                        .color(theme.text)
+                        .size(12.0),
+                )
+                .selectable(true),
             );
         });
     });
