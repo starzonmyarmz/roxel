@@ -77,3 +77,114 @@ impl History {
         self.undo.push(stroke);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::IVec3;
+
+    fn rec(h: &mut History, g: &mut VoxelGrid, p: IVec3, c: Option<Color8>) {
+        h.record(g, p, c);
+    }
+
+    #[test]
+    fn record_undo_redo_round_trip() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let p = IVec3::new(1, 2, 3);
+        h.begin();
+        rec(&mut h, &mut g, p, Some([10, 20, 30, 255]));
+        h.end();
+        assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+        h.undo(&mut g);
+        assert_eq!(g.get(p), None);
+        h.redo(&mut g);
+        assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn record_without_begin_is_noop() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        h.record(&mut g, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        assert_eq!(g.get(IVec3::ZERO), None);
+        assert!(h.undo.is_empty());
+    }
+
+    #[test]
+    fn duplicate_cell_in_stroke_dedupes_to_one_delta() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let p = IVec3::new(0, 0, 0);
+        h.begin();
+        rec(&mut h, &mut g, p, Some([1, 1, 1, 255]));
+        rec(&mut h, &mut g, p, Some([2, 2, 2, 255]));
+        rec(&mut h, &mut g, p, Some([3, 3, 3, 255]));
+        h.end();
+        assert_eq!(h.undo.len(), 1);
+        assert_eq!(h.undo[0].deltas.len(), 1);
+        assert_eq!(g.get(p), Some([3, 3, 3, 255]));
+        h.undo(&mut g);
+        assert_eq!(g.get(p), None);
+    }
+
+    #[test]
+    fn no_op_record_is_skipped() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        h.begin();
+        rec(&mut h, &mut g, IVec3::ZERO, None);
+        h.end();
+        assert!(h.undo.is_empty());
+    }
+
+    #[test]
+    fn empty_stroke_not_pushed() {
+        let mut h = History::default();
+        h.begin();
+        h.end();
+        assert!(h.undo.is_empty());
+    }
+
+    #[test]
+    fn new_stroke_clears_redo() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        h.end();
+        h.undo(&mut g);
+        assert_eq!(h.redo.len(), 1);
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(1, 1, 1), Some([2, 2, 2, 255]));
+        h.end();
+        assert!(h.redo.is_empty());
+    }
+
+    #[test]
+    fn undo_cap_at_200() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        for i in 0..205 {
+            h.begin();
+            rec(&mut h, &mut g, IVec3::new(i % 60, 0, 0), Some([i as u8, 0, 0, 255]));
+            h.end();
+        }
+        assert_eq!(h.undo.len(), 200);
+    }
+
+    #[test]
+    fn multi_cell_undo_restores_all() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let pts = [IVec3::new(0,0,0), IVec3::new(1,0,0), IVec3::new(2,0,0)];
+        h.begin();
+        for p in pts {
+            rec(&mut h, &mut g, p, Some([9, 9, 9, 255]));
+        }
+        h.end();
+        for p in pts { assert_eq!(g.get(p), Some([9,9,9,255])); }
+        h.undo(&mut g);
+        for p in pts { assert_eq!(g.get(p), None); }
+    }
+}

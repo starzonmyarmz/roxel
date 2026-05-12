@@ -201,6 +201,94 @@ impl PreviewHide {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn srgb_linear_roundtrip_endpoints_and_midpoint() {
+        for x in [0.0_f32, 0.04, 0.04045, 0.2, 0.5, 0.9, 1.0] {
+            let r = linear_to_srgb(srgb_to_linear(x));
+            assert!((r - x).abs() < 1e-4, "x={x} r={r}");
+        }
+    }
+
+    #[test]
+    fn face_shade_distinguishes_top_bottom_side() {
+        assert!(face_shade([0.0, 1.0, 0.0]) > face_shade([1.0, 0.0, 0.0]));
+        assert!(face_shade([1.0, 0.0, 0.0]) > face_shade([0.0, 0.0, 1.0]));
+        assert!(face_shade([0.0, 0.0, 1.0]) > face_shade([0.0, -1.0, 0.0]));
+    }
+
+    #[test]
+    fn greedy_quads_single_voxel_emits_six_faces() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
+        let quads = greedy_quads(&g, None);
+        assert_eq!(quads.len(), 6);
+    }
+
+    #[test]
+    fn greedy_quads_two_adjacent_voxels_share_face() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(1, 0, 0), Some([1, 1, 1, 255]));
+        // Adjacency hides the shared faces; the four lateral faces of each cell
+        // merge along X into single quads — same result as a 2x1x1 strip: 6 quads.
+        let quads = greedy_quads(&g, None);
+        assert_eq!(quads.len(), 6);
+    }
+
+    #[test]
+    fn greedy_quads_merges_same_color_row_into_one_quad_per_face() {
+        let mut g = VoxelGrid::default();
+        for x in 0..4 {
+            g.set(IVec3::new(x, 0, 0), Some([1, 1, 1, 255]));
+        }
+        // 2 end caps (+X, -X) + top/bottom/+Z/-Z each merged to one quad = 6.
+        let quads = greedy_quads(&g, None);
+        assert_eq!(quads.len(), 6);
+    }
+
+    #[test]
+    fn greedy_quads_different_colors_do_not_merge() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 0, 0, 255]));
+        g.set(IVec3::new(1, 0, 0), Some([2, 0, 0, 255]));
+        // Same as adjacent, but top/bottom/±Z faces can't merge across the color
+        // boundary — 4 faces * 2 cells + 2 end caps = 10.
+        let quads = greedy_quads(&g, None);
+        assert_eq!(quads.len(), 10);
+    }
+
+    #[test]
+    fn greedy_quads_hide_skips_targeted_cell() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
+        let quads = greedy_quads(&g, Some(IVec3::new(5, 5, 5)));
+        assert_eq!(quads.len(), 0);
+    }
+
+    #[test]
+    fn build_mesh_empty_grid_has_no_geometry() {
+        let g = VoxelGrid::default();
+        let m = build_mesh(&g, None);
+        let pos = m.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions");
+        assert_eq!(pos.len(), 0);
+    }
+
+    #[test]
+    fn build_mesh_single_voxel_has_24_vertices_and_36_indices() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        let m = build_mesh(&g, None);
+        let pos = m.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions");
+        assert_eq!(pos.len(), 24);
+        let idx = m.indices().expect("indices");
+        assert_eq!(idx.len(), 36);
+    }
+}
+
 pub fn regenerate_mesh_system(
     mut grid: ResMut<VoxelGrid>,
     mut hide: ResMut<PreviewHide>,

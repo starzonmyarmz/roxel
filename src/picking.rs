@@ -100,3 +100,50 @@ pub fn pick(grid: &VoxelGrid, origin: Vec3, dir: Vec3) -> Option<Hit> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ray_into_single_voxel_from_negative_x() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(5, 0, 0), Some([1, 1, 1, 255]));
+        let hit = pick(&g, Vec3::new(-1.0, 0.5, 0.5), Vec3::X).expect("hit");
+        assert_eq!(hit.cell, IVec3::new(5, 0, 0));
+        assert_eq!(hit.normal, IVec3::new(-1, 0, 0));
+        assert!(hit.hit_voxel);
+    }
+
+    #[test]
+    fn ray_into_single_voxel_from_positive_y() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(2, 3, 2), Some([1, 1, 1, 255]));
+        let hit = pick(&g, Vec3::new(2.5, 10.0, 2.5), Vec3::NEG_Y).expect("hit");
+        assert_eq!(hit.cell, IVec3::new(2, 3, 2));
+        assert_eq!(hit.normal, IVec3::Y);
+    }
+
+    #[test]
+    fn ray_misses_voxel_falls_to_floor() {
+        let g = VoxelGrid::default();
+        let hit = pick(&g, Vec3::new(5.5, 10.0, 5.5), Vec3::new(0.0, -1.0, 0.0)).expect("floor");
+        assert!(!hit.hit_voxel);
+        assert_eq!(hit.normal, IVec3::Y);
+        assert_eq!(hit.cell, IVec3::new(5, -1, 5));
+    }
+
+    #[test]
+    fn ray_upward_in_empty_grid_misses() {
+        let g = VoxelGrid::default();
+        assert!(pick(&g, Vec3::new(5.0, 0.5, 5.0), Vec3::Y).is_none());
+    }
+
+    #[test]
+    fn pick_walks_past_empty_to_filled_voxel() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(10, 0, 0), Some([1, 1, 1, 255]));
+        let hit = pick(&g, Vec3::new(-1.0, 0.5, 0.5), Vec3::X).expect("hit");
+        assert_eq!(hit.cell, IVec3::new(10, 0, 0));
+    }
+}

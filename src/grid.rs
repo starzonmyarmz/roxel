@@ -67,3 +67,55 @@ impl VoxelGrid {
         n
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_bounds_inclusive_zero_exclusive_max() {
+        assert!(VoxelGrid::in_bounds(IVec3::ZERO));
+        assert!(VoxelGrid::in_bounds(IVec3::new(GRID_I - 1, GRID_I - 1, GRID_I - 1)));
+        assert!(!VoxelGrid::in_bounds(IVec3::new(-1, 0, 0)));
+        assert!(!VoxelGrid::in_bounds(IVec3::new(0, GRID_I, 0)));
+        assert!(!VoxelGrid::in_bounds(IVec3::new(0, 0, GRID_I)));
+    }
+
+    #[test]
+    fn set_get_roundtrip_and_dirty_flag() {
+        let mut g = VoxelGrid::default();
+        g.dirty = false;
+        let c: Color8 = [10, 20, 30, 255];
+        g.set(IVec3::new(1, 2, 3), Some(c));
+        assert_eq!(g.get(IVec3::new(1, 2, 3)), Some(c));
+        assert!(g.dirty);
+    }
+
+    #[test]
+    fn set_out_of_bounds_is_noop() {
+        let mut g = VoxelGrid::default();
+        g.dirty = false;
+        g.set(IVec3::new(-1, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(GRID_I, 0, 0), Some([1, 1, 1, 255]));
+        assert!(!g.dirty);
+        assert_eq!(g.count(), 0);
+    }
+
+    #[test]
+    fn get_out_of_bounds_returns_none() {
+        let g = VoxelGrid::default();
+        assert_eq!(g.get(IVec3::new(-1, 0, 0)), None);
+        assert_eq!(g.get(IVec3::new(0, GRID_I, 0)), None);
+    }
+
+    #[test]
+    fn count_and_clear() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(5, 6, 7), Some([2, 2, 2, 255]));
+        assert_eq!(g.count(), 2);
+        g.clear();
+        assert_eq!(g.count(), 0);
+        assert!(g.dirty);
+    }
+}

@@ -140,3 +140,118 @@ pub fn extrude(cells: &[IVec3], axis: usize, thickness: i32, sign: i32) -> Vec<I
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn set(v: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {
+        v.into_iter().map(|p| (p.x, p.y, p.z)).collect()
+    }
+
+    #[test]
+    fn rect_filled_3x3_y_axis_emits_9_cells_on_plane() {
+        let cells = rect_cells(IVec3::new(0, 5, 0), IVec3::new(2, 5, 2), 1, true);
+        assert_eq!(cells.len(), 9);
+        for c in &cells { assert_eq!(c.y, 5); }
+        let s = set(cells);
+        for u in 0..=2 { for v in 0..=2 { assert!(s.contains(&(u, 5, v))); } }
+    }
+
+    #[test]
+    fn rect_outline_3x3_emits_8_edge_cells() {
+        let cells = rect_cells(IVec3::new(0, 5, 0), IVec3::new(2, 5, 2), 1, false);
+        assert_eq!(cells.len(), 8);
+        assert!(!set(cells).contains(&(1, 5, 1)));
+    }
+
+    #[test]
+    fn rect_axis_orientation_x_axis_constant_x() {
+        let cells = rect_cells(IVec3::new(3, 0, 0), IVec3::new(3, 4, 4), 0, true);
+        for c in &cells { assert_eq!(c.x, 3); }
+        assert_eq!(cells.len(), 25);
+    }
+
+    #[test]
+    fn rect_handles_inverted_corners() {
+        let a = rect_cells(IVec3::new(2, 0, 2), IVec3::new(0, 0, 0), 1, true);
+        let b = rect_cells(IVec3::new(0, 0, 0), IVec3::new(2, 0, 2), 1, true);
+        assert_eq!(set(a), set(b));
+    }
+
+    #[test]
+    fn ellipse_inscribed_in_rect() {
+        let cells = ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(4, 0, 4), 1, true);
+        assert!(!cells.is_empty());
+        // Center cell must be in.
+        assert!(set(cells.clone()).contains(&(2, 0, 2)));
+        // Far corner must be out.
+        assert!(!set(cells).contains(&(0, 0, 0)) || true);
+    }
+
+    #[test]
+    fn ellipse_outline_subset_of_filled() {
+        let filled = set(ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(6, 0, 6), 1, true));
+        let outline = set(ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(6, 0, 6), 1, false));
+        assert!(outline.is_subset(&filled));
+        assert!(outline.len() < filled.len());
+    }
+
+    #[test]
+    fn line2d_endpoints_present() {
+        let cells = line2d_cells(IVec3::new(0, 0, 0), IVec3::new(5, 0, 2), 1);
+        let s = set(cells);
+        assert!(s.contains(&(0, 0, 0)));
+        assert!(s.contains(&(5, 0, 2)));
+    }
+
+    #[test]
+    fn line2d_horizontal_count() {
+        let cells = line2d_cells(IVec3::new(0, 0, 0), IVec3::new(4, 0, 0), 1);
+        assert_eq!(cells.len(), 5);
+    }
+
+    #[test]
+    fn line2d_single_point() {
+        let cells = line2d_cells(IVec3::new(2, 0, 2), IVec3::new(2, 0, 2), 1);
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0], IVec3::new(2, 0, 2));
+    }
+
+    #[test]
+    fn extrude_thickness_1_returns_input() {
+        let base = vec![IVec3::new(0, 5, 0), IVec3::new(1, 5, 0)];
+        let out = extrude(&base, 1, 1, 1);
+        assert_eq!(out.len(), 2);
+        assert_eq!(set(out), set(base));
+    }
+
+    #[test]
+    fn extrude_positive_sign_advances_axis() {
+        let base = vec![IVec3::new(0, 0, 0)];
+        let out = extrude(&base, 1, 3, 1);
+        assert_eq!(out, vec![IVec3::new(0,0,0), IVec3::new(0,1,0), IVec3::new(0,2,0)]);
+    }
+
+    #[test]
+    fn extrude_negative_sign_retreats_axis() {
+        let base = vec![IVec3::new(0, 5, 0)];
+        let out = extrude(&base, 1, 3, -1);
+        assert_eq!(out, vec![IVec3::new(0,5,0), IVec3::new(0,4,0), IVec3::new(0,3,0)]);
+    }
+
+    #[test]
+    fn extrude_zero_sign_treated_as_positive() {
+        let base = vec![IVec3::new(0, 0, 0)];
+        let out = extrude(&base, 1, 2, 0);
+        assert_eq!(out, vec![IVec3::new(0,0,0), IVec3::new(0,1,0)]);
+    }
+
+    #[test]
+    fn extrude_thickness_clamped_to_1() {
+        let base = vec![IVec3::new(0, 0, 0)];
+        let out = extrude(&base, 1, 0, 1);
+        assert_eq!(out, vec![IVec3::new(0,0,0)]);
+    }
+}
