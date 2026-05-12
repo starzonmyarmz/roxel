@@ -12,6 +12,8 @@ pub enum DialogResult {
     SaveProject(PathBuf),
     ExportVox(PathBuf),
     ExportObj(PathBuf),
+    ImportAse(PathBuf),
+    ExportAse(PathBuf, String, Vec<[u8; 4]>),
 }
 
 #[derive(Resource, Default)]
@@ -33,6 +35,8 @@ pub fn poll_dialogs_system(
     mut pending: ResMut<PendingDialog>,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
+    mut palettes: ResMut<Palettes>,
+    mut palette_choice: ResMut<PaletteChoice>,
 ) {
     let Some(task) = pending.0.as_mut() else { return; };
     let Some(result) = block_on(future::poll_once(task)) else { return; };
@@ -61,6 +65,22 @@ pub fn poll_dialogs_system(
                 eprintln!("Export .obj failed: {e:?}");
             }
         }
+        Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
+            Ok((name, colors)) => {
+                if colors.is_empty() {
+                    eprintln!("Import .ase: no usable colors found");
+                } else {
+                    palettes.0.push(Palette { name, colors });
+                    palette_choice.0 = palettes.0.len() - 1;
+                }
+            }
+            Err(e) => eprintln!("Import .ase failed: {e:?}"),
+        },
+        Some(DialogResult::ExportAse(path, name, colors)) => {
+            if let Err(e) = io::ase::export(&path, &name, &colors) {
+                eprintln!("Export .ase failed: {e:?}");
+            }
+        }
         None => {}
     }
 }
@@ -74,6 +94,90 @@ const ACCENT_DIM: egui::Color32 = egui::Color32::from_rgb(60, 95, 155);
 const TEXT: egui::Color32 = egui::Color32::from_rgb(220, 225, 235);
 const TEXT_DIM: egui::Color32 = egui::Color32::from_rgb(150, 158, 172);
 const BORDER: egui::Color32 = egui::Color32::from_rgb(44, 48, 58);
+
+#[derive(Clone)]
+pub struct Palette {
+    pub name: String,
+    pub colors: Vec<[u8; 4]>,
+}
+
+macro_rules! hex_palette {
+    ($name:expr, $($r:literal $g:literal $b:literal),* $(,)?) => {
+        Palette {
+            name: String::from($name),
+            colors: vec![$([$r, $g, $b, 255u8]),*],
+        }
+    };
+}
+
+#[derive(Resource)]
+pub struct Palettes(pub Vec<Palette>);
+
+impl Default for Palettes {
+    fn default() -> Self {
+        Self(vec![
+            hex_palette!(
+                "Sweetie 16",
+                0x1A 0x1C 0x2C, 0x5D 0x27 0x5D, 0xB1 0x3E 0x53, 0xEF 0x7D 0x57,
+                0xFF 0xCD 0x75, 0xA7 0xF0 0x70, 0x38 0xB7 0x64, 0x25 0x71 0x79,
+                0x29 0x36 0x6F, 0x3B 0x5D 0xC9, 0x41 0xA6 0xF6, 0x73 0xEF 0xF7,
+                0xF4 0xF4 0xF4, 0x94 0xB0 0xC2, 0x56 0x6C 0x86, 0x33 0x3C 0x57,
+            ),
+            hex_palette!(
+                "PICO-8",
+                0x00 0x00 0x00, 0x1D 0x2B 0x53, 0x7E 0x25 0x53, 0x00 0x87 0x51,
+                0xAB 0x52 0x36, 0x5F 0x57 0x4F, 0xC2 0xC3 0xC7, 0xFF 0xF1 0xE8,
+                0xFF 0x00 0x4D, 0xFF 0xA3 0x00, 0xFF 0xEC 0x27, 0x00 0xE4 0x36,
+                0x29 0xAD 0xFF, 0x83 0x76 0x9C, 0xFF 0x77 0xA8, 0xFF 0xCC 0xAA,
+            ),
+            hex_palette!(
+                "DawnBringer 16",
+                0x14 0x0C 0x1C, 0x44 0x24 0x34, 0x30 0x34 0x6D, 0x4E 0x4A 0x4E,
+                0x85 0x4C 0x30, 0x34 0x65 0x24, 0xD0 0x46 0x48, 0x75 0x71 0x61,
+                0x59 0x7D 0xCE, 0xD2 0x7D 0x2C, 0x85 0x95 0xA1, 0x6D 0xAA 0x2C,
+                0xD2 0xAA 0x99, 0x6D 0xC2 0xCA, 0xDA 0xD4 0x5E, 0xDE 0xEE 0xD6,
+            ),
+            hex_palette!(
+                "DawnBringer 32",
+                0x00 0x00 0x00, 0x22 0x20 0x34, 0x45 0x28 0x3C, 0x66 0x39 0x31,
+                0x8F 0x56 0x3B, 0xDF 0x71 0x26, 0xD9 0xA0 0x66, 0xEE 0xC3 0x9A,
+                0xFB 0xF2 0x36, 0x99 0xE5 0x50, 0x6A 0xBE 0x30, 0x37 0x94 0x6E,
+                0x4B 0x69 0x2F, 0x52 0x4B 0x24, 0x32 0x3C 0x39, 0x3F 0x3F 0x74,
+                0x30 0x60 0x82, 0x5B 0x6E 0xE1, 0x63 0x9B 0xFF, 0x5F 0xCD 0xE4,
+                0xCB 0xDB 0xFC, 0xFF 0xFF 0xFF, 0x9B 0xAD 0xB7, 0x84 0x7E 0x87,
+                0x69 0x6A 0x6A, 0x59 0x56 0x52, 0x76 0x42 0x8A, 0xAC 0x32 0x32,
+                0xD9 0x57 0x63, 0xD7 0x7B 0xBA, 0x8F 0x97 0x4A, 0x8A 0x6F 0x30,
+            ),
+            hex_palette!(
+                "Endesga 32",
+                0xBE 0x4A 0x2F, 0xD7 0x76 0x43, 0xEA 0xD4 0xAA, 0xE4 0xA6 0x72,
+                0xB8 0x6F 0x50, 0x73 0x3E 0x39, 0x3E 0x27 0x31, 0xA2 0x26 0x33,
+                0xE4 0x3B 0x44, 0xF7 0x76 0x22, 0xFE 0xAE 0x34, 0xFE 0xE7 0x61,
+                0x63 0xC7 0x4D, 0x3E 0x89 0x48, 0x26 0x5C 0x42, 0x19 0x3C 0x3E,
+                0x12 0x4E 0x89, 0x00 0x99 0xDB, 0x2C 0xE8 0xF5, 0xFF 0xFF 0xFF,
+                0xC0 0xCB 0xDC, 0x8B 0x9B 0xB4, 0x5A 0x69 0x88, 0x3A 0x44 0x66,
+                0x26 0x2B 0x44, 0x18 0x14 0x25, 0xFF 0x00 0x44, 0x68 0x38 0x6C,
+                0xB5 0x50 0x88, 0xF6 0x75 0x7A, 0xE8 0xB7 0x96, 0xC2 0x85 0x69,
+            ),
+            hex_palette!(
+                "NA16",
+                0x8C 0x8F 0xAE, 0x58 0x45 0x63, 0x3E 0x21 0x37, 0x9A 0x63 0x48,
+                0xD7 0x9B 0x7D, 0xF5 0xED 0xBA, 0xC0 0xC7 0x41, 0x64 0x7D 0x34,
+                0xE4 0x94 0x3A, 0x9D 0x30 0x3B, 0xD2 0x64 0x71, 0x70 0x37 0x7F,
+                0x7E 0xC4 0xC1, 0x34 0x85 0x9D, 0x17 0x43 0x4B, 0x1F 0x0E 0x1C,
+            ),
+            hex_palette!(
+                "Basic",
+                0x00 0x00 0x00, 0x80 0x80 0x80, 0xFF 0xFF 0xFF, 0xFF 0x00 0x00,
+                0x00 0xFF 0x00, 0x00 0x00 0xFF, 0xFF 0xFF 0x00, 0xFF 0x00 0xFF,
+                0x00 0xFF 0xFF, 0xFF 0x80 0x00, 0x80 0x00 0xFF, 0x00 0x80 0x40,
+            ),
+        ])
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct PaletteChoice(pub usize);
 
 fn icon_brush() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/brush.svg")
@@ -194,6 +298,8 @@ pub fn ui_system(
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
     mut pending: ResMut<PendingDialog>,
+    mut palette_choice: ResMut<PaletteChoice>,
+    palettes: Res<Palettes>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -400,44 +506,149 @@ pub fn ui_system(
                     let mut srgba = egui::Color32::from_rgba_unmultiplied(
                         color.0[0], color.0[1], color.0[2], color.0[3],
                     );
+                    let swatch_w = ui.available_width();
+                    let swatch_resp = ui.allocate_response(
+                        egui::vec2(swatch_w, 56.0),
+                        egui::Sense::click(),
+                    );
+                    let rect = swatch_resp.rect;
+                    ui.painter().rect_filled(rect, 8.0, srgba);
+                    let stroke = if swatch_resp.hovered() {
+                        egui::Stroke::new(1.5, ACCENT)
+                    } else {
+                        egui::Stroke::new(1.0, BORDER)
+                    };
+                    ui.painter().rect_stroke(rect, 8.0, stroke, egui::StrokeKind::Inside);
+                    swatch_resp.clone().on_hover_text("Click to edit color");
+                    egui::Popup::menu(&swatch_resp)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                        .show(|ui| {
+                            ui.spacing_mut().slider_width = 275.0;
+                            if egui::color_picker::color_picker_color32(
+                                ui,
+                                &mut srgba,
+                                egui::color_picker::Alpha::Opaque,
+                            ) {
+                                color.0 = [srgba.r(), srgba.g(), srgba.b(), 255];
+                            }
+                        });
+                    ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        // Large swatch preview
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(48.0, 48.0),
-                            egui::Sense::hover(),
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "#{:02X}{:02X}{:02X}",
+                                color.0[0], color.0[1], color.0[2]
+                            ))
+                            .monospace()
+                            .size(13.0),
                         );
-                        ui.painter().rect_filled(rect, 8.0, srgba);
-                        ui.painter()
-                            .rect_stroke(rect, 8.0, egui::Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
-                        ui.vertical(|ui| {
-                            ui.add_space(2.0);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(
                                 egui::RichText::new(format!(
-                                    "#{:02X}{:02X}{:02X}",
-                                    color.0[0], color.0[1], color.0[2]
-                                ))
-                                .monospace()
-                                .size(14.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "rgb({}, {}, {})",
+                                    "{}, {}, {}",
                                     color.0[0], color.0[1], color.0[2]
                                 ))
                                 .color(TEXT_DIM)
                                 .size(11.0),
                             );
-                            ui.add_space(2.0);
-                            if egui::color_picker::color_edit_button_srgba(
-                                ui,
-                                &mut srgba,
-                                egui::color_picker::Alpha::Opaque,
-                            )
-                            .changed()
-                            {
-                                color.0 = [srgba.r(), srgba.g(), srgba.b(), 255];
-                            }
                         });
+                    });
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Palette").color(TEXT_DIM).size(11.0));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if palette_choice.0 >= palettes.0.len() {
+                                palette_choice.0 = 0;
+                            }
+                            egui::ComboBox::from_id_salt("palette_combo")
+                                .selected_text(palettes.0[palette_choice.0].name.as_str())
+                                .width(140.0)
+                                .show_ui(ui, |ui| {
+                                    for (i, p) in palettes.0.iter().enumerate() {
+                                        ui.selectable_value(&mut palette_choice.0, i, p.name.as_str());
+                                    }
+                                });
+                        });
+                    });
+                    ui.add_space(4.0);
+                    let dialog_busy = pending.is_active();
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new(
+                                egui::RichText::new("Import .ase…").size(11.0),
+                            ))
+                            .on_hover_text("Import an Adobe Swatch Exchange palette")
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Adobe Swatch Exchange", &["ase"])
+                                    .pick_file()
+                                    .await
+                                    .map(|f| DialogResult::ImportAse(f.path().to_path_buf()))
+                            });
+                        }
+                        let current = &palettes.0[palette_choice.0];
+                        let export_name = current.name.clone();
+                        let export_colors = current.colors.clone();
+                        let default_filename = format!(
+                            "{}.ase",
+                            sanitize_filename(&current.name)
+                        );
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new(
+                                egui::RichText::new("Export .ase…").size(11.0),
+                            ))
+                            .on_hover_text("Export current palette as Adobe Swatch Exchange")
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Adobe Swatch Exchange", &["ase"])
+                                    .set_file_name(&default_filename)
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportAse(
+                                        f.path().to_path_buf(),
+                                        export_name,
+                                        export_colors,
+                                    ))
+                            });
+                        }
+                    });
+                    ui.add_space(4.0);
+                    let active_palette = palettes.0[palette_choice.0].colors.clone();
+                    ui.horizontal_wrapped(|ui| {
+                        for c in &active_palette {
+                            let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
+                            let is_current = color.0 == *c;
+                            let (rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(20.0, 20.0),
+                                egui::Sense::click(),
+                            );
+                            ui.painter().rect_filled(rect, 4.0, col);
+                            let stroke = if is_current {
+                                egui::Stroke::new(2.0, ACCENT)
+                            } else if resp.hovered() {
+                                egui::Stroke::new(1.0, TEXT)
+                            } else {
+                                egui::Stroke::new(1.0, BORDER)
+                            };
+                            ui.painter().rect_stroke(
+                                rect,
+                                4.0,
+                                stroke,
+                                egui::StrokeKind::Inside,
+                            );
+                            if resp.clicked() {
+                                color.0 = *c;
+                            }
+                            resp.on_hover_text(format!(
+                                "#{:02X}{:02X}{:02X}",
+                                c[0], c[1], c[2]
+                            ));
+                        }
                     });
 
                     ui.add_space(8.0);
@@ -502,19 +713,10 @@ pub fn ui_system(
 
     // Reflect tool in cursor when pointer is over the viewport.
     if !ctx.is_pointer_over_area() {
-        ctx.set_cursor_icon(cursor_for_tool(tool.current));
+        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
     }
 
     Ok(())
-}
-
-fn cursor_for_tool(t: Tool) -> egui::CursorIcon {
-    match t {
-        Tool::Brush => egui::CursorIcon::Crosshair,
-        Tool::Erase => egui::CursorIcon::NotAllowed,
-        Tool::Paint => egui::CursorIcon::Cell,
-        Tool::Eyedropper => egui::CursorIcon::Copy,
-    }
 }
 
 fn vertical_rule(ui: &mut egui::Ui) {
@@ -604,6 +806,14 @@ fn section<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) ->
         .inner;
     ui.add_space(12.0);
     r
+}
+
+fn sanitize_filename(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    if cleaned.is_empty() { "palette".into() } else { cleaned }
 }
 
 fn stat_row(ui: &mut egui::Ui, label: &str, value: String) {
