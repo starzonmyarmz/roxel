@@ -8,6 +8,8 @@ mod lighting;
 mod mesh;
 mod picking;
 mod preview;
+mod shape_preview;
+mod shapes;
 mod snapshot;
 mod theme;
 mod tools;
@@ -27,8 +29,9 @@ use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
+use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
-use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
+use crate::tools::{CurrentColor, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::theme::{
     PreferencesWindow, install_fonts, load_preferences, refresh_theme_system, resolve_theme,
 };
@@ -67,6 +70,8 @@ fn main() {
         .init_resource::<CurrentColor>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
+        .init_resource::<ShapeOptions>()
+        .init_resource::<ShapeState>()
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<PaletteChoice>()
@@ -92,6 +97,7 @@ fn main() {
                 update_gizmo_hover,
                 frame_view_system,
                 brush_preview_system.before(regenerate_mesh_system),
+                shape_preview_system.before(regenerate_mesh_system),
                 start_snapshot_system,
             ),
         )
@@ -121,6 +127,7 @@ fn setup_scene(
     spawn_gizmo(&mut commands, &mut meshes, &mut materials);
     spawn_lights(&mut commands);
     spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
+    spawn_shape_preview(&mut commands, &mut meshes, &mut materials);
 
     // Voxel mesh entity (empty initially; mesher fills it).
     let mesh_handle = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));

@@ -6,7 +6,8 @@ use crate::theme::{
     NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
     save_preferences,
 };
-use crate::tools::{CurrentColor, RecentColors, Tool, ToolState};
+use crate::shapes::ShapePrimitive;
+use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
@@ -213,6 +214,9 @@ fn icon_paint_bucket() -> egui::ImageSource<'static> {
 fn icon_pipette() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/pipette.svg")
 }
+fn icon_shapes() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/shapes.svg")
+}
 fn icon_file_plus() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/file-plus.svg")
 }
@@ -238,6 +242,7 @@ fn tool_icon(t: Tool) -> egui::ImageSource<'static> {
         Tool::Erase => icon_eraser(),
         Tool::Paint => icon_paint_bucket(),
         Tool::Eyedropper => icon_pipette(),
+        Tool::Shape => icon_shapes(),
     }
 }
 
@@ -254,6 +259,7 @@ pub fn ui_system(
     theme: Res<Theme>,
     mut prefs: ResMut<Preferences>,
     mut prefs_window: ResMut<PreferencesWindow>,
+    mut shape_options: ResMut<ShapeOptions>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
 ) -> Result {
@@ -499,6 +505,8 @@ pub fn ui_system(
                 ui.add_space(4.0);
                 tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
                 ui.add_space(4.0);
+                tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
+                ui.add_space(4.0);
                 tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
             });
         });
@@ -721,6 +729,41 @@ pub fn ui_system(
                     });
                 });
 
+                // Shape section (only when Shape tool is active)
+                if tool.current == Tool::Shape {
+                    section(ui, &theme, "Shape", |ui| {
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut shape_options.primitive,
+                                ShapePrimitive::Rectangle,
+                                "Rect",
+                            );
+                            ui.selectable_value(
+                                &mut shape_options.primitive,
+                                ShapePrimitive::Ellipse,
+                                "Ellipse",
+                            );
+                            ui.selectable_value(
+                                &mut shape_options.primitive,
+                                ShapePrimitive::Line,
+                                "Line",
+                            );
+                        });
+                        ui.add_space(4.0);
+                        if shape_options.primitive != ShapePrimitive::Line {
+                            ui.checkbox(&mut shape_options.filled, "Filled");
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "Click + drag to set the footprint, release, drag perpendicular for depth, click to commit. Esc or right-click cancels.",
+                            )
+                            .color(theme.text_dim)
+                            .size(11.0),
+                        );
+                    });
+                }
+
                 // Scene section
                 section(ui, &theme, "Scene", |ui| {
                     stat_row(ui, &theme, "Voxels", grid.count().to_string());
@@ -826,6 +869,7 @@ fn tool_label(t: Tool) -> &'static str {
         Tool::Erase => "Erase",
         Tool::Paint => "Paint",
         Tool::Eyedropper => "Pick",
+        Tool::Shape => "Shape",
     }
 }
 

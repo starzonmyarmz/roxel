@@ -1,6 +1,7 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick};
+use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
@@ -11,6 +12,7 @@ pub enum Tool {
     Erase,
     Paint,
     Eyedropper,
+    Shape,
 }
 
 #[derive(Resource)]
@@ -64,6 +66,45 @@ pub struct PointerState {
     // to the picker — that's what prevents the freshly placed voxel from being
     // re-hit and triggering runaway stacking. Pattern lifted from goxel.
     pub snapshot: Option<VoxelGrid>,
+}
+
+#[derive(Resource, Clone, Copy)]
+pub struct ShapeOptions {
+    pub primitive: ShapePrimitive,
+    pub filled: bool,
+}
+
+impl Default for ShapeOptions {
+    fn default() -> Self {
+        Self { primitive: ShapePrimitive::Rectangle, filled: true }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShapePhase {
+    Footprint,
+    Extrude,
+}
+
+#[derive(Resource, Default)]
+pub struct ShapeState {
+    pub phase: Option<ShapePhase>,
+    pub anchor: Option<StrokeAnchor>,
+    pub normal_sign: i32,
+    pub corner1: Option<IVec3>,
+    pub corner2: Option<IVec3>,
+    pub thickness: i32,
+}
+
+impl ShapeState {
+    pub fn reset(&mut self) {
+        self.phase = None;
+        self.anchor = None;
+        self.normal_sign = 0;
+        self.corner1 = None;
+        self.corner2 = None;
+        self.thickness = 1;
+    }
 }
 
 fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
@@ -138,6 +179,146 @@ fn anchor_target(anchor: &StrokeAnchor, origin: Vec3, dir: Vec3) -> Option<IVec3
     Some(IVec3::new(cell[0], cell[1], cell[2]))
 }
 
+fn footprint_center_world(c1: IVec3, c2: IVec3, axis: usize, plane_world: f32) -> Vec3 {
+    let a1 = c1.to_array();
+    let a2 = c2.to_array();
+    let mut out = [0.0f32; 3];
+    for i in 0..3 {
+        out[i] = if i == axis {
+            plane_world
+        } else {
+            (a1[i] as f32 + a2[i] as f32) * 0.5 + 0.5
+        };
+    }
+    Vec3::from_array(out)
+}
+
+fn thickness_from_ray(
+    anchor: &StrokeAnchor,
+    normal_sign: i32,
+    footprint_center: Vec3,
+    origin: Vec3,
+    dir: Vec3,
+) -> i32 {
+    let mut line_dir = [0.0f32; 3];
+    line_dir[anchor.axis] = 1.0;
+    let l = Vec3::from_array(line_dir);
+    let r = origin - footprint_center;
+    let a = dir.dot(dir);
+    let b = dir.dot(l);
+    let c = l.dot(l);
+    let dd = dir.dot(r);
+    let e = l.dot(r);
+    let denom = a * c - b * b;
+    if denom.abs() < 1e-6 {
+        return 1;
+    }
+    let s = (a * e - b * dd) / denom;
+    let dist = s * normal_sign as f32;
+    dist.max(1.0).ceil() as i32
+}
+
+fn shape_commit(
+    options: &ShapeOptions,
+    state: &mut ShapeState,
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    color: Color8,
+    recent: &mut RecentColors,
+) {
+    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
+        state.reset();
+        return;
+    };
+    let base = match options.primitive {
+        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, options.filled),
+        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
+        ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
+    };
+    let cells = extrude(&base, anchor.axis, state.thickness.max(1), state.normal_sign);
+    history.begin();
+    for cell in cells {
+        if VoxelGrid::in_bounds(cell) {
+            history.record(grid, cell, Some(color));
+        }
+    }
+    history.end();
+    recent.push(color);
+    state.reset();
+}
+
+fn shape_input(
+    options: &ShapeOptions,
+    state: &mut ShapeState,
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    color: Color8,
+    recent: &mut RecentColors,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    origin: Vec3,
+    dir: Vec3,
+    blocked: bool,
+) {
+    let lmb_just = mouse.just_pressed(MouseButton::Left);
+    let lmb_released = mouse.just_released(MouseButton::Left);
+    let rmb_just = mouse.just_pressed(MouseButton::Right);
+    let esc = keys.just_pressed(KeyCode::Escape);
+
+    if esc || rmb_just {
+        state.reset();
+        return;
+    }
+
+    match state.phase {
+        None => {
+            if !lmb_just || blocked {
+                return;
+            }
+            let Some(hit) = pick(grid, origin, dir) else { return; };
+            let axis = axis_of_normal(hit.normal);
+            let n_arr = hit.normal.to_array();
+            let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
+            let cell_arr = hit.cell.to_array();
+            let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
+            let target_layer = cell_arr[axis] + n_arr[axis];
+            let anchor = StrokeAnchor { axis, plane_world, target_layer };
+            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or_else(|| {
+                IVec3::new(
+                    cell_arr[0] + n_arr[0],
+                    cell_arr[1] + n_arr[1],
+                    cell_arr[2] + n_arr[2],
+                )
+            });
+            state.phase = Some(ShapePhase::Footprint);
+            state.anchor = Some(anchor);
+            state.normal_sign = sign;
+            state.corner1 = Some(start_cell);
+            state.corner2 = Some(start_cell);
+            state.thickness = 1;
+        }
+        Some(ShapePhase::Footprint) => {
+            let Some(anchor) = state.anchor else { return; };
+            if let Some(target) = anchor_target(&anchor, origin, dir) {
+                state.corner2 = Some(target);
+            }
+            if lmb_released {
+                state.phase = Some(ShapePhase::Extrude);
+                state.thickness = 1;
+            }
+        }
+        Some(ShapePhase::Extrude) => {
+            let Some(anchor) = state.anchor else { return; };
+            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
+            let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
+            state.thickness = thickness_from_ray(&anchor, state.normal_sign, center, origin, dir);
+            if lmb_just && !blocked {
+                shape_commit(options, state, grid, history, color, recent);
+            }
+        }
+    }
+}
+
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -150,6 +331,8 @@ pub fn tool_input_system(
     mut color: ResMut<CurrentColor>,
     mut recent: ResMut<RecentColors>,
     mut state: ResMut<PointerState>,
+    shape_options: Res<ShapeOptions>,
+    mut shape_state: ResMut<ShapeState>,
     gizmo_drag: Res<crate::gizmo::GizmoDrag>,
     gizmo_rect: Res<crate::gizmo::GizmoRect>,
 ) {
@@ -168,6 +351,45 @@ pub fn tool_input_system(
         state.stroking = false;
         state.anchor = None;
         state.snapshot = None;
+    }
+
+    if tool.current != Tool::Shape && shape_state.phase.is_some() {
+        shape_state.reset();
+    }
+
+    if tool.current == Tool::Shape {
+        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
+            && let Some(c) = window.cursor_position()
+        {
+            rect.contains(c)
+        } else {
+            false
+        };
+        let space = keys.pressed(KeyCode::Space);
+        let z = keys.pressed(KeyCode::KeyZ);
+        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
+        if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
+            shape_input(
+                &shape_options,
+                &mut shape_state,
+                &mut grid,
+                &mut history,
+                color.0,
+                &mut recent,
+                &keys,
+                &mouse,
+                origin,
+                dir,
+                blocked,
+            );
+        } else {
+            let rmb = mouse.just_pressed(MouseButton::Right);
+            let esc = keys.just_pressed(KeyCode::Escape);
+            if (esc || rmb) && shape_state.phase.is_some() {
+                shape_state.reset();
+            }
+        }
+        return;
     }
 
     if egui_wants_pointer || gizmo_drag.active {
@@ -243,7 +465,7 @@ pub fn tool_input_system(
                             history.record(&mut grid, cell, Some(color.0));
                         }
                     }
-                    Tool::Eyedropper => {}
+                    Tool::Eyedropper | Tool::Shape => {}
                 }
             }
             history.end();
@@ -319,7 +541,7 @@ pub fn tool_input_system(
                     state.last_placed = Some(cell);
                 }
             }
-            Tool::Eyedropper => {}
+            Tool::Eyedropper | Tool::Shape => {}
         }
     }
 }
@@ -389,6 +611,8 @@ pub fn tool_shortcut_system(
         Some(Tool::Paint)
     } else if keys.just_pressed(KeyCode::KeyI) {
         Some(Tool::Eyedropper)
+    } else if keys.just_pressed(KeyCode::KeyS) {
+        Some(Tool::Shape)
     } else {
         None
     };
