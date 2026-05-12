@@ -6,6 +6,7 @@ mod io;
 mod lighting;
 mod mesh;
 mod picking;
+mod preview;
 mod tools;
 mod ui;
 
@@ -21,7 +22,8 @@ use crate::gizmo::{
 use crate::grid::{GRID, VoxelGrid};
 use crate::history::History;
 use crate::lighting::spawn_lights;
-use crate::mesh::{VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
+use crate::mesh::{PreviewHide, VoxelMesh, VoxelMeshHandle, regenerate_mesh_system};
+use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::tools::{CurrentColor, PointerState, RecentColors, ToolState, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::ui::{PendingDialog, apply_style, poll_dialogs_system, ui_system};
 
@@ -53,6 +55,7 @@ fn main() {
         .init_resource::<CurrentColor>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
+        .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
@@ -71,6 +74,7 @@ fn main() {
                 gizmo_drag_system,
                 update_gizmo_hover,
                 frame_view_system,
+                brush_preview_system.before(regenerate_mesh_system),
             ),
         )
         .add_systems(
@@ -92,6 +96,7 @@ fn setup_scene(
     spawn_camera(&mut commands);
     spawn_gizmo(&mut commands, &mut meshes, &mut materials);
     spawn_lights(&mut commands);
+    spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
 
     // Voxel mesh entity (empty initially; mesher fills it).
     let mesh_handle = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));

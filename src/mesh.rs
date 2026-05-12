@@ -28,27 +28,41 @@ fn face_shade(normal: [f32; 3]) -> f32 {
     else { 0.62 }
 }
 
-pub fn build_mesh(grid: &VoxelGrid) -> Mesh {
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+
+pub fn build_mesh(grid: &VoxelGrid, hide: Option<IVec3>) -> Mesh {
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals:   Vec<[f32; 3]> = Vec::new();
     let mut colors:    Vec<[f32; 4]> = Vec::new();
     let mut indices:   Vec<u32>      = Vec::new();
 
+    let cell_filled = |p: IVec3| -> Option<[u8; 4]> {
+        if hide == Some(p) {
+            return None;
+        }
+        if !VoxelGrid::in_bounds(p) {
+            return None;
+        }
+        grid.cells[p.x as usize][p.y as usize][p.z as usize]
+    };
+
     for x in 0..GRID {
         for y in 0..GRID {
             for z in 0..GRID {
-                let Some(rgba) = grid.cells[x][y][z] else { continue; };
                 let cell = IVec3::new(x as i32, y as i32, z as i32);
+                let Some(rgba) = cell_filled(cell) else { continue; };
                 let base_rgb = [
-                    rgba[0] as f32 / 255.0,
-                    rgba[1] as f32 / 255.0,
-                    rgba[2] as f32 / 255.0,
+                    srgb_to_linear(rgba[0] as f32 / 255.0),
+                    srgb_to_linear(rgba[1] as f32 / 255.0),
+                    srgb_to_linear(rgba[2] as f32 / 255.0),
                 ];
                 let alpha = rgba[3] as f32 / 255.0;
 
                 for f in &FACES {
                     let n = cell + f.d;
-                    if VoxelGrid::in_bounds(n) && grid.cells[n.x as usize][n.y as usize][n.z as usize].is_some() {
+                    if cell_filled(n).is_some() {
                         continue;
                     }
                     let shade = face_shade(f.normal);
@@ -80,17 +94,32 @@ pub fn build_mesh(grid: &VoxelGrid) -> Mesh {
 #[derive(Resource)]
 pub struct VoxelMeshHandle(pub Handle<Mesh>);
 
+#[derive(Resource, Default)]
+pub struct PreviewHide {
+    pub cell: Option<IVec3>,
+    last: Option<IVec3>,
+}
+
+impl PreviewHide {
+    pub fn set(&mut self, c: Option<IVec3>) {
+        self.cell = c;
+    }
+}
+
 pub fn regenerate_mesh_system(
     mut grid: ResMut<VoxelGrid>,
+    mut hide: ResMut<PreviewHide>,
     handle: Res<VoxelMeshHandle>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    if !grid.dirty {
+    let hide_changed = hide.cell != hide.last;
+    if !grid.dirty && !hide_changed {
         return;
     }
-    let new_mesh = build_mesh(&grid);
+    let new_mesh = build_mesh(&grid, hide.cell);
     if let Some(m) = meshes.get_mut(&handle.0) {
         *m = new_mesh;
     }
     grid.dirty = false;
+    hide.last = hide.cell;
 }
