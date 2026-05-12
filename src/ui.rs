@@ -3,8 +3,8 @@ use crate::history::History;
 use crate::io;
 use crate::snapshot::SnapshotRequest;
 use crate::theme::{
-    CanvasBgPref, NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref,
-    apply_egui_style, save_preferences,
+    CanvasBgPref, NUNITO_700_FAMILY, PlaneColorPref, Preferences, PreferencesWindow, Theme,
+    ThemePref, apply_egui_style, plane_match_color, save_preferences,
 };
 use crate::shapes::ShapePrimitive;
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
@@ -894,6 +894,10 @@ pub fn ui_system(
                     });
                 }
                 ui.add_space(4.0);
+
+                plane_color_row(ui, theme.mode, "Floor", &mut prefs.floor_color);
+                plane_color_row(ui, theme.mode, "Walls", &mut prefs.wall_color);
+                ui.add_space(4.0);
                 ui.checkbox(&mut prefs.show_floor, "Show bottom plane");
                 ui.checkbox(&mut prefs.show_walls, "Show wall planes");
                 ui.add_space(8.0);
@@ -907,6 +911,37 @@ pub fn ui_system(
     }
 
     Ok(())
+}
+
+fn plane_color_row(
+    ui: &mut egui::Ui,
+    mode: crate::theme::ThemeMode,
+    label: &str,
+    pref: &mut PlaneColorPref,
+) {
+    let mut is_custom = matches!(pref, PlaneColorPref::Custom(_));
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add_space(8.0);
+        if ui.radio(!is_custom, "Match theme").clicked() {
+            *pref = PlaneColorPref::MatchTheme;
+            is_custom = false;
+        }
+        if ui.radio(is_custom, "Custom").clicked() {
+            let seed = match *pref {
+                PlaneColorPref::Custom(rgb) => rgb,
+                PlaneColorPref::MatchTheme => plane_match_color(mode),
+            };
+            *pref = PlaneColorPref::Custom(seed);
+        }
+    });
+    if let PlaneColorPref::Custom(ref mut rgb) = *pref {
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.color_edit_button_srgb(rgb);
+            ui.label(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
+        });
+    }
 }
 
 fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {

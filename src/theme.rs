@@ -114,6 +114,46 @@ mod tests {
     }
 
     #[test]
+    fn dark_plane_is_lighter_than_dark_canvas() {
+        let c = canvas_match_color(ThemeMode::Dark);
+        let p = plane_match_color(ThemeMode::Dark);
+        let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
+        let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
+        assert!(pl > cl, "dark plane must be lighter than canvas: c={c:?} p={p:?}");
+    }
+
+    #[test]
+    fn light_plane_is_darker_than_light_canvas() {
+        let c = canvas_match_color(ThemeMode::Light);
+        let p = plane_match_color(ThemeMode::Light);
+        let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
+        let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
+        assert!(pl < cl, "light plane must be darker than canvas: c={c:?} p={p:?}");
+    }
+
+    #[test]
+    fn resolve_plane_match_theme_uses_plane_match_color() {
+        let prefs = Preferences {
+            floor_color: PlaneColorPref::MatchTheme,
+            wall_color: PlaneColorPref::MatchTheme,
+            ..Default::default()
+        };
+        assert_eq!(resolve_floor_color(&prefs, &Theme::dark()), plane_match_color(ThemeMode::Dark));
+        assert_eq!(resolve_wall_color(&prefs, &Theme::light()), plane_match_color(ThemeMode::Light));
+    }
+
+    #[test]
+    fn resolve_plane_custom_returns_custom() {
+        let prefs = Preferences {
+            floor_color: PlaneColorPref::Custom([99, 88, 77]),
+            wall_color: PlaneColorPref::Custom([11, 22, 33]),
+            ..Default::default()
+        };
+        assert_eq!(resolve_floor_color(&prefs, &Theme::dark()), [99, 88, 77]);
+        assert_eq!(resolve_wall_color(&prefs, &Theme::dark()), [11, 22, 33]);
+    }
+
+    #[test]
     fn resolve_canvas_custom_returns_custom() {
         let prefs = Preferences {
             canvas_bg: CanvasBgPref::Custom([10, 20, 30]),
@@ -140,6 +180,10 @@ pub struct Preferences {
     pub theme: ThemePref,
     #[serde(default = "default_canvas_bg")]
     pub canvas_bg: CanvasBgPref,
+    #[serde(default = "default_plane_color", alias = "plane_color")]
+    pub floor_color: PlaneColorPref,
+    #[serde(default = "default_plane_color")]
+    pub wall_color: PlaneColorPref,
     #[serde(default = "default_show_floor")]
     pub show_floor: bool,
     #[serde(default = "default_show_walls")]
@@ -147,6 +191,7 @@ pub struct Preferences {
 }
 
 fn default_canvas_bg() -> CanvasBgPref { CanvasBgPref::MatchTheme }
+fn default_plane_color() -> PlaneColorPref { PlaneColorPref::MatchTheme }
 fn default_show_floor() -> bool { true }
 fn default_show_walls() -> bool { false }
 
@@ -155,6 +200,8 @@ impl Default for Preferences {
         Self {
             theme: ThemePref::default(),
             canvas_bg: default_canvas_bg(),
+            floor_color: default_plane_color(),
+            wall_color: default_plane_color(),
             show_floor: default_show_floor(),
             show_walls: default_show_walls(),
         }
@@ -173,6 +220,38 @@ pub enum ThemePref {
 pub enum CanvasBgPref {
     MatchTheme,
     Custom([u8; 3]),
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub enum PlaneColorPref {
+    MatchTheme,
+    Custom([u8; 3]),
+}
+
+/// Per-mode default plane (floor + walls) color when `PlaneColorPref::MatchTheme`
+/// is set. Sits a step away from the canvas in luminance so the planes read as
+/// distinct surfaces — slightly lighter than dark canvas, slightly darker than
+/// light canvas — while staying near-neutral so voxel hues are unaffected.
+pub fn plane_match_color(mode: ThemeMode) -> [u8; 3] {
+    match mode {
+        ThemeMode::Dark => [0x3C, 0x3C, 0x40],
+        ThemeMode::Light => [0xD4, 0xD4, 0xD8],
+    }
+}
+
+fn resolve(pref: PlaneColorPref, mode: ThemeMode) -> [u8; 3] {
+    match pref {
+        PlaneColorPref::Custom(rgb) => rgb,
+        PlaneColorPref::MatchTheme => plane_match_color(mode),
+    }
+}
+
+pub fn resolve_floor_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
+    resolve(prefs.floor_color, theme.mode)
+}
+
+pub fn resolve_wall_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
+    resolve(prefs.wall_color, theme.mode)
 }
 
 /// Per-mode default canvas color used when `CanvasBgPref::MatchTheme` is set.

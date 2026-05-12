@@ -34,7 +34,7 @@ use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, 
 use crate::tools::{CurrentColor, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
-    resolve_canvas_color, resolve_theme,
+    resolve_canvas_color, resolve_floor_color, resolve_theme, resolve_wall_color,
 };
 use crate::ui::{PaletteChoice, Palettes, PendingDialog, poll_dialogs_system, ui_system};
 
@@ -113,6 +113,8 @@ fn main() {
                 refresh_theme_system,
                 zoom_click_system,
                 apply_canvas_bg_system,
+                apply_floor_color_system,
+                apply_wall_color_system,
                 apply_floor_visibility_system,
                 apply_walls_visibility_system,
             ),
@@ -156,30 +158,35 @@ fn setup_scene(
     ));
     commands.insert_resource(VoxelMeshHandle(mesh_handle));
 
-    // Ground plane at y=0 for spatial reference.
-    let plane = meshes.add(Mesh::from(bevy::math::primitives::Plane3d::default().mesh().size(GRID as f32, GRID as f32)));
-    let plane_mat = materials.add(StandardMaterial {
+    // Separate materials for floor vs walls so each can have its own color.
+    let half = GRID as f32 / 2.0;
+    let floor_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.13, 0.14, 0.17),
         perceptual_roughness: 1.0,
         reflectance: 0.0,
         ..default()
     });
-    commands.spawn((
-        Mesh3d(plane),
-        MeshMaterial3d(plane_mat),
-        Transform::from_xyz(GRID as f32 / 2.0, -0.01, GRID as f32 / 2.0),
-        GroundPlane,
-    ));
-
-    // Wall planes: back wall (z=0, normal +Z) and left wall (x=0, normal +X).
-    // Slightly outside the grid so they don't z-fight with edge voxels.
-    let half = GRID as f32 / 2.0;
     let wall_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.13, 0.14, 0.17),
         perceptual_roughness: 1.0,
         reflectance: 0.0,
         ..default()
     });
+
+    let plane = meshes.add(Mesh::from(
+        bevy::math::primitives::Plane3d::default()
+            .mesh()
+            .size(GRID as f32, GRID as f32),
+    ));
+    commands.spawn((
+        Mesh3d(plane),
+        MeshMaterial3d(floor_mat),
+        Transform::from_xyz(half, -0.01, half),
+        GroundPlane,
+    ));
+
+    // Wall planes: back wall (z=0, normal +Z) and left wall (x=0, normal +X).
+    // Slightly outside the grid so they don't z-fight with edge voxels.
     let back_wall = meshes.add(Mesh::from(
         bevy::math::primitives::Plane3d::new(Vec3::Z, Vec2::splat(half)).mesh(),
     ));
@@ -200,6 +207,40 @@ fn setup_scene(
         Visibility::Hidden,
         WallPlane,
     ));
+}
+
+fn apply_floor_color_system(
+    prefs: Res<Preferences>,
+    theme: Res<Theme>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+    planes: Query<&MeshMaterial3d<StandardMaterial>, With<GroundPlane>>,
+) {
+    let [r, g, b] = resolve_floor_color(&prefs, &theme);
+    let next = Color::srgb_u8(r, g, b);
+    for handle in &planes {
+        if let Some(mat) = mats.get_mut(&handle.0)
+            && mat.base_color != next
+        {
+            mat.base_color = next;
+        }
+    }
+}
+
+fn apply_wall_color_system(
+    prefs: Res<Preferences>,
+    theme: Res<Theme>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+    planes: Query<&MeshMaterial3d<StandardMaterial>, With<WallPlane>>,
+) {
+    let [r, g, b] = resolve_wall_color(&prefs, &theme);
+    let next = Color::srgb_u8(r, g, b);
+    for handle in &planes {
+        if let Some(mat) = mats.get_mut(&handle.0)
+            && mat.base_color != next
+        {
+            mat.base_color = next;
+        }
+    }
 }
 
 fn apply_canvas_bg_system(
