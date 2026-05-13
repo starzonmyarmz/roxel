@@ -5,6 +5,8 @@ mod history;
 mod icon;
 mod io;
 mod lighting;
+#[cfg(target_os = "macos")]
+mod menu;
 mod mesh;
 mod picking;
 mod preview;
@@ -48,8 +50,8 @@ fn main() {
         let [r, g, b] = resolve_canvas_color(&prefs, &theme);
         Color::srgb_u8(r, g, b)
     };
-    App::new()
-        .insert_resource(prefs)
+    let mut app = App::new();
+    app.insert_resource(prefs)
         .insert_resource(theme)
         .init_resource::<PreferencesWindow>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -91,8 +93,26 @@ fn main() {
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
         .init_resource::<NewProject>()
-        .init_gizmo_group::<AxisGizmoGroup>()
-        .add_systems(Startup, (setup_scene, configure_axis_gizmo))
+        .init_gizmo_group::<AxisGizmoGroup>();
+
+    #[cfg(target_os = "macos")]
+    {
+        app.init_resource::<crate::menu::MenuQueue>()
+            .add_systems(
+                Update,
+                (
+                    crate::menu::install_menu_system,
+                    crate::menu::poll_menu_events_system
+                        .after(crate::menu::install_menu_system),
+                    crate::menu::apply_menu_actions_system
+                        .after(crate::menu::poll_menu_events_system),
+                    crate::menu::update_menu_enabled_system
+                        .after(crate::menu::install_menu_system),
+                ),
+            );
+    }
+
+    app.add_systems(Startup, (setup_scene, configure_axis_gizmo))
         .add_systems(
             Update,
             (
@@ -138,8 +158,9 @@ fn main() {
                 update_gizmo_viewport.after(ui_system),
                 update_viewport_rect.after(ui_system),
             ),
-        )
-        .run();
+        );
+
+    app.run();
 }
 
 fn setup_scene(

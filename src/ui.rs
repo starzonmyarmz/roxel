@@ -33,10 +33,10 @@ pub enum DialogResult {
 pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 
 impl PendingDialog {
-    fn is_active(&self) -> bool {
+    pub fn is_active(&self) -> bool {
         self.0.is_some()
     }
-    fn spawn<F>(&mut self, fut: F)
+    pub fn spawn<F>(&mut self, fut: F)
     where
         F: std::future::Future<Output = Option<DialogResult>> + Send + 'static,
     {
@@ -247,21 +247,27 @@ fn icon_pipette() -> egui::ImageSource<'static> {
 fn icon_shapes() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/shapes.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_file_plus() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/file-plus.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_folder_open() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/folder-open.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_save() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/save.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_download() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/download.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_undo() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/undo.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_redo() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/redo.svg")
 }
@@ -319,8 +325,8 @@ pub fn ui_system(
     mut tool: ResMut<ToolState>,
     mut color: ResMut<CurrentColor>,
     recent: Res<RecentColors>,
-    mut grid: ResMut<VoxelGrid>,
-    mut history: ResMut<History>,
+    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<VoxelGrid>,
+    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut history: ResMut<History>,
     mut pending: ResMut<PendingDialog>,
     palette_params: PaletteParams,
     theme: Res<Theme>,
@@ -354,7 +360,7 @@ pub fn ui_system(
     let PANEL = theme.panel;
     #[allow(non_snake_case)]
     let ACCENT = theme.accent;
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, unused_variables)]
     let TEXT = theme.text;
     #[allow(non_snake_case)]
     let TEXT_DIM = theme.text_dim;
@@ -362,6 +368,8 @@ pub fn ui_system(
     let BORDER = theme.border;
 
     // ---------- Top bar ----------
+    // On macOS the native menu bar (see `menu.rs`) replaces these controls.
+    #[cfg(not(target_os = "macos"))]
     egui::TopBottomPanel::top("top_bar")
         .frame(
             egui::Frame::default()
@@ -1389,6 +1397,7 @@ fn plane_color_row(
     }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(1.0, 20.0), egui::Sense::hover());
@@ -1443,6 +1452,7 @@ fn tool_button(
     resp.on_hover_text(format!("{label}  ({shortcut})"));
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn icon_button(
     ui: &mut egui::Ui,
     theme: &Theme,

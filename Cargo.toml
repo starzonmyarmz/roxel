@@ -3,6 +3,10 @@ name = "roxel"
 version = "0.2.0"
 edition = "2024"
 
+[[bin]]
+name = "Roxel"
+path = "src/main.rs"
+
 [dependencies]
 bevy = "0.18"
 bevy_egui = "0.39"
@@ -21,6 +25,7 @@ dirs = "5"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSThread"] }
+muda = "0.19"
 
 # Faster dev iteration: optimize deps, leave own crate at -O1.
 [profile.dev]
