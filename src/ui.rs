@@ -940,44 +940,36 @@ pub fn ui_system(
     if prefs_window.open {
         let before = *prefs;
         let mut open_flag = true;
-        egui::Window::new("Preferences")
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open_flag)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.set_min_width(280.0);
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("Appearance")
-                        .color(theme.text)
-                        .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
-                );
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label("Theme");
-                    ui.add_space(8.0);
-                    ui.radio_value(&mut prefs.theme, ThemePref::System, "System");
-                    ui.radio_value(&mut prefs.theme, ThemePref::Light, "Light");
-                    ui.radio_value(&mut prefs.theme, ThemePref::Dark, "Dark");
+        egui::Window::new(
+            egui::RichText::new("Preferences")
+                .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
+                .size(14.0),
+        )
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open_flag)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .frame(
+            egui::Frame::window(&ctx.style())
+                .fill(PANEL)
+                .inner_margin(egui::Margin::symmetric(16, 14))
+                .stroke(egui::Stroke::new(0.5, theme.border))
+                .corner_radius(egui::CornerRadius::same(10)),
+        )
+        .show(ctx, |ui| {
+            ui.set_min_width(340.0);
+            widgets::section(ui, &theme, "Appearance", |ui| {
+                prefs_row(ui, &theme, "Theme", |ui| {
+                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::System, "System");
+                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::Light, "Light");
+                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::Dark, "Dark");
                 });
-                ui.add_space(12.0);
+            });
 
-                ui.label(
-                    egui::RichText::new("Canvas")
-                        .color(theme.text)
-                        .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
-                );
-                ui.add_space(4.0);
-
+            widgets::section(ui, &theme, "Canvas", |ui| {
                 let mut is_custom = matches!(prefs.canvas_bg, CanvasBgPref::Custom(_));
-                ui.horizontal(|ui| {
-                    ui.label("Background");
-                    ui.add_space(8.0);
-                    if ui
-                        .radio(!is_custom, "Match theme")
-                        .clicked()
-                    {
+                prefs_row(ui, &theme, "Background", |ui| {
+                    if ui.radio(!is_custom, "Match theme").clicked() {
                         prefs.canvas_bg = CanvasBgPref::MatchTheme;
                         is_custom = false;
                     }
@@ -989,12 +981,12 @@ pub fn ui_system(
                             }
                         };
                         prefs.canvas_bg = CanvasBgPref::Custom(seed);
-                        is_custom = true;
                     }
                 });
                 if let CanvasBgPref::Custom(ref mut rgb) = prefs.canvas_bg {
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.add_space(8.0);
+                        ui.add_space(76.0);
                         ui.color_edit_button_srgb(rgb);
                         ui.add(
                             egui::Label::new(
@@ -1002,22 +994,26 @@ pub fn ui_system(
                                     "#{:02X}{:02X}{:02X}",
                                     rgb[0], rgb[1], rgb[2]
                                 ))
-                                .monospace(),
+                                .monospace()
+                                .color(theme.text_dim)
+                                .size(12.0),
                             )
                             .selectable(true),
                         );
                     });
                 }
-                ui.add_space(4.0);
-
                 widgets::plane_color_row(ui, theme.mode, "Floor", &mut prefs.floor_color);
                 widgets::plane_color_row(ui, theme.mode, "Walls", &mut prefs.wall_color);
-                ui.add_space(4.0);
-                ui.checkbox(&mut prefs.show_floor, "Show bottom plane");
-                ui.checkbox(&mut prefs.show_walls, "Show wall planes");
-                ui.checkbox(&mut prefs.preview_outline, "Show preview outline");
-                ui.add_space(8.0);
             });
+
+            widgets::section(ui, &theme, "Visibility", |ui| {
+                ui.checkbox(&mut prefs.show_floor, "Show floor plane");
+                ui.add_space(2.0);
+                ui.checkbox(&mut prefs.show_walls, "Show wall planes");
+                ui.add_space(2.0);
+                ui.checkbox(&mut prefs.preview_outline, "Show preview outline");
+            });
+        });
         if !open_flag {
             prefs_window.open = false;
         }
@@ -1075,3 +1071,50 @@ pub fn ui_system(
     Ok(())
 }
 
+fn prefs_row(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    label: &str,
+    add: impl FnOnce(&mut egui::Ui),
+) {
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            [72.0, 20.0],
+            egui::Label::new(
+                egui::RichText::new(label).color(theme.text_dim).size(12.0),
+            ),
+        );
+        add(ui);
+    });
+}
+
+fn theme_chip(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    current: &mut ThemePref,
+    value: ThemePref,
+    label: &str,
+) {
+    let selected = *current == value;
+    let (fill, fg, stroke) = if selected {
+        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+    } else {
+        (theme.surface, theme.text, egui::Stroke::new(0.5, theme.border))
+    };
+    let resp = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
+            ui.add(
+                egui::Button::new(
+                    egui::RichText::new(label).color(fg).size(12.0),
+                )
+                .fill(fill)
+                .stroke(stroke)
+                .corner_radius(egui::CornerRadius::same(6)),
+            )
+        })
+        .inner;
+    if resp.clicked() {
+        *current = value;
+    }
+}
