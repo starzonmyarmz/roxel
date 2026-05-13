@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use crate::preview::outline_color_for;
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use crate::theme::Preferences;
-use crate::tools::{CurrentColor, ShapeOptions, ShapeState, Tool, ToolState};
+use crate::tools::{CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset};
 
 #[derive(Component)]
 pub struct ShapePreview;
@@ -82,9 +82,7 @@ pub fn shape_preview_system(
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
     let base_sign = if state.normal_sign == 0 { 1 } else { state.normal_sign };
-    let offset = state.thickness;
-    let count = offset.unsigned_abs() as i32 + 1;
-    let dir_sign = if offset >= 0 { base_sign } else { -base_sign };
+    let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, base_sign);
     let cells = extrude(&base, anchor.axis, count, dir_sign);
 
     let Some(mesh) = meshes.get_mut(&handles.mesh) else {

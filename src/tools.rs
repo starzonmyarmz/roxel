@@ -197,6 +197,15 @@ fn footprint_center_world(c1: IVec3, c2: IVec3, axis: usize, plane_world: f32) -
     Vec3::from_array(out)
 }
 
+/// Translate a signed extrude offset into the `(count, dir_sign)` pair that
+/// `shapes::extrude` expects. Offset `0` is a single on-plane slab, `+N`
+/// extrudes `N` cells outward in `base_sign`, `-N` extrudes `N` cells inward.
+pub(crate) fn extrude_args_from_signed_offset(offset: i32, base_sign: i32) -> (i32, i32) {
+    let count = offset.unsigned_abs() as i32 + 1;
+    let dir_sign = if offset >= 0 { base_sign } else { -base_sign };
+    (count, dir_sign)
+}
+
 /// Signed extrude offset: cells away from the anchor plane in the normal
 /// direction (positive) or back into the surface (negative). `0` means the
 /// cursor is still on the anchor plane, i.e. a single-cell-deep extrude.
@@ -246,12 +255,7 @@ fn shape_commit(
         ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
-    // state.thickness is a signed offset: 0 = on-plane slab, +N = N cells out
-    // in the normal direction, -N = N cells back into the surface. Translate
-    // to extrude's (count, dir) pair.
-    let offset = state.thickness;
-    let count = offset.unsigned_abs() as i32 + 1;
-    let dir_sign = if offset >= 0 { state.normal_sign } else { -state.normal_sign };
+    let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);
     let cells = extrude(&base, anchor.axis, count, dir_sign);
     history.begin();
     for cell in cells {
@@ -792,4 +796,65 @@ pub fn tool_shortcut_system(
             tool.previous = tool.current;
             tool.current = t;
         }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shapes::{extrude, rect_cells};
+    use std::collections::HashSet;
+
+    fn cells_set(cells: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {
+        cells.into_iter().map(|c| (c.x, c.y, c.z)).collect()
+    }
+
+    #[test]
+    fn extrude_args_zero_offset_is_single_slab_in_normal_direction() {
+        let (count, dir) = extrude_args_from_signed_offset(0, 1);
+        assert_eq!((count, dir), (1, 1));
+        let (count, dir) = extrude_args_from_signed_offset(0, -1);
+        assert_eq!((count, dir), (1, -1));
+    }
+
+    #[test]
+    fn extrude_args_positive_offset_grows_outward() {
+        assert_eq!(extrude_args_from_signed_offset(3, 1), (4, 1));
+        assert_eq!(extrude_args_from_signed_offset(3, -1), (4, -1));
+    }
+
+    #[test]
+    fn extrude_args_negative_offset_flips_direction() {
+        assert_eq!(extrude_args_from_signed_offset(-3, 1), (4, -1));
+        assert_eq!(extrude_args_from_signed_offset(-3, -1), (4, 1));
+    }
+
+    #[test]
+    fn shape_extrude_negative_offset_carves_into_surface() {
+        // Footprint on a horizontal slab at y=5, normal +Y.
+        let c1 = IVec3::new(0, 5, 0);
+        let c2 = IVec3::new(1, 5, 1);
+        let base = rect_cells(c1, c2, 1, true);
+        // Negative offset → cells extend toward y < 5.
+        let (count, dir) = extrude_args_from_signed_offset(-2, 1);
+        let cells = cells_set(extrude(&base, 1, count, dir));
+        assert!(cells.contains(&(0, 5, 0)));
+        assert!(cells.contains(&(0, 4, 0)));
+        assert!(cells.contains(&(0, 3, 0)));
+        assert!(!cells.contains(&(0, 6, 0)));
+        assert!(!cells.contains(&(0, 2, 0)));
+    }
+
+    #[test]
+    fn shape_extrude_positive_offset_extends_in_normal_direction() {
+        let c1 = IVec3::new(0, 5, 0);
+        let c2 = IVec3::new(1, 5, 1);
+        let base = rect_cells(c1, c2, 1, true);
+        let (count, dir) = extrude_args_from_signed_offset(2, 1);
+        let cells = cells_set(extrude(&base, 1, count, dir));
+        assert!(cells.contains(&(0, 5, 0)));
+        assert!(cells.contains(&(0, 6, 0)));
+        assert!(cells.contains(&(0, 7, 0)));
+        assert!(!cells.contains(&(0, 4, 0)));
+        assert!(!cells.contains(&(0, 8, 0)));
+    }
 }
