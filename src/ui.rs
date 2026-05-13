@@ -1,3 +1,4 @@
+use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::grid::{ALLOWED_SIZES, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io;
@@ -280,6 +281,18 @@ pub struct ZoomReadout<'w, 's> {
     cameras: Query<'w, 's, &'static PanOrbitCamera>,
 }
 
+#[derive(SystemParam)]
+pub struct PrefsParams<'w> {
+    pub prefs: ResMut<'w, Preferences>,
+    pub window: ResMut<'w, PreferencesWindow>,
+}
+
+#[derive(SystemParam)]
+pub struct GizmoView<'w> {
+    pub rect: Res<'w, GizmoRect>,
+    pub drag: Res<'w, GizmoDrag>,
+}
+
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -290,13 +303,13 @@ pub fn ui_system(
     mut pending: ResMut<PendingDialog>,
     palette_params: PaletteParams,
     theme: Res<Theme>,
-    mut prefs: ResMut<Preferences>,
-    mut prefs_window: ResMut<PreferencesWindow>,
+    prefs_params: PrefsParams,
     mut shape_options: ResMut<ShapeOptions>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     zoom: ZoomReadout,
     mut new_project: ResMut<NewProject>,
+    gizmo_view: GizmoView,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -307,6 +320,10 @@ pub fn ui_system(
         choice: mut palette_choice,
         rename: mut palette_rename,
     } = palette_params;
+    let PrefsParams {
+        mut prefs,
+        window: mut prefs_window,
+    } = prefs_params;
 
     // Local bindings shadow the previous module-level constants so that the
     // rest of this function can stay as it was.
@@ -1066,8 +1083,18 @@ pub fn ui_system(
     if !ctx.is_pointer_over_area() {
         let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
         let z = keys.pressed(KeyCode::KeyZ);
-        let cursor = if mouse.pressed(MouseButton::Right) {
-            egui::CursorIcon::Move
+        let over_gizmo = gizmo_view.drag.active
+            || gizmo_view.rect.0.zip(ctx.pointer_latest_pos()).is_some_and(
+                |(r, p)| {
+                    p.x >= r.min.x && p.x <= r.max.x && p.y >= r.min.y && p.y <= r.max.y
+                },
+            );
+        let cursor = if gizmo_view.drag.active {
+            egui::CursorIcon::Grabbing
+        } else if over_gizmo {
+            egui::CursorIcon::Grab
+        } else if mouse.pressed(MouseButton::Right) {
+            egui::CursorIcon::Grabbing
         } else if z {
             if alt {
                 egui::CursorIcon::ZoomOut
