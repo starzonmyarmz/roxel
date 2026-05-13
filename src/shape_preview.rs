@@ -143,7 +143,7 @@ fn draw_silhouette(gizmos: &mut Gizmos, cells: &[IVec3], color: Color) {
     }
 }
 
-fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
+pub(crate) fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
     let mut pos = Vec::with_capacity(cells.len() * 24);
     let mut nor = Vec::with_capacity(cells.len() * 24);
     let mut idx = Vec::with_capacity(cells.len() * 36);

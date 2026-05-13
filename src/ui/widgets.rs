@@ -66,6 +66,7 @@ pub fn tool_label(t: Tool) -> &'static str {
         Tool::Paint => "Paint",
         Tool::Eyedropper => "Pick",
         Tool::Shape => "Shape",
+        Tool::Select => "Select",
     }
 }
 

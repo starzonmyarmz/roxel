@@ -1,10 +1,18 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick, pick_with};
+use crate::select::{Selection, SelectPhase, SelectState, clear_aabb, recolor_aabb};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
+
+#[derive(SystemParam)]
+pub struct SelectParams<'w> {
+    pub state: ResMut<'w, SelectState>,
+    pub selection: ResMut<'w, Selection>,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -13,6 +21,7 @@ pub enum Tool {
     Paint,
     Eyedropper,
     Shape,
+    Select,
 }
 
 #[derive(Resource)]
@@ -314,6 +323,86 @@ fn shape_input(
     }
 }
 
+fn select_commit(state: &mut SelectState, selection: &mut Selection) {
+    if let Some(aabb) = crate::select::in_progress_aabb(state) {
+        selection.aabb = Some(aabb);
+    }
+    state.reset();
+}
+
+fn select_input(
+    state: &mut SelectState,
+    selection: &mut Selection,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    grid: &VoxelGrid,
+    origin: Vec3,
+    dir: Vec3,
+    blocked: bool,
+) {
+    let lmb_just = mouse.just_pressed(MouseButton::Left);
+    let lmb_released = mouse.just_released(MouseButton::Left);
+    let rmb_just = mouse.just_pressed(MouseButton::Right);
+    let esc = keys.just_pressed(KeyCode::Escape);
+
+    if esc || rmb_just {
+        if state.phase != SelectPhase::Idle {
+            state.reset();
+        } else {
+            selection.aabb = None;
+        }
+        return;
+    }
+
+    match state.phase {
+        SelectPhase::Idle => {
+            if !lmb_just || blocked {
+                return;
+            }
+            let Some(hit) = pick(grid, origin, dir) else { return; };
+            let axis = axis_of_normal(hit.normal);
+            let n_arr = hit.normal.to_array();
+            let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
+            let cell_arr = hit.cell.to_array();
+            let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
+            let target_layer = cell_arr[axis] + n_arr[axis];
+            let anchor = StrokeAnchor { axis, plane_world, target_layer };
+            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or_else(|| {
+                IVec3::new(
+                    cell_arr[0] + n_arr[0],
+                    cell_arr[1] + n_arr[1],
+                    cell_arr[2] + n_arr[2],
+                )
+            });
+            state.phase = SelectPhase::Footprint;
+            state.anchor = Some(anchor);
+            state.normal_sign = sign;
+            state.corner1 = Some(start_cell);
+            state.corner2 = Some(start_cell);
+            state.thickness = 1;
+        }
+        SelectPhase::Footprint => {
+            let Some(anchor) = state.anchor else { return; };
+            if let Some(target) = anchor_target(&anchor, origin, dir) {
+                state.corner2 = Some(target);
+            }
+            if lmb_released {
+                state.phase = SelectPhase::Extrude;
+                state.thickness = 1;
+            }
+        }
+        SelectPhase::Extrude => {
+            let Some(anchor) = state.anchor else { return; };
+            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
+            let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
+            state.thickness = thickness_from_ray(&anchor, state.normal_sign, center, origin, dir);
+            if lmb_just && !blocked {
+                select_commit(state, selection);
+            }
+        }
+    }
+}
+
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -328,9 +417,11 @@ pub fn tool_input_system(
     mut state: ResMut<PointerState>,
     shape_options: Res<ShapeOptions>,
     mut shape_state: ResMut<ShapeState>,
+    select_params: SelectParams,
     gizmo_drag: Res<crate::gizmo::GizmoDrag>,
     gizmo_rect: Res<crate::gizmo::GizmoRect>,
 ) {
+    let SelectParams { state: mut select_state, mut selection } = select_params;
     let egui_wants_pointer = contexts
         .ctx_mut()
         .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
@@ -349,6 +440,45 @@ pub fn tool_input_system(
 
     if tool.current != Tool::Shape && shape_state.phase.is_some() {
         shape_state.reset();
+    }
+    if tool.current != Tool::Select && select_state.phase != SelectPhase::Idle {
+        select_state.reset();
+    }
+
+    if tool.current == Tool::Select {
+        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
+            && let Some(c) = window.cursor_position()
+        {
+            rect.contains(c)
+        } else {
+            false
+        };
+        let space = keys.pressed(KeyCode::Space);
+        let z = keys.pressed(KeyCode::KeyZ);
+        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
+        if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
+            select_input(
+                &mut select_state,
+                &mut selection,
+                &keys,
+                &mouse,
+                &grid,
+                origin,
+                dir,
+                blocked,
+            );
+        } else {
+            let rmb = mouse.just_pressed(MouseButton::Right);
+            let esc = keys.just_pressed(KeyCode::Escape);
+            if esc || rmb {
+                if select_state.phase != SelectPhase::Idle {
+                    select_state.reset();
+                } else {
+                    selection.aabb = None;
+                }
+            }
+        }
+        return;
     }
 
     if tool.current == Tool::Shape {
@@ -459,7 +589,7 @@ pub fn tool_input_system(
                             history.record(&mut grid, cell, Some(color.0));
                         }
                     }
-                    Tool::Eyedropper | Tool::Shape => {}
+                    Tool::Eyedropper | Tool::Shape | Tool::Select => {}
                 }
             }
             history.end();
@@ -467,6 +597,27 @@ pub fn tool_input_system(
             recent.push(color.0);
             return;
         }
+
+    // Paint/Erase on a voxel inside the active selection → operate on the
+    // whole selection in a single history stroke. Click outside the selection
+    // falls through to normal single-cell stroke behavior.
+    if lmb_just
+        && matches!(tool.current, Tool::Paint | Tool::Erase)
+        && let Some(aabb) = selection.aabb
+        && let Some(hit) = pick(&grid, origin, dir)
+        && hit.hit_voxel
+        && aabb.contains(hit.cell)
+    {
+        match tool.current {
+            Tool::Paint => {
+                recolor_aabb(&mut grid, &mut history, &aabb, color.0);
+                recent.push(color.0);
+            }
+            Tool::Erase => clear_aabb(&mut grid, &mut history, &aabb),
+            _ => {}
+        }
+        return;
+    }
 
     // Stroke start: anchor a build plane based on the first hit, then stick to it
     // for the duration of the stroke. Prevents runaway stacking when the freshly
@@ -544,7 +695,7 @@ pub fn tool_input_system(
                     state.last_placed = Some(cell);
                 }
             }
-            Tool::Eyedropper | Tool::Shape => {}
+            Tool::Eyedropper | Tool::Shape | Tool::Select => {}
         }
     }
 }
@@ -616,6 +767,8 @@ pub fn tool_shortcut_system(
         Some(Tool::Eyedropper)
     } else if keys.just_pressed(KeyCode::KeyS) {
         Some(Tool::Shape)
+    } else if keys.just_pressed(KeyCode::KeyM) {
+        Some(Tool::Select)
     } else {
         None
     };

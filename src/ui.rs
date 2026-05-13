@@ -40,6 +40,12 @@ pub struct GizmoView<'w> {
     pub drag: Res<'w, GizmoDrag>,
 }
 
+#[derive(SystemParam)]
+pub struct UiInput<'w> {
+    pub keys: Res<'w, ButtonInput<KeyCode>>,
+    pub mouse: Res<'w, ButtonInput<MouseButton>>,
+}
+
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -52,12 +58,13 @@ pub fn ui_system(
     theme: Res<Theme>,
     prefs_params: PrefsParams,
     mut shape_options: ResMut<ShapeOptions>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
+    input: UiInput,
     zoom: ZoomReadout,
     mut new_project: ResMut<NewProject>,
     gizmo_view: GizmoView,
+    mut selection: ResMut<crate::select::Selection>,
 ) -> Result {
+    let UiInput { keys, mouse } = input;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
     apply_egui_style(ctx, &theme);
@@ -332,6 +339,8 @@ pub fn ui_system(
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
+                ui.add_space(4.0);
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
             });
@@ -836,6 +845,51 @@ pub fn ui_system(
                         });
                     }
                 });
+
+                // Selection section
+                if tool.current == Tool::Select || selection.aabb.is_some() {
+                    widgets::section(ui, &theme, "Selection", |ui| {
+                        if let Some(aabb) = selection.aabb {
+                            let extents = aabb.extents();
+                            widgets::stat_row(
+                                ui,
+                                &theme,
+                                "Bounds",
+                                format!(
+                                    "{} × {} × {}",
+                                    extents.x, extents.y, extents.z
+                                ),
+                            );
+                            widgets::stat_row(
+                                ui,
+                                &theme,
+                                "Voxels",
+                                aabb.voxel_count(&grid).to_string(),
+                            );
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                if ui.button("Delete").clicked() {
+                                    crate::select::clear_aabb(
+                                        &mut grid,
+                                        &mut history,
+                                        &aabb,
+                                    );
+                                }
+                                if ui.button("Clear selection").clicked() {
+                                    selection.aabb = None;
+                                }
+                            });
+                        } else {
+                            ui.label(
+                                egui::RichText::new(
+                                    "Drag on a face to select a region.",
+                                )
+                                .color(theme.text_dim)
+                                .size(11.0),
+                            );
+                        }
+                    });
+                }
 
                 // Shape section (only when Shape tool is active)
                 if tool.current == Tool::Shape {

@@ -10,6 +10,7 @@ mod menu;
 mod mesh;
 mod picking;
 mod preview;
+mod select;
 mod shape_preview;
 mod shapes;
 mod snapshot;
@@ -82,6 +83,8 @@ fn main() {
         .init_resource::<PointerState>()
         .init_resource::<ShapeOptions>()
         .init_resource::<ShapeState>()
+        .init_resource::<crate::select::Selection>()
+        .init_resource::<crate::select::SelectState>()
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<PaletteChoice>()
@@ -128,6 +131,8 @@ fn main() {
                 frame_view_system,
                 brush_preview_system.before(regenerate_mesh_system),
                 shape_preview_system.before(regenerate_mesh_system),
+                crate::select::selection_render_system.before(regenerate_mesh_system),
+                crate::select::selection_key_action_system,
                 start_snapshot_system,
                 apply_new_project_system.before(regenerate_mesh_system),
             ),
@@ -173,6 +178,7 @@ fn setup_scene(
     spawn_lights(&mut commands);
     spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
     spawn_shape_preview(&mut commands, &mut meshes, &mut materials);
+    crate::select::spawn_selection_preview(&mut commands, &mut meshes, &mut materials);
 
     // One mesh entity per chunk. Mesher rebuilds only flagged chunks each
     // frame so a single-cell edit doesn't touch the whole grid.
