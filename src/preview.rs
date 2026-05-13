@@ -53,6 +53,7 @@ pub fn spawn_brush_preview(
 pub fn brush_preview_system(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     cameras: Query<(&Camera, &GlobalTransform), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     grid: Res<VoxelGrid>,
@@ -63,8 +64,7 @@ pub fn brush_preview_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut hide: ResMut<PreviewHide>,
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
-    gizmo_drag: Res<crate::gizmo::GizmoDrag>,
-    gizmo_rect: Res<crate::gizmo::GizmoRect>,
+    gizmo_view: crate::ui::GizmoView,
     prefs: Res<Preferences>,
     mut gizmos: Gizmos,
 ) {
@@ -80,11 +80,16 @@ pub fn brush_preview_system(
         hide.set(None);
     };
 
-    if egui_wants_pointer || gizmo_drag.active || keys.pressed(KeyCode::Space) || pointer.stroking {
+    if egui_wants_pointer
+        || gizmo_view.drag.active
+        || keys.pressed(KeyCode::Space)
+        || mouse.pressed(MouseButton::Right)
+        || pointer.stroking
+    {
         clear(&mut vis, &mut hide);
         return;
     }
-    if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
+    if let (Some(rect), Ok(window)) = (gizmo_view.rect.0, windows.single())
         && let Some(c) = window.cursor_position()
             && rect.contains(c) {
                 clear(&mut vis, &mut hide);
