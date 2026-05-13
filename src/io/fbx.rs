@@ -494,3 +494,87 @@ impl FbxBuilder {
         self.end();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::IVec3;
+    use std::path::PathBuf;
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("roxel-test-{pid}-{nanos}-{name}.fbx"));
+        p
+    }
+
+    #[test]
+    fn export_writes_header_magic_and_version() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([100, 100, 100, 255]));
+        let path = tmp_path("header");
+        export(&path, &g).expect("export");
+        let bytes = std::fs::read(&path).expect("read");
+        // 23-byte ASCII magic.
+        assert_eq!(&bytes[0..20], b"Kaydara FBX Binary  ");
+        assert_eq!(bytes[20], 0x00);
+        assert_eq!(bytes[21], 0x1a);
+        assert_eq!(bytes[22], 0x00);
+        // Version 7400 at bytes 23..27 little-endian.
+        let version = u32::from_le_bytes([bytes[23], bytes[24], bytes[25], bytes[26]]);
+        assert_eq!(version, 7400);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn export_terminates_with_foot_magic() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([100, 100, 100, 255]));
+        let path = tmp_path("footer");
+        export(&path, &g).expect("export");
+        let bytes = std::fs::read(&path).expect("read");
+        let tail = &bytes[bytes.len() - FOOT_MAGIC.len()..];
+        assert_eq!(tail, &FOOT_MAGIC);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn build_mesh_single_voxel_emits_six_quads() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 2, 3, 255]));
+        let (verts, polys, normals, colors) = build_mesh(&g);
+        // 6 faces × 4 corners = 24 verts × 3 coords = 72 doubles.
+        assert_eq!(verts.len(), 72);
+        // polys: 4 indices per face, last index encoded as -(idx+1).
+        assert_eq!(polys.len(), 24);
+        // 6 faces × 4 corners × 3 components (per-vertex normals).
+        assert_eq!(normals.len(), 72);
+        // 24 vertex-colors × 4 channels.
+        assert_eq!(colors.len(), 96);
+    }
+
+    #[test]
+    fn build_mesh_adjacent_voxels_drop_shared_face() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 2, 3, 255]));
+        g.set(IVec3::new(1, 0, 0), Some([4, 5, 6, 255]));
+        let (_verts, polys, _normals, _colors) = build_mesh(&g);
+        // 10 faces × 4 indices.
+        assert_eq!(polys.len(), 40);
+    }
+
+    #[test]
+    fn polygon_index_run_terminates_with_negated_last() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 2, 3, 255]));
+        let (_, polys, _, _) = build_mesh(&g);
+        // Every 4th index is the run terminator: -(idx + 1) < 0.
+        for chunk in polys.chunks_exact(4) {
+            assert!(chunk[3] < 0, "expected negated terminator, got {}", chunk[3]);
+        }
+    }
+}

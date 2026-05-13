@@ -195,3 +195,77 @@ impl<'a> Reader<'a> {
         Ok(String::from_utf16_lossy(&units))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("roxel-test-{pid}-{nanos}-{name}.ase"));
+        p
+    }
+
+    #[test]
+    fn export_writes_asef_signature_and_block_count() {
+        let path = tmp_path("sig");
+        let colors = vec![[10, 20, 30, 255], [200, 100, 50, 255]];
+        export(&path, "MyPal", &colors).expect("export");
+        let bytes = std::fs::read(&path).expect("read");
+        assert_eq!(&bytes[0..4], SIG);
+        // Version 1.0
+        assert_eq!(u16::from_be_bytes([bytes[4], bytes[5]]), 1);
+        assert_eq!(u16::from_be_bytes([bytes[6], bytes[7]]), 0);
+        // Block count = colors + group-start + group-end = 4
+        assert_eq!(u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]), 4);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn roundtrip_preserves_rgb_and_group_name() {
+        let path = tmp_path("roundtrip");
+        let colors = vec![
+            [0, 0, 0, 255],
+            [255, 255, 255, 255],
+            [128, 64, 200, 255],
+        ];
+        export(&path, "Greys", &colors).expect("export");
+        let (name, loaded) = import(&path).expect("import");
+        assert_eq!(name, "Greys");
+        assert_eq!(loaded.len(), colors.len());
+        // Float roundtrip may drift by 1 LSB due to u8→f32→u8.
+        for (a, b) in colors.iter().zip(loaded.iter()) {
+            for i in 0..3 {
+                assert!((a[i] as i32 - b[i] as i32).abs() <= 1, "channel {i}: {a:?} vs {b:?}");
+            }
+            assert_eq!(b[3], 255);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_rejects_bad_signature() {
+        let path = tmp_path("badsig");
+        std::fs::write(&path, b"NOPE\x00\x01\x00\x00\x00\x00\x00\x00").expect("write");
+        let err = import(&path).err().expect("expected error");
+        assert!(err.to_string().contains("not an ASE file"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_falls_back_to_filename_when_group_name_empty() {
+        let path = tmp_path("FallbackName");
+        export(&path, "", &[[1, 2, 3, 255]]).expect("export");
+        let (name, _) = import(&path).expect("import");
+        // file stem includes the test prefix, so just check it's not empty and matches stem
+        let stem = path.file_stem().unwrap().to_str().unwrap();
+        assert_eq!(name, stem);
+        let _ = std::fs::remove_file(&path);
+    }
+}

@@ -225,3 +225,77 @@ fn write_svg(path: &Path, quads: &[ProjectedQuad]) -> Result<()> {
     writeln!(file, "</svg>")?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::IVec3;
+    use bevy::prelude::{PerspectiveProjection, Transform};
+    use std::path::PathBuf;
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("roxel-test-{pid}-{nanos}-{name}.svg"));
+        p
+    }
+
+    fn test_camera() -> (GlobalTransform, Projection) {
+        let xform = Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::new(16.0, 16.0, 16.0), Vec3::Y);
+        let gt = GlobalTransform::from(xform);
+        let proj = Projection::Perspective(PerspectiveProjection {
+            fov: std::f32::consts::FRAC_PI_4,
+            aspect_ratio: 1.0,
+            near: 0.1,
+            far: 1000.0,
+            ..Default::default()
+        });
+        (gt, proj)
+    }
+
+    #[test]
+    fn empty_grid_returns_error() {
+        let g = crate::grid::VoxelGrid::default();
+        let (gt, proj) = test_camera();
+        let path = tmp_path("empty");
+        let err = export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0))
+            .err()
+            .expect("expected error");
+        assert!(err.to_string().contains("Nothing to export"));
+    }
+
+    #[test]
+    fn single_voxel_writes_valid_svg() {
+        let mut g = crate::grid::VoxelGrid::default();
+        g.set(IVec3::new(1, 1, 1), Some([255, 0, 0, 255]));
+        let (gt, proj) = test_camera();
+        let path = tmp_path("single");
+        export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0)).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        assert!(s.starts_with("<?xml"));
+        assert!(s.contains("<svg "));
+        assert!(s.ends_with("</svg>\n"));
+        // 3 of 6 faces visible toward (+x, +y, +z) corner from positive-octant camera.
+        let path_count = s.matches("<path ").count();
+        assert!(path_count >= 1, "expected at least one path element");
+        // Each visible face emits one `M ... Z` subpath.
+        assert_eq!(s.matches("Z").count(), 3);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn shade_color_darkens_with_face_normal() {
+        let rgb = [200u8, 100u8, 50u8, 255u8];
+        // Top face (y+) is brightest; bottom (y-) darker per face_shade().
+        let top = shade_color(rgb, [0.0, 1.0, 0.0]);
+        let bottom = shade_color(rgb, [0.0, -1.0, 0.0]);
+        assert!(
+            top[0] >= bottom[0] && top[1] >= bottom[1] && top[2] >= bottom[2],
+            "top {top:?} should be >= bottom {bottom:?}",
+        );
+    }
+}

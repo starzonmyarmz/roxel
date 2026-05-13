@@ -76,3 +76,88 @@ fn nearest(palette: &[Color], c: Color8) -> u8 {
     }
     best
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::IVec3;
+    use std::path::PathBuf;
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("roxel-test-{pid}-{nanos}-{name}.vox"));
+        p
+    }
+
+    #[test]
+    fn export_roundtrips_through_dot_vox_loader() {
+        let mut g = VoxelGrid::default();
+        g.resize(32);
+        let pts: [(IVec3, [u8; 4]); 3] = [
+            (IVec3::new(0, 0, 0), [255, 0, 0, 255]),
+            (IVec3::new(5, 5, 5), [0, 255, 0, 255]),
+            (IVec3::new(31, 31, 31), [0, 0, 255, 255]),
+        ];
+        for (p, c) in pts {
+            g.set(p, Some(c));
+        }
+        let path = tmp_path("roundtrip");
+        export(&path, &g).expect("export");
+
+        let data = dot_vox::load(path.to_str().unwrap()).expect("dot_vox load");
+        assert_eq!(data.models.len(), 1);
+        let model = &data.models[0];
+        assert_eq!(model.size.x, 32);
+        assert_eq!(model.size.y, 32);
+        assert_eq!(model.size.z, 32);
+        assert_eq!(model.voxels.len(), 3);
+        assert_eq!(data.palette.len(), 256);
+
+        // Verify each placed cell is present with the right RGB.
+        for (p, c) in pts {
+            let v = model
+                .voxels
+                .iter()
+                .find(|v| v.x as i32 == p.x && v.y as i32 == p.y && v.z as i32 == p.z)
+                .expect("voxel present");
+            let col = &data.palette[v.i as usize];
+            assert_eq!([col.r, col.g, col.b], [c[0], c[1], c[2]]);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn export_dedupes_palette_entries() {
+        let mut g = VoxelGrid::default();
+        g.resize(32);
+        let red: [u8; 4] = [200, 0, 0, 255];
+        g.set(IVec3::new(0, 0, 0), Some(red));
+        g.set(IVec3::new(1, 0, 0), Some(red));
+        g.set(IVec3::new(2, 0, 0), Some(red));
+        let path = tmp_path("dedupe");
+        export(&path, &g).expect("export");
+        let data = dot_vox::load(path.to_str().unwrap()).expect("load");
+        let used: std::collections::HashSet<u8> =
+            data.models[0].voxels.iter().map(|v| v.i).collect();
+        assert_eq!(used.len(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn nearest_picks_closest_rgb() {
+        let palette = vec![
+            Color { r: 0, g: 0, b: 0, a: 255 },
+            Color { r: 255, g: 0, b: 0, a: 255 },
+            Color { r: 0, g: 255, b: 0, a: 255 },
+        ];
+        // Closest to pure red.
+        assert_eq!(nearest(&palette, [250, 10, 10, 255]), 1);
+        // Closest to black.
+        assert_eq!(nearest(&palette, [5, 5, 5, 255]), 0);
+    }
+}

@@ -65,3 +65,76 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::IVec3;
+    use std::path::PathBuf;
+
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("roxel-test-{pid}-{nanos}-{name}.obj"));
+        p
+    }
+
+    fn count_prefix(s: &str, prefix: &str) -> usize {
+        s.lines().filter(|l| l.starts_with(prefix)).count()
+    }
+
+    #[test]
+    fn single_voxel_emits_six_faces_24_verts_6_normals() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(1, 1, 1), Some([255, 128, 64, 255]));
+        let path = tmp_path("single");
+        export(&path, &g).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(count_prefix(&s, "v "), 24);
+        assert_eq!(count_prefix(&s, "vn "), 6);
+        assert_eq!(count_prefix(&s, "f "), 6);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn adjacent_voxels_omit_shared_face() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([255, 0, 0, 255]));
+        g.set(IVec3::new(1, 0, 0), Some([0, 255, 0, 255]));
+        let path = tmp_path("adjacent");
+        export(&path, &g).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        // 12 total faces minus 2 shared = 10
+        assert_eq!(count_prefix(&s, "f "), 10);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn vertex_lines_carry_normalized_color() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([255, 0, 0, 255]));
+        let path = tmp_path("color");
+        export(&path, &g).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        // r=1.000 g=0.000 b=0.000 appears on every vertex line
+        let any_red = s.lines().any(|l| l.starts_with("v ") && l.contains("1.000 0.000 0.000"));
+        assert!(any_red, "expected red vertex color line");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn empty_grid_writes_only_header() {
+        let g = VoxelGrid::default();
+        let path = tmp_path("empty");
+        export(&path, &g).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(count_prefix(&s, "v "), 0);
+        assert_eq!(count_prefix(&s, "f "), 0);
+        assert!(s.starts_with("# Exported by Roxel"));
+        let _ = std::fs::remove_file(&path);
+    }
+}
