@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: Roxel-macos.zip
+          - os: windows-latest
+            artifact: Roxel-windows.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Build macOS .app
+        if: matrix.os == 'macos-latest'
+        run: |
+          cargo install cargo-bundle --locked
+          cargo bundle --release
+          cd target/release/bundle/osx
+          zip -r ../../../../Roxel-macos.zip Roxel.app
+
+      - name: Build Windows .exe
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cargo build --release
+          Compress-Archive -Path target/release/Roxel.exe -DestinationPath Roxel-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

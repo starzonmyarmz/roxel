@@ -41,3 +41,6 @@ identifier = "com.danielmarino.roxel"
 icon = ["assets/icons/roxel.icns"]
 category = "public.app-category.graphics-design"
 short_description = "Voxel editor"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"

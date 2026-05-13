@@ -103,6 +103,23 @@ open target/release/bundle/osx/Roxel.app
 
 The bundle picks up `assets/icons/roxel.icns` via `[package.metadata.bundle]` in `Cargo.toml`.
 
+## Releases
+
+Tagged versions trigger a GitHub Actions workflow that builds and uploads
+`Roxel.app` (macOS) and `Roxel.exe` (Windows) to a GitHub Release.
+
+To cut a release:
+
+```sh
+# bump version in Cargo.toml, commit
+git tag v0.3.1
+git push origin v0.3.1
+```
+
+The workflow lives at `.github/workflows/release.yml`. macOS builds are
+**not notarized**, so Gatekeeper will block first-run; right-click → Open.
+Windows builds are unsigned; SmartScreen will warn on first run.
+
 ## File format
 
 `.roxel` projects are RON-serialized:
