@@ -62,6 +62,16 @@ impl History {
             .copied()
     }
 
+    /// Roll the current stroke back to its pre-stroke state and discard it.
+    /// Use when the caller wants to cancel an in-progress, continuously-
+    /// updating stroke (e.g. an interactive drag that the user aborts).
+    pub fn abort(&mut self, grid: &mut VoxelGrid) {
+        let Some(stroke) = self.current.take() else { return; };
+        for d in stroke.deltas.iter().rev() {
+            grid.set(d.pos, d.before);
+        }
+    }
+
     pub fn end(&mut self) {
         let Some(stroke) = self.current.take() else { return; };
         if stroke.deltas.is_empty() {
@@ -212,6 +222,44 @@ mod tests {
         h.begin();
         h.record(&mut g, p, Some([1, 1, 1, 255]));
         assert_eq!(h.pre_stroke_value(p), Some(None));
+    }
+
+    #[test]
+    fn abort_reverts_grid_and_drops_stroke() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let p = IVec3::new(1, 2, 3);
+        h.begin();
+        h.record(&mut g, p, Some([10, 20, 30, 255]));
+        assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+        h.abort(&mut g);
+        assert_eq!(g.get(p), None);
+        assert!(h.current.is_none());
+        assert!(h.undo.is_empty());
+    }
+
+    #[test]
+    fn abort_without_active_stroke_is_noop() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        h.abort(&mut g);
+        assert!(h.undo.is_empty());
+    }
+
+    #[test]
+    fn abort_reverts_multi_cell_writes_in_reverse_order() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let red = [200, 0, 0, 255];
+        g.set(IVec3::new(0, 0, 0), Some(red));
+        h.begin();
+        h.record(&mut g, IVec3::new(0, 0, 0), None);
+        h.record(&mut g, IVec3::new(1, 0, 0), Some(red));
+        h.record(&mut g, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        h.abort(&mut g);
+        // Pre-stroke state restored.
+        assert_eq!(g.get(IVec3::new(0, 0, 0)), Some(red));
+        assert!(g.get(IVec3::new(1, 0, 0)).is_none());
     }
 
     #[test]

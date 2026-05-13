@@ -67,6 +67,7 @@ pub fn tool_label(t: Tool) -> &'static str {
         Tool::Eyedropper => "Pick",
         Tool::Shape => "Shape",
         Tool::Select => "Select",
+        Tool::Move => "Move",
     }
 }
 

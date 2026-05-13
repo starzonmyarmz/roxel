@@ -342,6 +342,8 @@ pub fn ui_system(
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
                 ui.add_space(4.0);
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Move, "Move", "V");
+                ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
             });
         });
@@ -847,7 +849,10 @@ pub fn ui_system(
                 });
 
                 // Selection section
-                if tool.current == Tool::Select || selection.aabb.is_some() {
+                if tool.current == Tool::Select
+                    || tool.current == Tool::Move
+                    || selection.aabb.is_some()
+                {
                     widgets::section(ui, &theme, "Selection", |ui| {
                         if let Some(aabb) = selection.aabb {
                             let extents = aabb.extents();
@@ -888,6 +893,23 @@ pub fn ui_system(
                                 .size(11.0),
                             );
                         }
+                    });
+                }
+
+                // Move section (only when Move tool is active)
+                if tool.current == Tool::Move {
+                    widgets::section(ui, &theme, "Move", |ui| {
+                        ui.label(
+                            egui::RichText::new(
+                                "Drag a selected voxel to slide the selection \
+                                 along the picked face. Hold Shift while \
+                                 dragging to keep it on the same horizontal \
+                                 plane. Arrow keys nudge by 1 voxel along \
+                                 X/Z; Shift + ↑/↓ moves along Y.",
+                            )
+                            .color(theme.text_dim)
+                            .size(11.0),
+                        );
                     });
                 }
 

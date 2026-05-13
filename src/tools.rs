@@ -1,12 +1,13 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick, pick_with};
-use crate::select::{Selection, SelectPhase, SelectState, clear_aabb, recolor_aabb};
+use crate::select::{Selection, SelectPhase, SelectState, SelectionAabb, clear_aabb, recolor_aabb};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
+use std::collections::HashMap;
 
 #[derive(SystemParam)]
 pub struct SelectParams<'w> {
@@ -22,6 +23,7 @@ pub enum Tool {
     Eyedropper,
     Shape,
     Select,
+    Move,
 }
 
 #[derive(Resource)]
@@ -63,6 +65,40 @@ pub struct StrokeAnchor {
     pub axis: usize,
     pub plane_world: f32,
     pub target_layer: i32,
+}
+
+/// Live state for a click-drag move with `Tool::Move`. The drag is anchored
+/// on a face plane just like the Select/Shape tools, so cursor motion maps
+/// to integer cell offsets on the two in-plane axes. The third axis (the
+/// face normal) stays fixed during a drag — use arrow keys for that.
+#[derive(Resource, Default)]
+pub struct MoveDragState {
+    pub active: bool,
+    pub anchor: Option<StrokeAnchor>,
+    pub start_cell: Option<IVec3>,
+    pub applied_delta: IVec3,
+    /// Pre-drag occupied cells inside the selection AABB.
+    pub originals: Vec<(IVec3, Color8)>,
+    pub original_aabb: Option<SelectionAabb>,
+    /// True when the drag started without a prior selection (clicked a bare
+    /// voxel). Selection is cleared on commit so the move stays single-shot.
+    pub ad_hoc: bool,
+    /// What the previous frame wrote, keyed by world cell. Lets the next
+    /// frame restore cells that fall out of the new write set.
+    pub prev_state: HashMap<(i32, i32, i32), Option<Color8>>,
+}
+
+impl MoveDragState {
+    pub fn reset(&mut self) {
+        self.active = false;
+        self.anchor = None;
+        self.start_cell = None;
+        self.applied_delta = IVec3::ZERO;
+        self.originals.clear();
+        self.original_aabb = None;
+        self.prev_state.clear();
+        self.ad_hoc = false;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -195,6 +231,27 @@ fn footprint_center_world(c1: IVec3, c2: IVec3, axis: usize, plane_world: f32) -
         };
     }
     Vec3::from_array(out)
+}
+
+/// Zero out the component of `delta` that runs along the face-normal `axis`
+/// so a drag stays on the picked face plane. When `lock_horizontal` is set
+/// (Shift held), also zero the Y component so the voxel stays on the same
+/// horizontal plane regardless of which face the user grabbed.
+pub(crate) fn constrain_move_delta(
+    delta: IVec3,
+    axis: usize,
+    lock_horizontal: bool,
+) -> IVec3 {
+    let mut out = delta;
+    match axis {
+        0 => out.x = 0,
+        1 => out.y = 0,
+        _ => out.z = 0,
+    }
+    if lock_horizontal {
+        out.y = 0;
+    }
+    out
 }
 
 /// Translate a signed extrude offset into the `(count, dir_sign)` pair that
@@ -500,6 +557,12 @@ pub fn tool_input_system(
         return;
     }
 
+    // Move tool handled by `move_drag_system` (mouse drag) plus
+    // `move_selection_keys_system` (arrow-key nudge). Suppress paint clicks.
+    if tool.current == Tool::Move {
+        return;
+    }
+
     if tool.current == Tool::Shape {
         let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
             && let Some(c) = window.cursor_position()
@@ -608,7 +671,7 @@ pub fn tool_input_system(
                             history.record(&mut grid, cell, Some(color.0));
                         }
                     }
-                    Tool::Eyedropper | Tool::Shape | Tool::Select => {}
+                    Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
                 }
             }
             history.end();
@@ -714,9 +777,210 @@ pub fn tool_input_system(
                     state.last_placed = Some(cell);
                 }
             }
-            Tool::Eyedropper | Tool::Shape | Tool::Select => {}
+            Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
         }
     }
+}
+
+/// Mouse drag for `Tool::Move`. Press inside a selected voxel anchors a face
+/// plane (like the Select tool's footprint phase); drag projects the cursor
+/// onto that plane and translates the selection contents to that integer
+/// cell. Lives in its own system so the painting/picking flow in
+/// `tool_input_system` stays untouched.
+pub fn move_drag_system(
+    mut contexts: EguiContexts,
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<bevy_panorbit_camera::PanOrbitCamera>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut grid: ResMut<VoxelGrid>,
+    mut history: ResMut<History>,
+    tool: Res<ToolState>,
+    mut selection: ResMut<Selection>,
+    mut drag: ResMut<MoveDragState>,
+    gizmo_drag: Res<crate::gizmo::GizmoDrag>,
+    gizmo_rect: Res<crate::gizmo::GizmoRect>,
+) {
+    // Bail if tool switched away mid-drag — revert any partial writes.
+    if tool.current != Tool::Move {
+        if drag.active {
+            history.abort(&mut grid);
+            selection.aabb = if drag.ad_hoc { None } else { drag.original_aabb };
+            drag.reset();
+        }
+        return;
+    }
+
+    let egui_wants = contexts
+        .ctx_mut()
+        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
+        .unwrap_or(false);
+    let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
+        && let Some(c) = window.cursor_position()
+    {
+        rect.contains(c)
+    } else {
+        false
+    };
+    let blocked = egui_wants
+        || gizmo_drag.active
+        || cursor_over_gizmo
+        || keys.pressed(KeyCode::Space)
+        || keys.pressed(KeyCode::KeyZ);
+
+    let lmb_just = mouse.just_pressed(MouseButton::Left);
+    let lmb_pressed = mouse.pressed(MouseButton::Left);
+    let rmb_just = mouse.just_pressed(MouseButton::Right);
+    let esc = keys.just_pressed(KeyCode::Escape);
+
+    // Cancel mid-drag → revert and abandon the stroke.
+    if drag.active && (esc || rmb_just) {
+        history.abort(&mut grid);
+        selection.aabb = if drag.ad_hoc { None } else { drag.original_aabb };
+        drag.reset();
+        return;
+    }
+
+    // Drag start: click on a voxel inside the selection, or any voxel when
+    // no selection exists (ad-hoc single-voxel move).
+    if !drag.active {
+        if !lmb_just || blocked {
+            return;
+        }
+        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
+        let Some(hit) = pick(&grid, origin, dir) else { return; };
+        if !hit.hit_voxel {
+            return;
+        }
+        let (effective_aabb, ad_hoc) = match selection.aabb {
+            Some(aabb) if aabb.contains(hit.cell) => (aabb, false),
+            Some(_) => return, // Click outside an existing selection: ignore.
+            None => (SelectionAabb::from_corners(hit.cell, hit.cell), true),
+        };
+        let axis = axis_of_normal(hit.normal);
+        let n_arr = hit.normal.to_array();
+        let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
+        let cell_arr = hit.cell.to_array();
+        let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
+        let anchor = StrokeAnchor { axis, plane_world, target_layer: cell_arr[axis] };
+        let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
+
+        let originals: Vec<(IVec3, Color8)> = effective_aabb
+            .iter_cells()
+            .filter_map(|p| grid.get(p).map(|c| (p, c)))
+            .collect();
+        if originals.is_empty() {
+            return;
+        }
+        history.begin();
+        drag.active = true;
+        drag.anchor = Some(anchor);
+        drag.start_cell = Some(start_cell);
+        drag.applied_delta = IVec3::ZERO;
+        drag.originals = originals;
+        drag.original_aabb = Some(effective_aabb);
+        drag.prev_state.clear();
+        drag.ad_hoc = ad_hoc;
+        // Show the ad-hoc 1-cell selection while dragging so the overlay
+        // tracks the moving voxel.
+        if ad_hoc {
+            selection.aabb = Some(effective_aabb);
+        }
+        return;
+    }
+
+    // Drag in progress.
+    if lmb_pressed {
+        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
+        let (Some(anchor), Some(start), Some(orig_aabb)) =
+            (drag.anchor, drag.start_cell, drag.original_aabb)
+        else {
+            return;
+        };
+        let Some(target) = anchor_target(&anchor, origin, dir) else { return; };
+        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let new_delta = constrain_move_delta(target - start, anchor.axis, shift);
+        if new_delta == drag.applied_delta {
+            return;
+        }
+        // Refuse shifts that would leave the grid; the cursor can roam past
+        // the edge without dragging voxels into oblivion.
+        let s = grid.size_i();
+        let new_min = orig_aabb.min + new_delta;
+        let new_max = orig_aabb.max + new_delta;
+        if new_min.x < 0 || new_min.y < 0 || new_min.z < 0
+            || new_max.x >= s || new_max.y >= s || new_max.z >= s
+        {
+            return;
+        }
+
+        // Collision check: refuse shifts that would land a moving voxel on
+        // a pre-stroke voxel that isn't part of the moving set. Keeps the
+        // selection from devouring obstacles in its path.
+        let originals_set: std::collections::HashSet<(i32, i32, i32)> = drag
+            .originals
+            .iter()
+            .map(|(p, _)| (p.x, p.y, p.z))
+            .collect();
+        let mut collides = false;
+        for (src, _) in &drag.originals {
+            let dst = *src + new_delta;
+            let key = (dst.x, dst.y, dst.z);
+            if originals_set.contains(&key) {
+                continue;
+            }
+            let pre = match history.pre_stroke_value(dst) {
+                Some(v) => v,
+                None => grid.get(dst),
+            };
+            if pre.is_some() {
+                collides = true;
+                break;
+            }
+        }
+        if collides {
+            return;
+        }
+
+        // Frame's desired write set: sources cleared, destinations colored.
+        let mut new_state: HashMap<(i32, i32, i32), Option<Color8>> = HashMap::new();
+        for (src, _) in &drag.originals {
+            new_state.insert((src.x, src.y, src.z), None);
+        }
+        for (src, color) in &drag.originals {
+            let dst = *src + new_delta;
+            new_state.insert((dst.x, dst.y, dst.z), Some(*color));
+        }
+
+        // Restore any cell written last frame that's no longer in the set
+        // (e.g. a destination from the old delta the user dragged away from).
+        let prev = std::mem::take(&mut drag.prev_state);
+        for key in prev.keys() {
+            if !new_state.contains_key(key) {
+                let p = IVec3::new(key.0, key.1, key.2);
+                let restore = history.pre_stroke_value(p).flatten();
+                history.record(&mut grid, p, restore);
+            }
+        }
+        for (key, value) in &new_state {
+            let p = IVec3::new(key.0, key.1, key.2);
+            history.record(&mut grid, p, *value);
+        }
+        drag.prev_state = new_state;
+        drag.applied_delta = new_delta;
+        selection.aabb = Some(SelectionAabb {
+            min: orig_aabb.min + new_delta,
+            max: orig_aabb.max + new_delta,
+        });
+        return;
+    }
+
+    // LMB released → commit the move.
+    history.end();
+    if drag.ad_hoc {
+        selection.aabb = None;
+    }
+    drag.reset();
 }
 
 pub fn undo_redo_system(
@@ -788,6 +1052,8 @@ pub fn tool_shortcut_system(
         Some(Tool::Shape)
     } else if keys.just_pressed(KeyCode::KeyM) {
         Some(Tool::Select)
+    } else if keys.just_pressed(KeyCode::KeyV) {
+        Some(Tool::Move)
     } else {
         None
     };
@@ -806,6 +1072,35 @@ mod tests {
 
     fn cells_set(cells: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {
         cells.into_iter().map(|c| (c.x, c.y, c.z)).collect()
+    }
+
+    #[test]
+    fn constrain_move_delta_zeros_face_normal_axis() {
+        let d = IVec3::new(3, 5, -2);
+        assert_eq!(constrain_move_delta(d, 0, false), IVec3::new(0, 5, -2));
+        assert_eq!(constrain_move_delta(d, 1, false), IVec3::new(3, 0, -2));
+        assert_eq!(constrain_move_delta(d, 2, false), IVec3::new(3, 5, 0));
+    }
+
+    #[test]
+    fn constrain_move_delta_shift_locks_y_for_horizontal_plane() {
+        // Side face (X axis): in-plane is YZ. Shift drops Y → motion only on Z.
+        let d = IVec3::new(99, 4, -3);
+        assert_eq!(constrain_move_delta(d, 0, true), IVec3::new(0, 0, -3));
+    }
+
+    #[test]
+    fn constrain_move_delta_shift_on_top_face_is_noop_for_y() {
+        // Top face already has Y zeroed; Shift just leaves things alone.
+        let d = IVec3::new(3, 8, -2);
+        assert_eq!(constrain_move_delta(d, 1, true), IVec3::new(3, 0, -2));
+    }
+
+    #[test]
+    fn constrain_move_delta_shift_on_front_face_drops_y() {
+        // Front face (Z axis): in-plane is XY. Shift drops Y → motion only on X.
+        let d = IVec3::new(4, -5, 99);
+        assert_eq!(constrain_move_delta(d, 2, true), IVec3::new(4, 0, 0));
     }
 
     #[test]

@@ -19,6 +19,9 @@ pub fn shapes() -> egui::ImageSource<'static> {
 pub fn box_select() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/box-select.svg")
 }
+pub fn move_tool() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/move.svg")
+}
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn file_plus() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/file-plus.svg")
@@ -73,5 +76,6 @@ pub fn tool(t: Tool) -> egui::ImageSource<'static> {
         Tool::Eyedropper => pipette(),
         Tool::Shape => shapes(),
         Tool::Select => box_select(),
+        Tool::Move => move_tool(),
     }
 }

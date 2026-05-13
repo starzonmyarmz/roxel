@@ -37,7 +37,7 @@ use crate::mesh::{PreviewHide, VoxelChunkMeshes, VoxelMesh, regenerate_mesh_syst
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system};
-use crate::tools::{CurrentColor, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, tool_input_system, tool_shortcut_system, undo_redo_system};
+use crate::tools::{CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, move_drag_system, tool_input_system, tool_shortcut_system, undo_redo_system};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
     resolve_canvas_color, resolve_floor_color, resolve_theme, resolve_wall_color,
@@ -83,6 +83,7 @@ fn main() {
         .init_resource::<PointerState>()
         .init_resource::<ShapeOptions>()
         .init_resource::<ShapeState>()
+        .init_resource::<MoveDragState>()
         .init_resource::<crate::select::Selection>()
         .init_resource::<crate::select::SelectState>()
         .init_resource::<PreviewHide>()
@@ -121,6 +122,7 @@ fn main() {
             (
                 alt_eyedropper_system,
                 tool_input_system,
+                move_drag_system,
                 tool_shortcut_system,
                 undo_redo_system,
                 regenerate_mesh_system,
@@ -133,6 +135,7 @@ fn main() {
                 shape_preview_system.before(regenerate_mesh_system),
                 crate::select::selection_render_system.before(regenerate_mesh_system),
                 crate::select::selection_key_action_system,
+                crate::select::move_selection_keys_system,
                 start_snapshot_system,
                 apply_new_project_system.before(regenerate_mesh_system),
             ),

@@ -50,6 +50,14 @@ Both previews hide while the user is orbiting (RMB), dragging the gizmo, or alre
 
 `Tool::Shape` (rectangle / ellipse / line, configurable via `ShapeOptions`) is two-click: first click anchors corner1 on the picked face, drag previews the 2D footprint, second click commits and lets the user drag along the face normal to extrude (`shapes::extrude` lifts the 2D cell set into a 3D box / cylinder / line column). The shape's in-progress state lives in `ShapeState`; `tool_input_system` checks `state.phase` to route input through the rectangle/ellipse/line cell generators in `shapes.rs`.
 
+`Tool::Select` (`select.rs`) is the same two-phase face-plane drag as Shape but commits an `AABB` into `Selection` instead of writing voxels. `selection_render_system` draws the live AABB outline + filled-cell overlay; `selection_key_action_system` wires Backspace/Delete to `clear_aabb` and Esc to clear the selection.
+
+`Tool::Move` (`select.rs` + `move_drag_system` in `tools.rs`) translates the contents of the active selection by integer cell offsets. Two input paths, both share `MoveDragState` (mouse) and the pure `select::move_selection` helper:
+- **Mouse drag** — `move_drag_system` runs as its own `Update` system. LMB-press on a voxel inside the selection anchors a face plane (same `StrokeAnchor` machinery as Shape/Select); cursor motion projects to that plane and snaps to integer cells via `constrain_move_delta`. The drag locks the face-normal axis; Shift also locks Y so the move stays on the same horizontal plane. A move that would overlap a non-source occupied cell is refused, leaving the selection at the last valid delta. `history.abort` rolls partial writes back when the user RMB / Esc / switches tool mid-drag. Click on a bare voxel with no active selection creates an ad-hoc 1×1×1 selection that is cleared on release.
+- **Arrow keys** — `move_selection_keys_system` calls `move_selection` once per `just_pressed`. ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. Collisions and out-of-bounds shifts are rejected.
+
+Both paths record exactly one history stroke per commit. Mid-drag, frames re-record the same touched cells repeatedly; `History::record` dedupes by overwriting the existing delta's `after` value so the final stroke contains one entry per cell regardless of how many frames the drag spanned.
+
 Three pieces of stroke state in `PointerState` matter for non-shape tools:
 - `anchor` (`StrokeAnchor`) — locks the build plane axis for the duration of a drag so the picker can't slide onto a perpendicular face mid-stroke.
 - `snapshot: Option<VoxelGrid>` — pre-stroke clone of the grid. Ray-picks during a stroke run against this snapshot, not the live grid. Voxels placed earlier in the same stroke are invisible to the picker, which is what kills runaway stacking. Pattern lifted from goxel; `VoxelGrid` derives `Clone` specifically for this. Note: cloning 8 MB per stroke is acceptable at current scale; if `MAX_GRID` grows, revisit.

@@ -115,6 +115,73 @@ pub fn recolor_aabb(
     history.end();
 }
 
+/// Translate every non-empty voxel inside the selection AABB by `delta`,
+/// clearing originals and writing them at their new positions in a single
+/// history stroke. Updates `selection.aabb` to follow. Returns false (no-op)
+/// when `delta` is zero, no selection exists, or the shifted AABB would
+/// leave the grid.
+pub fn move_selection(
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    selection: &mut Selection,
+    delta: IVec3,
+) -> bool {
+    if delta == IVec3::ZERO {
+        return false;
+    }
+    let Some(aabb) = selection.aabb else { return false; };
+
+    let new_min = aabb.min + delta;
+    let new_max = aabb.max + delta;
+    let s = grid.size_i();
+    if new_min.x < 0 || new_min.y < 0 || new_min.z < 0
+        || new_max.x >= s || new_max.y >= s || new_max.z >= s
+    {
+        return false;
+    }
+
+    // Snapshot occupied cells before any mutation so source-clears and
+    // destination-writes overlap cleanly inside one stroke.
+    let occupied: Vec<(IVec3, Color8)> = aabb
+        .iter_cells()
+        .filter_map(|p| grid.get(p).map(|c| (p, c)))
+        .collect();
+
+    if occupied.is_empty() {
+        selection.aabb = Some(SelectionAabb { min: new_min, max: new_max });
+        return true;
+    }
+
+    // Refuse when any destination collides with a voxel outside the moving
+    // set — the move must not destroy unrelated voxels in its path.
+    let source_set: std::collections::HashSet<(i32, i32, i32)> = occupied
+        .iter()
+        .map(|(p, _)| (p.x, p.y, p.z))
+        .collect();
+    for (src, _) in &occupied {
+        let dst = *src + delta;
+        let key = (dst.x, dst.y, dst.z);
+        if source_set.contains(&key) {
+            continue;
+        }
+        if grid.get(dst).is_some() {
+            return false;
+        }
+    }
+
+    history.begin();
+    for (src, _) in &occupied {
+        history.record(grid, *src, None);
+    }
+    for (src, color) in &occupied {
+        history.record(grid, *src + delta, Some(*color));
+    }
+    history.end();
+
+    selection.aabb = Some(SelectionAabb { min: new_min, max: new_max });
+    true
+}
+
 /// Build an in-progress AABB from the current `SelectState` corners + signed
 /// extrude offset along the anchor axis. Returns None during `Idle`.
 ///
@@ -304,6 +371,59 @@ pub fn selection_key_action_system(
     }
 }
 
+/// Arrow keys nudge the selection (and its voxels) by one cell while the
+/// Move tool is active. Left/Right = ∓X, Up/Down = ∓Z (ground plane);
+/// Shift+Up/Down = ±Y (vertical).
+pub fn move_selection_keys_system(
+    mut contexts: bevy_egui::EguiContexts,
+    keys: Res<ButtonInput<KeyCode>>,
+    tool: Res<ToolState>,
+    mut grid: ResMut<VoxelGrid>,
+    mut history: ResMut<History>,
+    mut selection: ResMut<Selection>,
+) {
+    if tool.current != Tool::Move {
+        return;
+    }
+    if selection.aabb.is_none() {
+        return;
+    }
+    let egui_wants = contexts
+        .ctx_mut()
+        .map(|c| c.wants_keyboard_input())
+        .unwrap_or(false);
+    if egui_wants {
+        return;
+    }
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let mut delta = IVec3::ZERO;
+    if keys.just_pressed(KeyCode::ArrowLeft) {
+        delta.x -= 1;
+    }
+    if keys.just_pressed(KeyCode::ArrowRight) {
+        delta.x += 1;
+    }
+    if shift {
+        if keys.just_pressed(KeyCode::ArrowUp) {
+            delta.y += 1;
+        }
+        if keys.just_pressed(KeyCode::ArrowDown) {
+            delta.y -= 1;
+        }
+    } else {
+        if keys.just_pressed(KeyCode::ArrowUp) {
+            delta.z -= 1;
+        }
+        if keys.just_pressed(KeyCode::ArrowDown) {
+            delta.z += 1;
+        }
+    }
+    if delta == IVec3::ZERO {
+        return;
+    }
+    move_selection(&mut grid, &mut history, &mut selection, delta);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,6 +597,162 @@ mod tests {
     fn selection_default_has_no_aabb() {
         let sel = Selection::default();
         assert!(sel.aabb.is_none());
+    }
+
+    #[test]
+    fn move_selection_translates_voxels_and_updates_aabb() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1)]);
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(2, 1, 1),
+            )),
+        };
+        let mut history = History::default();
+        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(3, 0, 0)));
+        assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
+        assert!(grid.get(IVec3::new(2, 1, 1)).is_none());
+        assert_eq!(grid.get(IVec3::new(4, 1, 1)), Some(red));
+        assert_eq!(grid.get(IVec3::new(5, 1, 1)), Some(red));
+        let aabb = selection.aabb.unwrap();
+        assert_eq!(aabb.min, IVec3::new(4, 1, 1));
+        assert_eq!(aabb.max, IVec3::new(5, 1, 1));
+    }
+
+    #[test]
+    fn move_selection_overlapping_translation_preserves_voxels() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(3, 1, 1)]);
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(3, 1, 1),
+            )),
+        };
+        let mut history = History::default();
+        // Shift by +1 along X — destination overlaps with source.
+        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
+        assert_eq!(grid.get(IVec3::new(2, 1, 1)), Some(red));
+        assert_eq!(grid.get(IVec3::new(3, 1, 1)), Some(red));
+        assert_eq!(grid.get(IVec3::new(4, 1, 1)), Some(red));
+    }
+
+    #[test]
+    fn move_selection_refuses_when_destination_hits_unrelated_voxel() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        let blue = [0, 0, 200, 255];
+        grid.set(IVec3::new(1, 1, 1), Some(red));
+        // Obstacle one cell away — not in selection.
+        grid.set(IVec3::new(2, 1, 1), Some(blue));
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(1, 1, 1),
+            )),
+        };
+        let mut history = History::default();
+        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        // Both voxels preserved, no stroke recorded.
+        assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(red));
+        assert_eq!(grid.get(IVec3::new(2, 1, 1)), Some(blue));
+        assert!(history.undo.is_empty());
+        assert_eq!(selection.aabb.unwrap().min, IVec3::new(1, 1, 1));
+    }
+
+    #[test]
+    fn move_selection_allows_overlapping_translation_within_self() {
+        // Translation overlap with source set itself is allowed (the moving
+        // selection sliding partly into its old footprint).
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(3, 1, 1)]);
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(3, 1, 1),
+            )),
+        };
+        let mut history = History::default();
+        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn move_selection_out_of_bounds_is_noop() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(0, 0, 0),
+                IVec3::new(0, 0, 0),
+            )),
+        };
+        let mut history = History::default();
+        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::new(-1, 0, 0)));
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(red));
+        assert_eq!(selection.aabb.unwrap().min, IVec3::new(0, 0, 0));
+        assert!(history.undo.is_empty());
+    }
+
+    #[test]
+    fn move_selection_zero_delta_is_noop() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(1, 1, 1), Some([1, 2, 3, 255]));
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(1, 1, 1),
+            )),
+        };
+        let mut history = History::default();
+        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::ZERO));
+        assert!(history.undo.is_empty());
+    }
+
+    #[test]
+    fn move_selection_records_single_undoable_stroke() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        let pts = [IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(2, 2, 1)];
+        fill_grid(&mut grid, red, &pts);
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(1, 1, 1),
+                IVec3::new(2, 2, 1),
+            )),
+        };
+        let mut history = History::default();
+        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(0, 0, 1)));
+        assert_eq!(history.undo.len(), 1);
+        history.undo(&mut grid);
+        for p in &pts {
+            assert_eq!(grid.get(*p), Some(red));
+        }
+        for p in &pts {
+            assert!(grid.get(*p + IVec3::new(0, 0, 1)).is_none() || pts.contains(&(*p + IVec3::new(0, 0, 1))));
+        }
+    }
+
+    #[test]
+    fn move_selection_empty_selection_just_slides_aabb() {
+        let mut grid = VoxelGrid::default();
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(0, 0, 0),
+                IVec3::new(2, 2, 2),
+            )),
+        };
+        let mut history = History::default();
+        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(history.undo.is_empty());
+        let aabb = selection.aabb.unwrap();
+        assert_eq!(aabb.min, IVec3::new(1, 0, 0));
+        assert_eq!(aabb.max, IVec3::new(3, 2, 2));
     }
 
     #[test]
