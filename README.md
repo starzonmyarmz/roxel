@@ -7,23 +7,14 @@ Minimal voxel editor built with [Bevy](https://bevyengine.org/) and [egui](https
 - Brush, erase, recolor, eyedrop, shape, select, and move tools on a variable-size 3D voxel grid (32 / 64 / 96 / 128 per axis)
 - Shape tool: rectangle, ellipse, line — 2D on the active build plane or extruded into a 3D box / cylinder / line
 - Select tool: drag a 3D AABB on a face plane, then bulk delete / recolor inside it
-- Move tool: drag a selected voxel along the picked face plane (Shift locks to the same horizontal plane) or arrow-key nudge by 1 voxel; click a bare voxel with no selection to move just that voxel
-- Translucent brush + shape previews with a contrast-aware outline (toggleable in Preferences)
+- Move tool: drag a selected voxel along the picked face plane or arrow-key nudge; click a bare voxel with no selection to move just that voxel
 - Shift+click line draw between the last placed voxel and the cursor
-- Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes — add a swatch, new/duplicate/rename/delete, drag to reorder, persisted to `palettes.ron`
-- Orbit / pan / zoom camera (powered by `bevy_panorbit_camera`) with isometric default angle
-- Panel-aware `F` frame-view and live zoom % readout
-- Per-chunk greedy mesher — large grids stay snappy because only edited chunks rebuild
-- Undo / redo history (capped at 200 strokes)
-- New-project dialog with a grid-size picker (resets camera + planes)
+- Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes with add/new/duplicate/rename/delete and drag-to-reorder
+- Orbit / pan / zoom camera with isometric default angle
 - Save / load `.roxel` project files (RON)
 - Export to MagicaVoxel `.vox`, Wavefront `.obj`, Autodesk `.fbx` (binary 7.4), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
-- Light / Dark / System themes with separate canvas, floor, and wall color preferences (persisted to `~/.config/roxel/preferences.ron`)
-- Toggle floor / back+left walls independently
-- Custom UI fonts: Nunito (400/500/600/700) for UI text, DM Mono (400) for hex codes and stats
-- Native macOS menu bar (File / Edit / View shortcuts wired into the editor)
-- App icon for window/dock + bundled `.icns` for `cargo bundle`
+- Light / Dark / System themes with separate canvas, floor, and wall color preferences
 
 ## Run
 
@@ -35,63 +26,29 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 
 ## Controls
 
-| Key                      | Action                                                  |
-| ------------------------ | ------------------------------------------------------- |
-| `B`                      | Brush                                                   |
-| `E`                      | Erase                                                   |
-| `P`                      | Paint (recolor existing voxel)                          |
-| `I`                      | Eyedropper                                              |
-| `S`                      | Shape (rect / ellipse / line; 2D or extruded)           |
-| `M`                      | Select (drag a 3D AABB on a face plane)                 |
+| Key                      | Action                                                         |
+| ------------------------ | -------------------------------------------------------------- |
+| `B`                      | Brush                                                          |
+| `E`                      | Erase                                                          |
+| `P`                      | Paint (recolor existing voxel)                                 |
+| `I`                      | Eyedropper                                                     |
+| `S`                      | Shape (rect / ellipse / line; 2D or extruded)                  |
+| `M`                      | Select (drag a 3D AABB on a face plane)                        |
 | `V`                      | Move (drag a selected voxel; click bare voxel for ad-hoc move) |
-| `Alt` (hold)             | Temporary eyedropper; releases back to previous tool    |
-| `Shift` + click          | Draw a 3D line from the last placed voxel to the cursor |
-| `←` / `→` / `↑` / `↓`    | Nudge selection 1 voxel on X / Z (Move tool)            |
-| `Shift` + `↑` / `↓`      | Nudge selection 1 voxel on Y (Move tool)                |
-| `Shift` + drag           | Lock Move drag to the same horizontal plane             |
-| `Backspace` / `Delete`   | Clear voxels inside the active selection                |
-| `Space` + left-drag      | Pan (Figma/Photoshop style)                             |
-| `Z` + left-click         | Zoom in 2× toward target                                |
-| `Alt` + `Z` + left-click | Zoom out 2×                                             |
-| `Cmd/Ctrl + Z`           | Undo                                                    |
-| `Cmd/Ctrl + Shift + Z`   | Redo                                                    |
-| `F`                      | Frame view on the voxel cluster (panel-aware)           |
-
-Cursor reflects the active modifier: crosshair (default), grab (Space or gizmo hover), grabbing (RMB orbit or gizmo drag), zoom-in/zoom-out (Z / Alt+Z), pointing hand (Alt sticky-eyedropper). The brush/shape preview hides while orbiting (RMB) or dragging the orientation gizmo so it doesn't distract.
+| `Alt` (hold)             | Temporary eyedropper; releases back to previous tool           |
+| `Shift` + click          | Draw a 3D line from the last placed voxel to the cursor        |
+| `←` / `→` / `↑` / `↓`    | Nudge selection 1 voxel on X / Z (Move tool)                   |
+| `Shift` + `↑` / `↓`      | Nudge selection 1 voxel on Y (Move tool)                       |
+| `Shift` + drag           | Lock Move drag to the same horizontal plane                    |
+| `Backspace` / `Delete`   | Clear voxels inside the active selection                       |
+| `Space` + left-drag      | Pan (Figma/Photoshop style)                                    |
+| `Z` + left-click         | Zoom in 2× toward target                                       |
+| `Alt` + `Z` + left-click | Zoom out 2×                                                    |
+| `Cmd/Ctrl + Z`           | Undo                                                           |
+| `Cmd/Ctrl + Shift + Z`   | Redo                                                           |
+| `F`                      | Frame view on the voxel cluster (panel-aware)                  |
 
 Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
-
-## Project layout
-
-```
-src/
-  main.rs           app + plugin setup, scene/floor/wall spawn, new-project apply
-  ui.rs             egui panels, toolbar, palette UI, async file dialogs
-  menu.rs           macOS native menu bar (File / Edit + accelerators)
-  theme.rs          Theme resource, Preferences (theme + canvas/floor/wall + outline), font setup
-  icon.rs           window + macOS dock icon
-  tools.rs          brush/erase/paint/eyedropper/shape/move + line draw + shortcuts + undo
-  select.rs         AABB selection (drag), Backspace clear, arrow-key + drag move
-  preview.rs        translucent brush-target ghost cuboid + outline
-  shape_preview.rs  shape tool ghost mesh + outline
-  picking.rs        ray → voxel hit testing (DDA + floor fallback)
-  shapes.rs         rect / ellipse / line2d cell generators + extrude
-  grid.rs           VoxelGrid resource, chunk dirty flags, New-project state
-  mesh.rs           chunked greedy mesher (sRGB-linear vertex colors)
-  camera.rs         pan-orbit camera setup, panel-aware frame-view, Z-key zoom
-  lighting.rs       fixed scene lighting
-  gizmo.rs          orientation gizmo overlay + drag-to-orbit
-  history.rs        undo/redo stacks
-  snapshot.rs       transparent PNG export pipeline
-  io/
-    project.rs      .roxel save/load (RON)
-    vox.rs          .vox export
-    obj.rs          .obj export
-    fbx.rs          .fbx export (binary 7.4)
-    svg.rs          .svg export of current view
-    ase.rs          .ase palette import/export
-    palettes.rs     user-palette persistence (palettes.ron)
-```
 
 ## Packaging a macOS .app
 
