@@ -197,36 +197,10 @@ fn footprint_center_world(c1: IVec3, c2: IVec3, axis: usize, plane_world: f32) -
     Vec3::from_array(out)
 }
 
-fn thickness_from_ray(
-    anchor: &StrokeAnchor,
-    normal_sign: i32,
-    footprint_center: Vec3,
-    origin: Vec3,
-    dir: Vec3,
-) -> i32 {
-    let mut line_dir = [0.0f32; 3];
-    line_dir[anchor.axis] = 1.0;
-    let l = Vec3::from_array(line_dir);
-    let r = origin - footprint_center;
-    let a = dir.dot(dir);
-    let b = dir.dot(l);
-    let c = l.dot(l);
-    let dd = dir.dot(r);
-    let e = l.dot(r);
-    let denom = a * c - b * b;
-    if denom.abs() < 1e-6 {
-        return 1;
-    }
-    let s = (a * e - b * dd) / denom;
-    let dist = s * normal_sign as f32;
-    dist.max(1.0).ceil() as i32
-}
-
-/// Signed extrude offset for the Select tool: cells away from the anchor plane
-/// in the normal direction (positive) or back into the surface (negative).
-/// Unlike `thickness_from_ray` this does not clamp to `>= 1`, so a Select drag
-/// can grow the AABB in either direction along the anchor axis.
-fn select_offset_from_ray(
+/// Signed extrude offset: cells away from the anchor plane in the normal
+/// direction (positive) or back into the surface (negative). `0` means the
+/// cursor is still on the anchor plane, i.e. a single-cell-deep extrude.
+fn signed_offset_from_ray(
     anchor: &StrokeAnchor,
     normal_sign: i32,
     footprint_center: Vec3,
@@ -248,8 +222,6 @@ fn select_offset_from_ray(
     }
     let s = (a * e - b * dd) / denom;
     let dist = s * normal_sign as f32;
-    // Round toward zero for the inside cell, away from zero outward, so the
-    // ghost grows by one cell as soon as the cursor crosses the next slab.
     if dist >= 0.0 {
         dist.floor() as i32
     } else {
@@ -274,7 +246,13 @@ fn shape_commit(
         ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
-    let cells = extrude(&base, anchor.axis, state.thickness.max(1), state.normal_sign);
+    // state.thickness is a signed offset: 0 = on-plane slab, +N = N cells out
+    // in the normal direction, -N = N cells back into the surface. Translate
+    // to extrude's (count, dir) pair.
+    let offset = state.thickness;
+    let count = offset.unsigned_abs() as i32 + 1;
+    let dir_sign = if offset >= 0 { state.normal_sign } else { -state.normal_sign };
+    let cells = extrude(&base, anchor.axis, count, dir_sign);
     history.begin();
     for cell in cells {
         if grid.in_bounds(cell) {
@@ -334,7 +312,7 @@ fn shape_input(
             state.normal_sign = sign;
             state.corner1 = Some(start_cell);
             state.corner2 = Some(start_cell);
-            state.thickness = 1;
+            state.thickness = 0;
         }
         Some(ShapePhase::Footprint) => {
             let Some(anchor) = state.anchor else { return; };
@@ -343,14 +321,15 @@ fn shape_input(
             }
             if lmb_released {
                 state.phase = Some(ShapePhase::Extrude);
-                state.thickness = 1;
+                state.thickness = 0;
             }
         }
         Some(ShapePhase::Extrude) => {
             let Some(anchor) = state.anchor else { return; };
             let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
             let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
-            state.thickness = thickness_from_ray(&anchor, state.normal_sign, center, origin, dir);
+            state.thickness =
+                signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
             if lmb_just && !blocked {
                 shape_commit(options, state, grid, history, color, recent);
             }
@@ -431,7 +410,7 @@ fn select_input(
             let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
             let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
             state.thickness =
-                select_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
+                signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
             if lmb_just && !blocked {
                 select_commit(state, selection);
             }

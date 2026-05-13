@@ -81,8 +81,11 @@ pub fn shape_preview_system(
         ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
-    let sign = if state.normal_sign == 0 { 1 } else { state.normal_sign };
-    let cells = extrude(&base, anchor.axis, state.thickness.max(1), sign);
+    let base_sign = if state.normal_sign == 0 { 1 } else { state.normal_sign };
+    let offset = state.thickness;
+    let count = offset.unsigned_abs() as i32 + 1;
+    let dir_sign = if offset >= 0 { base_sign } else { -base_sign };
+    let cells = extrude(&base, anchor.axis, count, dir_sign);
 
     let Some(mesh) = meshes.get_mut(&handles.mesh) else {
         *vis = Visibility::Hidden;
