@@ -265,6 +265,27 @@ fn icon_undo() -> egui::ImageSource<'static> {
 fn icon_redo() -> egui::ImageSource<'static> {
     egui::include_image!("../assets/icons/redo.svg")
 }
+fn icon_plus() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/plus.svg")
+}
+fn icon_copy() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/copy.svg")
+}
+fn icon_pencil() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/pencil.svg")
+}
+fn icon_trash() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/trash-2.svg")
+}
+fn icon_upload() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/upload.svg")
+}
+fn icon_check() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/check.svg")
+}
+fn icon_x() -> egui::ImageSource<'static> {
+    egui::include_image!("../assets/icons/x.svg")
+}
 
 fn tool_icon(t: Tool) -> egui::ImageSource<'static> {
     match t {
@@ -616,7 +637,7 @@ pub fn ui_system(
                 }),
         )
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
                 let inner_frame = egui::Frame::default()
                     .inner_margin(egui::Margin {
                         left: 0,
@@ -679,53 +700,58 @@ pub fn ui_system(
                             );
                         });
                     });
+                });
 
-                    ui.add_space(8.0);
-                    if palette_choice.0 >= palettes.0.len() {
-                        palette_choice.0 = 0;
-                    }
-                    let active_idx = palette_choice.0;
-                    let active_is_builtin = palettes.0[active_idx].builtin;
+                if palette_choice.0 >= palettes.0.len() {
+                    palette_choice.0 = 0;
+                }
+                let dialog_busy = pending.is_active();
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Palette").color(TEXT_DIM).size(11.0));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let selected_label = if active_is_builtin {
-                                format!("🔒 {}", palettes.0[active_idx].name)
-                            } else {
-                                palettes.0[active_idx].name.clone()
-                            };
-                            egui::ComboBox::from_id_salt("palette_combo")
-                                .selected_text(selected_label)
-                                .width(140.0)
-                                .show_ui(ui, |ui| {
-                                    for (i, p) in palettes.0.iter().enumerate() {
-                                        let label = if p.builtin {
-                                            format!("🔒 {}", p.name)
-                                        } else {
-                                            p.name.clone()
-                                        };
-                                        ui.selectable_value(&mut palette_choice.0, i, label);
-                                    }
-                                });
+                // Palette section
+                section(ui, &theme, "Palette", |ui| {
+                    let mut active_idx = palette_choice.0;
+                    let mut active_is_builtin = palettes.0[active_idx].builtin;
+
+                    // Buffer so widget frames don't overflow and auto-grow the SidePanel.
+                    let row_w = (ui.available_width() - 2.0).max(80.0);
+                    let selected_label = if active_is_builtin {
+                        format!("🔒 {}", palettes.0[active_idx].name)
+                    } else {
+                        palettes.0[active_idx].name.clone()
+                    };
+                    egui::ComboBox::from_id_salt("palette_combo")
+                        .selected_text(selected_label)
+                        .width(row_w)
+                        .show_ui(ui, |ui| {
+                            for (i, p) in palettes.0.iter().enumerate() {
+                                let label = if p.builtin {
+                                    format!("🔒 {}", p.name)
+                                } else {
+                                    p.name.clone()
+                                };
+                                ui.selectable_value(&mut palette_choice.0, i, label);
+                            }
                         });
-                    });
 
-                    // Inline rename for user palettes
                     if palette_rename.editing == Some(active_idx) && !active_is_builtin {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
                             let resp = ui.add(
                                 egui::TextEdit::singleline(&mut palette_rename.buf)
-                                    .desired_width(160.0),
+                                    .desired_width((row_w - 76.0).max(60.0)),
                             );
                             if !resp.has_focus() && !resp.lost_focus() {
                                 resp.request_focus();
                             }
-                            let commit = ui.button("✓").clicked()
+                            let commit = icon_only_button(ui, &theme, icon_check(), true)
+                                .on_hover_text("Save name")
+                                .clicked()
                                 || (resp.lost_focus()
                                     && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                            let cancel = ui.button("✕").clicked()
+                            let cancel = icon_only_button(ui, &theme, icon_x(), true)
+                                .on_hover_text("Cancel")
+                                .clicked()
                                 || ui.input(|i| i.key_pressed(egui::Key::Escape));
                             if commit {
                                 let trimmed = palette_rename.buf.trim();
@@ -742,13 +768,12 @@ pub fn ui_system(
                         });
                     }
 
-                    ui.add_space(4.0);
-                    let dialog_busy = pending.is_active();
-                    // Row 1: palette management
+                    ui.add_space(6.0);
+                    // Toolbar: palette mgmt left, .ase IO right
                     ui.horizontal(|ui| {
-                        if ui
-                            .add(egui::Button::new(egui::RichText::new("New").size(11.0)))
-                            .on_hover_text("Create empty user palette")
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        if icon_only_button(ui, &theme, icon_plus(), true)
+                            .on_hover_text("New palette")
                             .clicked()
                         {
                             let name = next_palette_name(&palettes.0);
@@ -759,12 +784,12 @@ pub fn ui_system(
                             });
                             palette_choice.0 = palettes.0.len() - 1;
                             palette_rename.editing = Some(palette_choice.0);
-                            palette_rename.buf = palettes.0[palette_choice.0].name.clone();
+                            palette_rename.buf =
+                                palettes.0[palette_choice.0].name.clone();
                             io::palettes::save(&palettes.0);
                         }
-                        if ui
-                            .add(egui::Button::new(egui::RichText::new("Duplicate").size(11.0)))
-                            .on_hover_text("Copy active palette into a new user palette")
+                        if icon_only_button(ui, &theme, icon_copy(), true)
+                            .on_hover_text("Duplicate palette")
                             .clicked()
                         {
                             let src = &palettes.0[active_idx];
@@ -783,185 +808,252 @@ pub fn ui_system(
                             palette_choice.0 = palettes.0.len() - 1;
                             io::palettes::save(&palettes.0);
                         }
-                        if ui
-                            .add_enabled(
-                                !active_is_builtin,
-                                egui::Button::new(egui::RichText::new("Rename").size(11.0)),
-                            )
+                        if icon_only_button(ui, &theme, icon_pencil(), !active_is_builtin)
                             .on_hover_text(if active_is_builtin {
                                 "Built-in palettes are read-only"
                             } else {
-                                "Rename this palette"
+                                "Rename palette"
                             })
                             .clicked()
                         {
                             palette_rename.editing = Some(active_idx);
                             palette_rename.buf = palettes.0[active_idx].name.clone();
                         }
-                        if ui
-                            .add_enabled(
-                                !active_is_builtin && palettes.0.iter().filter(|p| !p.builtin).count() > 0,
-                                egui::Button::new(egui::RichText::new("Delete").size(11.0)),
-                            )
+                        let has_user =
+                            palettes.0.iter().filter(|p| !p.builtin).count() > 0;
+                        let del_enabled = !active_is_builtin && has_user;
+                        if icon_only_button(ui, &theme, icon_trash(), del_enabled)
                             .on_hover_text(if active_is_builtin {
                                 "Built-in palettes can't be deleted"
                             } else {
-                                "Delete this palette"
+                                "Delete palette"
                             })
                             .clicked()
                         {
                             palettes.0.remove(active_idx);
                             if palette_choice.0 >= palettes.0.len() {
-                                palette_choice.0 = palettes.0.len().saturating_sub(1);
+                                palette_choice.0 =
+                                    palettes.0.len().saturating_sub(1);
                             }
                             palette_rename.editing = None;
                             io::palettes::save(&palettes.0);
                         }
-                    });
 
-                    ui.add_space(4.0);
-                    // Row 2: swatch + .ase IO
-                    ui.horizontal(|ui| {
-                        let add_enabled = !active_is_builtin
-                            && !palettes.0[active_idx].colors.contains(&color.0);
-                        if ui
-                            .add_enabled(
-                                add_enabled,
-                                egui::Button::new(egui::RichText::new("+ Add color").size(11.0)),
-                            )
-                            .on_hover_text(if active_is_builtin {
-                                "Duplicate this palette first to edit it"
-                            } else if !add_enabled {
-                                "Color already in palette"
-                            } else {
-                                "Add current color as a swatch"
-                            })
-                            .clicked()
-                        {
-                            palettes.0[active_idx].colors.push(color.0);
-                            io::palettes::save(&palettes.0);
-                        }
-                        if ui
-                            .add_enabled(!dialog_busy, egui::Button::new(
-                                egui::RichText::new("Import .ase…").size(11.0),
-                            ))
-                            .on_hover_text("Import an Adobe Swatch Exchange palette")
-                            .clicked()
-                        {
-                            pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
-                                    .add_filter("Adobe Swatch Exchange", &["ase"])
-                                    .pick_file()
-                                    .await
-                                    .map(|f| DialogResult::ImportAse(f.path().to_path_buf()))
-                            });
-                        }
-                        let current = &palettes.0[active_idx];
-                        let export_name = current.name.clone();
-                        let export_colors = current.colors.clone();
-                        let default_filename = format!(
-                            "{}.ase",
-                            sanitize_filename(&current.name)
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                let safe_idx = palette_choice
+                                    .0
+                                    .min(palettes.0.len().saturating_sub(1));
+                                let current = &palettes.0[safe_idx];
+                                let export_name = current.name.clone();
+                                let export_colors = current.colors.clone();
+                                let default_filename = format!(
+                                    "{}.ase",
+                                    sanitize_filename(&current.name)
+                                );
+                                if icon_only_button(
+                                    ui,
+                                    &theme,
+                                    icon_download(),
+                                    !dialog_busy,
+                                )
+                                .on_hover_text("Export .ase…")
+                                .clicked()
+                                {
+                                    pending.spawn(async move {
+                                        rfd::AsyncFileDialog::new()
+                                            .add_filter(
+                                                "Adobe Swatch Exchange",
+                                                &["ase"],
+                                            )
+                                            .set_file_name(&default_filename)
+                                            .save_file()
+                                            .await
+                                            .map(|f| {
+                                                DialogResult::ExportAse(
+                                                    f.path().to_path_buf(),
+                                                    export_name,
+                                                    export_colors,
+                                                )
+                                            })
+                                    });
+                                }
+                                if icon_only_button(
+                                    ui,
+                                    &theme,
+                                    icon_upload(),
+                                    !dialog_busy,
+                                )
+                                .on_hover_text("Import .ase…")
+                                .clicked()
+                                {
+                                    pending.spawn(async move {
+                                        rfd::AsyncFileDialog::new()
+                                            .add_filter(
+                                                "Adobe Swatch Exchange",
+                                                &["ase"],
+                                            )
+                                            .pick_file()
+                                            .await
+                                            .map(|f| {
+                                                DialogResult::ImportAse(
+                                                    f.path().to_path_buf(),
+                                                )
+                                            })
+                                    });
+                                }
+                            },
                         );
-                        if ui
-                            .add_enabled(!dialog_busy, egui::Button::new(
-                                egui::RichText::new("Export .ase…").size(11.0),
-                            ))
-                            .on_hover_text("Export current palette as Adobe Swatch Exchange")
-                            .clicked()
-                        {
-                            pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
-                                    .add_filter("Adobe Swatch Exchange", &["ase"])
-                                    .set_file_name(&default_filename)
-                                    .save_file()
-                                    .await
-                                    .map(|f| DialogResult::ExportAse(
-                                        f.path().to_path_buf(),
-                                        export_name,
-                                        export_colors,
-                                    ))
-                            });
-                        }
                     });
 
-                    ui.add_space(4.0);
+                    // Refresh — toolbar may have added/removed palettes.
+                    active_idx = palette_choice
+                        .0
+                        .min(palettes.0.len().saturating_sub(1));
+                    palette_choice.0 = active_idx;
+                    active_is_builtin = palettes.0[active_idx].builtin;
 
-                    // Swatch grid: drag-reorder + right-click remove for user palettes
+                    ui.add_space(6.0);
+                    let add_enabled = !active_is_builtin
+                        && !palettes.0[active_idx].colors.contains(&color.0);
+                    let add_icon = egui::Image::new(icon_plus())
+                        .fit_to_exact_size(egui::vec2(13.0, 13.0))
+                        .tint(if add_enabled { theme.text } else { theme.text_dim });
+                    if ui
+                        .scope(|ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(8.0, 0.0);
+                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+                            ui.add_enabled(
+                                add_enabled,
+                                egui::Button::image_and_text(
+                                    add_icon,
+                                    egui::RichText::new("Add current color").size(11.5),
+                                )
+                                .min_size(egui::vec2(row_w, 26.0))
+                                .corner_radius(egui::CornerRadius::same(5))
+                                .stroke(egui::Stroke::new(0.5, theme.border)),
+                            )
+                        })
+                        .inner
+                        .on_hover_text(if active_is_builtin {
+                            "Duplicate this palette first to edit it"
+                        } else if !add_enabled {
+                            "Color already in palette"
+                        } else {
+                            "Add current color as a swatch"
+                        })
+                        .clicked()
+                    {
+                        palettes.0[active_idx].colors.push(color.0);
+                        io::palettes::save(&palettes.0);
+                    }
+
+                    ui.add_space(8.0);
                     let mut reorder: Option<(usize, usize)> = None;
                     let mut remove_idx: Option<usize> = None;
                     let active_palette = palettes.0[active_idx].colors.clone();
                     let editable = !active_is_builtin;
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-                        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-                        for (si, c) in active_palette.iter().enumerate() {
-                            let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
-                            let is_current = color.0 == *c;
-                            let stroke = if is_current {
-                                egui::Stroke::new(2.0, ACCENT)
-                            } else {
-                                egui::Stroke::new(0.5, theme.border)
-                            };
-                            let swatch_id = egui::Id::new(("swatch", active_idx, si));
-                            let mut clicked = false;
-                            let resp = if editable {
-                                ui.dnd_drag_source(swatch_id, si, |ui| {
+                    if active_palette.is_empty() {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(if editable {
+                                    "No swatches yet — add the current color above"
+                                } else {
+                                    "Empty palette"
+                                })
+                                .color(theme.text_dim)
+                                .size(11.0)
+                                .italics(),
+                            )
+                            .wrap(),
+                        );
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+                            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                            for (si, c) in active_palette.iter().enumerate() {
+                                let col = egui::Color32::from_rgba_unmultiplied(
+                                    c[0], c[1], c[2], 255,
+                                );
+                                let is_current = color.0 == *c;
+                                let stroke = if is_current {
+                                    egui::Stroke::new(2.0, ACCENT)
+                                } else {
+                                    egui::Stroke::new(0.5, theme.border)
+                                };
+                                let swatch_id =
+                                    egui::Id::new(("swatch", active_idx, si));
+                                let mut clicked = false;
+                                let resp = if editable {
+                                    ui.dnd_drag_source(swatch_id, si, |ui| {
+                                        let r = ui.add_sized(
+                                            [22.0, 22.0],
+                                            egui::Button::new("")
+                                                .fill(col)
+                                                .stroke(stroke)
+                                                .corner_radius(
+                                                    egui::CornerRadius::same(4),
+                                                ),
+                                        );
+                                        clicked = r.clicked();
+                                        r
+                                    })
+                                    .response
+                                } else {
                                     let r = ui.add_sized(
-                                        [20.0, 20.0],
+                                        [22.0, 22.0],
                                         egui::Button::new("")
                                             .fill(col)
                                             .stroke(stroke)
-                                            .corner_radius(egui::CornerRadius::same(4)),
+                                            .corner_radius(
+                                                egui::CornerRadius::same(4),
+                                            ),
                                     );
                                     clicked = r.clicked();
                                     r
-                                })
-                                .response
-                            } else {
-                                let r = ui.add_sized(
-                                    [20.0, 20.0],
-                                    egui::Button::new("")
-                                        .fill(col)
-                                        .stroke(stroke)
-                                        .corner_radius(egui::CornerRadius::same(4)),
-                                );
-                                clicked = r.clicked();
-                                r
-                            };
-                            if clicked {
-                                color.0 = *c;
-                            }
-                            if editable {
-                                egui::Popup::context_menu(&resp).show(|ui| {
-                                    if ui.button("Remove").clicked() {
-                                        remove_idx = Some(si);
-                                        ui.close();
-                                    }
-                                });
-                            }
-                            resp.clone().on_hover_text(format!(
-                                "#{:02X}{:02X}{:02X}{}",
-                                c[0],
-                                c[1],
-                                c[2],
-                                if editable { "  (drag to reorder, right-click to remove)" } else { "" },
-                            ));
-                            if editable {
-                                if let (Some(payload), true) = (
-                                    resp.dnd_release_payload::<usize>(),
-                                    resp.dnd_hover_payload::<usize>().is_some()
-                                        || resp.dnd_release_payload::<usize>().is_some(),
-                                ) {
-                                    let from = *payload;
-                                    if from != si {
-                                        reorder = Some((from, si));
+                                };
+                                if clicked {
+                                    color.0 = *c;
+                                }
+                                if editable {
+                                    egui::Popup::context_menu(&resp).show(|ui| {
+                                        if ui.button("Remove").clicked() {
+                                            remove_idx = Some(si);
+                                            ui.close();
+                                        }
+                                    });
+                                }
+                                resp.clone().on_hover_text(format!(
+                                    "#{:02X}{:02X}{:02X}{}",
+                                    c[0],
+                                    c[1],
+                                    c[2],
+                                    if editable {
+                                        "  (drag to reorder, right-click to remove)"
+                                    } else {
+                                        ""
+                                    },
+                                ));
+                                if editable {
+                                    if let (Some(payload), true) = (
+                                        resp.dnd_release_payload::<usize>(),
+                                        resp.dnd_hover_payload::<usize>().is_some()
+                                            || resp
+                                                .dnd_release_payload::<usize>()
+                                                .is_some(),
+                                    ) {
+                                        let from = *payload;
+                                        if from != si {
+                                            reorder = Some((from, si));
+                                        }
                                     }
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
                     if let Some(i) = remove_idx {
                         palettes.0[active_idx].colors.remove(i);
                         io::palettes::save(&palettes.0);
@@ -974,45 +1066,49 @@ pub fn ui_system(
                             io::palettes::save(&palettes.0);
                         }
                     }
+                });
 
-                    ui.add_space(8.0);
-                    ui.label(egui::RichText::new("Recent").color(TEXT_DIM).size(11.0));
-                    ui.add_space(4.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-                        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-                        for c in &recent.0 {
-                            let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
-                            let is_current = color.0 == *c;
-                            let stroke = if is_current {
-                                egui::Stroke::new(2.0, ACCENT)
-                            } else {
-                                egui::Stroke::new(0.5, theme.border)
-                            };
-                            let resp = ui.add_sized(
-                                [24.0, 24.0],
-                                egui::Button::new("")
-                                    .fill(col)
-                                    .stroke(stroke)
-                                    .corner_radius(egui::CornerRadius::same(5)),
-                            );
-                            if resp.clicked() {
-                                color.0 = *c;
+                // Recent section
+                section(ui, &theme, "Recent", |ui| {
+                    if recent.0.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No recent colors")
+                                .color(theme.text_dim)
+                                .size(11.0)
+                                .italics(),
+                        );
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+                            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                            for c in &recent.0 {
+                                let col = egui::Color32::from_rgba_unmultiplied(
+                                    c[0], c[1], c[2], 255,
+                                );
+                                let is_current = color.0 == *c;
+                                let stroke = if is_current {
+                                    egui::Stroke::new(2.0, ACCENT)
+                                } else {
+                                    egui::Stroke::new(0.5, theme.border)
+                                };
+                                let resp = ui.add_sized(
+                                    [26.0, 26.0],
+                                    egui::Button::new("")
+                                        .fill(col)
+                                        .stroke(stroke)
+                                        .corner_radius(egui::CornerRadius::same(5)),
+                                );
+                                if resp.clicked() {
+                                    color.0 = *c;
+                                }
+                                resp.on_hover_text(format!(
+                                    "#{:02X}{:02X}{:02X}",
+                                    c[0], c[1], c[2]
+                                ));
                             }
-                            resp.on_hover_text(format!(
-                                "#{:02X}{:02X}{:02X}",
-                                c[0], c[1], c[2]
-                            ));
-                        }
-                        if recent.0.is_empty() {
-                            ui.label(
-                                egui::RichText::new("—")
-                                    .color(TEXT_DIM)
-                                    .size(12.0),
-                            );
-                        }
-                    });
+                        });
+                    }
                 });
 
                 // Shape section (only when Shape tool is active)
@@ -1359,6 +1455,31 @@ fn icon_button(
             .tint(theme.text),
         egui::RichText::new(label).size(13.0),
     ))
+}
+
+fn icon_only_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    icon: egui::ImageSource<'static>,
+    enabled: bool,
+) -> egui::Response {
+    let tint = if enabled { theme.text } else { theme.text_dim };
+    let img = egui::Image::new(icon)
+        .fit_to_exact_size(egui::vec2(14.0, 14.0))
+        .tint(tint);
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+        ui.add_enabled(
+            enabled,
+            egui::Button::image(img)
+                .min_size(egui::vec2(28.0, 24.0))
+                .corner_radius(egui::CornerRadius::same(5))
+                .stroke(egui::Stroke::new(0.5, theme.border))
+                .fill(theme.surface),
+        )
+    })
+    .inner
 }
 
 fn section<R>(
