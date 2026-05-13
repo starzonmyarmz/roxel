@@ -139,8 +139,8 @@ pub fn icon_only_button(
         ui.add_enabled(
             enabled,
             egui::Button::image(img)
-                .min_size(egui::vec2(28.0, 24.0))
-                .corner_radius(egui::CornerRadius::same(5))
+                .min_size(egui::vec2(28.0, 26.0))
+                .corner_radius(egui::CornerRadius::same(6))
                 .stroke(egui::Stroke::new(0.5, theme.border))
                 .fill(theme.surface),
         )
@@ -190,4 +190,27 @@ pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
             );
         });
     });
+}
+
+/// Dim italic 12 pt body text used for inline help under sections. Wraps.
+pub fn hint_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(text)
+                .color(theme.text_dim)
+                .size(12.0)
+                .italics(),
+        )
+        .wrap(),
+    );
+}
+
+/// Dim 12 pt readout label, non-selectable. Used in status bar.
+pub fn status_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(text).color(theme.text_dim).size(12.0),
+        )
+        .selectable(false),
+    );
 }

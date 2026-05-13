@@ -267,7 +267,7 @@ pub fn ui_system(
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 6))
+                .inner_margin(egui::Margin::symmetric(12, 8))
                 .stroke(egui::Stroke::new(0.5, BORDER)),
         )
         .show(ctx, |ui| {
@@ -278,29 +278,23 @@ pub fn ui_system(
                             .color(ACCENT)
                             .size(12.0),
                     )
-                    .selectable(true),
+                    .selectable(false),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!("Grid {g}×{g}×{g}", g = grid.size))
-                                .color(TEXT_DIM)
-                                .size(12.0),
-                        )
-                        .selectable(true),
+                    widgets::status_label(
+                        ui,
+                        &theme,
+                        &format!("Grid {g}×{g}×{g}", g = grid.size),
                     );
                     ui.add_space(12.0);
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!(
-                                "{n} voxel{s}",
-                                n = grid.count(),
-                                s = if grid.count() == 1 { "" } else { "s" }
-                            ))
-                            .color(TEXT_DIM)
-                            .size(12.0),
-                        )
-                        .selectable(true),
+                    widgets::status_label(
+                        ui,
+                        &theme,
+                        &format!(
+                            "{n} voxel{s}",
+                            n = grid.count(),
+                            s = if grid.count() == 1 { "" } else { "s" }
+                        ),
                     );
                     if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
                         && let Some(cam) = zoom.cameras.iter().next()
@@ -308,14 +302,7 @@ pub fn ui_system(
                         let zoom_pct =
                             (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
                         ui.add_space(12.0);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("Zoom {zoom_pct}%"))
-                                    .color(TEXT_DIM)
-                                    .size(12.0),
-                            )
-                            .selectable(true),
-                        );
+                        widgets::status_label(ui, &theme, &format!("Zoom {zoom_pct}%"));
                     }
                 });
             });
@@ -666,10 +653,10 @@ pub fn ui_system(
                                 add_enabled,
                                 egui::Button::image_and_text(
                                     add_icon,
-                                    egui::RichText::new("Add current color").size(11.5),
+                                    egui::RichText::new("Add current color").size(12.0),
                                 )
                                 .min_size(egui::vec2(row_w, 26.0))
-                                .corner_radius(egui::CornerRadius::same(5))
+                                .corner_radius(egui::CornerRadius::same(6))
                                 .stroke(egui::Stroke::new(0.5, theme.border)),
                             )
                         })
@@ -693,18 +680,14 @@ pub fn ui_system(
                     let active_palette = palettes.0[active_idx].colors.clone();
                     let editable = !active_is_builtin;
                     if active_palette.is_empty() {
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(if editable {
-                                    "No swatches yet — add the current color above"
-                                } else {
-                                    "Empty palette"
-                                })
-                                .color(theme.text_dim)
-                                .size(11.0)
-                                .italics(),
-                            )
-                            .wrap(),
+                        widgets::hint_label(
+                            ui,
+                            &theme,
+                            if editable {
+                                "No swatches yet — add the current color above"
+                            } else {
+                                "Empty palette"
+                            },
                         );
                     } else {
                         ui.horizontal_wrapped(|ui| {
@@ -808,12 +791,7 @@ pub fn ui_system(
                 // Recent section
                 widgets::section(ui, &theme, "Recent", |ui| {
                     if recent.0.is_empty() {
-                        ui.label(
-                            egui::RichText::new("No recent colors")
-                                .color(theme.text_dim)
-                                .size(11.0)
-                                .italics(),
-                        );
+                        widgets::hint_label(ui, &theme, "No recent colors");
                     } else {
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
@@ -885,12 +863,10 @@ pub fn ui_system(
                                 }
                             });
                         } else {
-                            ui.label(
-                                egui::RichText::new(
-                                    "Drag on a face to select a region.",
-                                )
-                                .color(theme.text_dim)
-                                .size(11.0),
+                            widgets::hint_label(
+                                ui,
+                                &theme,
+                                "Drag on a face to select a region.",
                             );
                         }
                     });
@@ -899,16 +875,12 @@ pub fn ui_system(
                 // Move section (only when Move tool is active)
                 if tool.current == Tool::Move {
                     widgets::section(ui, &theme, "Move", |ui| {
-                        ui.label(
-                            egui::RichText::new(
-                                "Drag a selected voxel to slide the selection \
-                                 along the picked face. Hold Shift while \
-                                 dragging to keep it on the same horizontal \
-                                 plane. Arrow keys nudge by 1 voxel along \
-                                 X/Z; Shift + ↑/↓ moves along Y.",
-                            )
-                            .color(theme.text_dim)
-                            .size(11.0),
+                        widgets::hint_label(
+                            ui,
+                            &theme,
+                            "Drag a selected voxel to slide the selection along the picked face. \
+                             Hold Shift while dragging to keep it on the same horizontal plane. \
+                             Arrow keys nudge by 1 voxel along X/Z; Shift + ↑/↓ moves along Y.",
                         );
                     });
                 }
@@ -938,12 +910,10 @@ pub fn ui_system(
                             ui.checkbox(&mut shape_options.filled, "Filled");
                         }
                         ui.add_space(4.0);
-                        ui.label(
-                            egui::RichText::new(
-                                "Click + drag to set the footprint, release, drag perpendicular for depth, click to commit. Esc or right-click cancels.",
-                            )
-                            .color(theme.text_dim)
-                            .size(11.0),
+                        widgets::hint_label(
+                            ui,
+                            &theme,
+                            "Click + drag to set the footprint, release, drag perpendicular for depth, click to commit. Esc or right-click cancels.",
                         );
                     });
                 }
@@ -1088,35 +1058,41 @@ pub fn ui_system(
         let mut open = true;
         let mut create_clicked = false;
         let mut cancel_clicked = false;
-        egui::Window::new("New project")
+        egui::Window::new(
+            egui::RichText::new("New project")
+                .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
+                .size(14.0),
+        )
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .open(&mut open)
+            .frame(
+                egui::Frame::window(&ctx.style())
+                    .fill(PANEL)
+                    .inner_margin(egui::Margin::symmetric(16, 14))
+                    .stroke(egui::Stroke::new(0.5, theme.border))
+                    .corner_radius(egui::CornerRadius::same(10)),
+            )
             .show(ctx, |ui| {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("Grid size")
-                        .color(theme.text_dim)
-                        .size(12.0),
-                );
-                ui.add_space(4.0);
-                for &s in &ALLOWED_SIZES {
-                    let label = format!("{s} × {s} × {s}");
-                    if ui
-                        .radio(new_project.picker_size == s, label)
-                        .clicked()
-                    {
-                        new_project.picker_size = s;
+                ui.set_min_width(260.0);
+                widgets::section(ui, &theme, "Grid size", |ui| {
+                    for &s in &ALLOWED_SIZES {
+                        let label = format!("{s} × {s} × {s}");
+                        if ui
+                            .radio(new_project.picker_size == s, label)
+                            .clicked()
+                        {
+                            new_project.picker_size = s;
+                        }
                     }
-                }
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        cancel_clicked = true;
-                    }
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Create").clicked() {
                         create_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
                     }
                 });
             });
