@@ -5,14 +5,19 @@ use bevy_egui::egui;
 
 pub fn plane_color_row(
     ui: &mut egui::Ui,
+    theme: &Theme,
     mode: crate::theme::ThemeMode,
     label: &str,
     pref: &mut PlaneColorPref,
 ) {
     let mut is_custom = matches!(pref, PlaneColorPref::Custom(_));
     ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add_space(8.0);
+        ui.add_sized(
+            [72.0, 20.0],
+            egui::Label::new(
+                egui::RichText::new(label).color(theme.text_dim).size(12.0),
+            ),
+        );
         if ui.radio(!is_custom, "Match theme").clicked() {
             *pref = PlaneColorPref::MatchTheme;
             is_custom = false;
@@ -26,8 +31,9 @@ pub fn plane_color_row(
         }
     });
     if let PlaneColorPref::Custom(ref mut rgb) = *pref {
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(76.0);
             ui.color_edit_button_srgb(rgb);
             ui.add(
                 egui::Label::new(
@@ -35,7 +41,9 @@ pub fn plane_color_row(
                         "#{:02X}{:02X}{:02X}",
                         rgb[0], rgb[1], rgb[2]
                     ))
-                    .monospace(),
+                    .monospace()
+                    .color(theme.text_dim)
+                    .size(12.0),
                 )
                 .selectable(true),
             );

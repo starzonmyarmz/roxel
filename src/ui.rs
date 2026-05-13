@@ -1002,8 +1002,8 @@ pub fn ui_system(
                         );
                     });
                 }
-                widgets::plane_color_row(ui, theme.mode, "Floor", &mut prefs.floor_color);
-                widgets::plane_color_row(ui, theme.mode, "Walls", &mut prefs.wall_color);
+                widgets::plane_color_row(ui, &theme, theme.mode, "Floor", &mut prefs.floor_color);
+                widgets::plane_color_row(ui, &theme, theme.mode, "Walls", &mut prefs.wall_color);
             });
 
             widgets::section(ui, &theme, "Visibility", |ui| {
