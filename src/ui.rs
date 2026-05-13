@@ -947,22 +947,6 @@ pub fn ui_system(
                         );
                     });
                 }
-
-                // Scene section
-                widgets::section(ui, &theme, "Scene", |ui| {
-                    widgets::stat_row(ui, &theme, "Voxels", grid.count().to_string());
-                    widgets::stat_row(
-                        ui,
-                        &theme,
-                        "Grid",
-                        format!(
-                            "{g} × {g} × {g}",
-                            g = grid.size
-                        ),
-                    );
-                    widgets::stat_row(ui, &theme, "Undo", history.undo.len().to_string());
-                    widgets::stat_row(ui, &theme, "Redo", history.redo.len().to_string());
-                });
                 });
             });
         });
