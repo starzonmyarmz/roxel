@@ -75,8 +75,6 @@ pub fn ui_system(
     // Local bindings shadow the previous module-level constants so that the
     // rest of this function can stay as it was.
     #[allow(non_snake_case)]
-    let BG = theme.bg;
-    #[allow(non_snake_case)]
     let PANEL = theme.panel;
     #[allow(non_snake_case)]
     let ACCENT = theme.accent;
@@ -261,7 +259,7 @@ pub fn ui_system(
     egui::TopBottomPanel::bottom("status_bar")
         .frame(
             egui::Frame::default()
-                .fill(BG)
+                .fill(PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 6))
                 .stroke(egui::Stroke::new(0.5, BORDER)),
         )

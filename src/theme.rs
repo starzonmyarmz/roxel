@@ -239,8 +239,8 @@ pub enum PlaneColorPref {
 /// light canvas — while staying near-neutral so voxel hues are unaffected.
 pub fn plane_match_color(mode: ThemeMode) -> [u8; 3] {
     match mode {
-        ThemeMode::Dark => [0x3C, 0x3C, 0x40],
-        ThemeMode::Light => [0xD4, 0xD4, 0xD8],
+        ThemeMode::Dark => [0x26, 0x26, 0x28],
+        ThemeMode::Light => [0xEC, 0xEC, 0xEF],
     }
 }
 
