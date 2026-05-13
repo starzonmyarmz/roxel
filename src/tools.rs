@@ -222,6 +222,41 @@ fn thickness_from_ray(
     dist.max(1.0).ceil() as i32
 }
 
+/// Signed extrude offset for the Select tool: cells away from the anchor plane
+/// in the normal direction (positive) or back into the surface (negative).
+/// Unlike `thickness_from_ray` this does not clamp to `>= 1`, so a Select drag
+/// can grow the AABB in either direction along the anchor axis.
+fn select_offset_from_ray(
+    anchor: &StrokeAnchor,
+    normal_sign: i32,
+    footprint_center: Vec3,
+    origin: Vec3,
+    dir: Vec3,
+) -> i32 {
+    let mut line_dir = [0.0f32; 3];
+    line_dir[anchor.axis] = 1.0;
+    let l = Vec3::from_array(line_dir);
+    let r = origin - footprint_center;
+    let a = dir.dot(dir);
+    let b = dir.dot(l);
+    let c = l.dot(l);
+    let dd = dir.dot(r);
+    let e = l.dot(r);
+    let denom = a * c - b * b;
+    if denom.abs() < 1e-6 {
+        return 0;
+    }
+    let s = (a * e - b * dd) / denom;
+    let dist = s * normal_sign as f32;
+    // Round toward zero for the inside cell, away from zero outward, so the
+    // ghost grows by one cell as soon as the cursor crosses the next slab.
+    if dist >= 0.0 {
+        dist.floor() as i32
+    } else {
+        dist.ceil() as i32
+    }
+}
+
 fn shape_commit(
     options: &ShapeOptions,
     state: &mut ShapeState,
@@ -379,7 +414,7 @@ fn select_input(
             state.normal_sign = sign;
             state.corner1 = Some(start_cell);
             state.corner2 = Some(start_cell);
-            state.thickness = 1;
+            state.thickness = 0;
         }
         SelectPhase::Footprint => {
             let Some(anchor) = state.anchor else { return; };
@@ -388,14 +423,15 @@ fn select_input(
             }
             if lmb_released {
                 state.phase = SelectPhase::Extrude;
-                state.thickness = 1;
+                state.thickness = 0;
             }
         }
         SelectPhase::Extrude => {
             let Some(anchor) = state.anchor else { return; };
             let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
             let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
-            state.thickness = thickness_from_ray(&anchor, state.normal_sign, center, origin, dir);
+            state.thickness =
+                select_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
             if lmb_just && !blocked {
                 select_commit(state, selection);
             }

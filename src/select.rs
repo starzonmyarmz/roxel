@@ -115,14 +115,19 @@ pub fn recolor_aabb(
     history.end();
 }
 
-/// Build an in-progress AABB from the current `SelectState` corners + thickness
-/// along the anchor axis. Returns None during `Idle`.
+/// Build an in-progress AABB from the current `SelectState` corners + signed
+/// extrude offset along the anchor axis. Returns None during `Idle`.
+///
+/// `state.thickness` here is the signed cell offset from `target_layer` in the
+/// normal direction: `0` is a single-cell-deep AABB on the anchor plane, `+N`
+/// extends `N` cells in the face-normal direction, `-N` extends `N` cells back
+/// into the surface.
 pub fn in_progress_aabb(state: &SelectState) -> Option<SelectionAabb> {
     let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2)
     else {
         return None;
     };
-    let depth_end = anchor.target_layer + (state.thickness.max(1) - 1) * state.normal_sign;
+    let depth_end = anchor.target_layer + state.thickness * state.normal_sign;
     let mut a = c1.to_array();
     let mut b = c2.to_array();
     a[anchor.axis] = anchor.target_layer;
@@ -472,5 +477,69 @@ mod tests {
     fn selection_default_has_no_aabb() {
         let sel = Selection::default();
         assert!(sel.aabb.is_none());
+    }
+
+    #[test]
+    fn in_progress_aabb_extrudes_positive_offset_in_normal_direction() {
+        // Face-up pick: normal_sign = +1, target_layer = 5.
+        let state = SelectState {
+            phase: SelectPhase::Extrude,
+            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            corner1: Some(IVec3::new(0, 5, 0)),
+            corner2: Some(IVec3::new(2, 5, 2)),
+            normal_sign: 1,
+            thickness: 3,
+        };
+        let aabb = in_progress_aabb(&state).unwrap();
+        assert_eq!(aabb.min.y, 5);
+        assert_eq!(aabb.max.y, 8);
+    }
+
+    #[test]
+    fn in_progress_aabb_extrudes_negative_offset_into_surface() {
+        // Same pick but user drags the opposite direction.
+        let state = SelectState {
+            phase: SelectPhase::Extrude,
+            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            corner1: Some(IVec3::new(0, 5, 0)),
+            corner2: Some(IVec3::new(2, 5, 2)),
+            normal_sign: 1,
+            thickness: -3,
+        };
+        let aabb = in_progress_aabb(&state).unwrap();
+        assert_eq!(aabb.min.y, 2);
+        assert_eq!(aabb.max.y, 5);
+    }
+
+    #[test]
+    fn in_progress_aabb_zero_offset_is_single_cell_thick() {
+        let state = SelectState {
+            phase: SelectPhase::Extrude,
+            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            corner1: Some(IVec3::new(0, 5, 0)),
+            corner2: Some(IVec3::new(2, 5, 2)),
+            normal_sign: 1,
+            thickness: 0,
+        };
+        let aabb = in_progress_aabb(&state).unwrap();
+        assert_eq!(aabb.min.y, 5);
+        assert_eq!(aabb.max.y, 5);
+    }
+
+    #[test]
+    fn in_progress_aabb_respects_negative_normal_sign() {
+        // Pick on bottom face: normal_sign = -1, target_layer below the cube.
+        let state = SelectState {
+            phase: SelectPhase::Extrude,
+            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 4 }),
+            corner1: Some(IVec3::new(0, 4, 0)),
+            corner2: Some(IVec3::new(2, 4, 2)),
+            normal_sign: -1,
+            thickness: 3,
+        };
+        // Drag in normal direction (downward) extends min below target_layer.
+        let aabb = in_progress_aabb(&state).unwrap();
+        assert_eq!(aabb.min.y, 1);
+        assert_eq!(aabb.max.y, 4);
     }
 }
