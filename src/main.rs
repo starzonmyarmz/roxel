@@ -49,7 +49,8 @@ use crate::tools::{
     undo_redo_system,
 };
 use crate::ui::{
-    PaletteChoice, Palettes, PendingDialog, PendingImport, Toasts, poll_dialogs_system,
+    CommandPalette, PaletteChoice, Palettes, PendingDialog, PendingImport, Toasts,
+    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
     toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -109,6 +110,7 @@ fn main() {
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
         .init_resource::<Toasts>()
+        .init_resource::<CommandPalette>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
@@ -170,6 +172,8 @@ fn main() {
             apply_wall_color_system,
             apply_floor_visibility_system,
             apply_walls_visibility_system,
+            command_palette_shortcut_system,
+            dispatch_command_palette_system,
         ),
     )
     .add_systems(

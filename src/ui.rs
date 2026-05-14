@@ -1,9 +1,13 @@
+mod command_palette;
 mod dialogs;
 mod icons;
 mod palette;
 pub mod toast;
 mod widgets;
 
+pub use command_palette::{
+    CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
+};
 pub use dialogs::{DialogResult, PendingDialog, PendingImport, poll_dialogs_system};
 pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};
@@ -70,6 +74,7 @@ pub fn ui_system(
     zoom: ZoomReadout,
     gizmo_view: GizmoView,
     ui_state: UiState,
+    mut cmd_palette: ResMut<CommandPalette>,
 ) -> Result {
     let UiInput { keys, mouse } = input;
     let UiState {
@@ -1127,6 +1132,23 @@ pub fn ui_system(
         } else if cancel_clicked || !open {
             new_project.dialog_open = false;
         }
+    }
+
+    if cmd_palette.open {
+        let state = command_palette::CatalogState {
+            tool: tool.current,
+            shape: &shape_options,
+            has_undo: !history.undo.is_empty(),
+            has_redo: !history.redo.is_empty(),
+            has_selection: selection.aabb.is_some(),
+            dialog_busy: pending.is_active(),
+            palettes: &palettes.0,
+            palette_choice: palette_choice.0,
+            current_color: color.0,
+            prefs: &prefs,
+        };
+        let catalog = command_palette::build_catalog(&state);
+        command_palette::draw(ctx, &theme, &mut cmd_palette, &catalog);
     }
 
     toast::draw_toasts(ctx, &theme, &toasts);

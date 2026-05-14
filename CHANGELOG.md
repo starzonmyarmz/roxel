@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: Cmd+K command palette — fuzzy-searchable surface for every action (file ops, tools, view toggles, palette + color switching, preferences)
 - feat: import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox` files
 - feat: export Goxel `.gox` and glTF `.glb` (Unity / Godot compatible)
 - feat: in-app toast notifications for save / load / import / export

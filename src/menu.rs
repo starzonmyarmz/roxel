@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::theme::PreferencesWindow;
-use crate::ui::{DialogResult, PendingDialog};
+use crate::ui::{CommandPalette, DialogResult, PendingDialog};
 
 #[derive(Clone, Copy, Debug)]
 pub enum MenuAction {
@@ -28,6 +28,7 @@ pub enum MenuAction {
     Redo,
     Preferences,
     Changelog,
+    ShowCommandPalette,
 }
 
 const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
@@ -62,6 +63,15 @@ fn build_menu() -> MenuStore {
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::Comma)),
     );
     actions.insert(prefs_item.id().0.clone(), MenuAction::Preferences);
+    let cmd_palette_item = MenuItem::new(
+        "Command Palette…",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyK)),
+    );
+    actions.insert(
+        cmd_palette_item.id().0.clone(),
+        MenuAction::ShowCommandPalette,
+    );
     app_menu
         .append_items(&[
             &PredefinedMenuItem::about(
@@ -74,6 +84,7 @@ fn build_menu() -> MenuStore {
                 }),
             ),
             &PredefinedMenuItem::separator(),
+            &cmd_palette_item,
             &prefs_item,
             &PredefinedMenuItem::separator(),
             &PredefinedMenuItem::services(None),
@@ -241,6 +252,7 @@ pub struct MenuActionParams<'w> {
     pub grid: ResMut<'w, VoxelGrid>,
     pub new_project: ResMut<'w, NewProject>,
     pub prefs_window: ResMut<'w, PreferencesWindow>,
+    pub cmd_palette: ResMut<'w, CommandPalette>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -272,6 +284,16 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.prefs_window.open = !p.prefs_window.open;
             }
             MenuAction::Changelog => open_changelog(),
+            MenuAction::ShowCommandPalette => {
+                if p.cmd_palette.open {
+                    p.cmd_palette.open = false;
+                } else {
+                    p.cmd_palette.open = true;
+                    p.cmd_palette.search.clear();
+                    p.cmd_palette.selected = 0;
+                    p.cmd_palette.just_opened = true;
+                }
+            }
         }
     }
 }
