@@ -24,6 +24,7 @@ use bevy_panorbit_camera::PanOrbitCameraPlugin;
 
 use crate::camera::{
     ViewportRect, frame_view_system, spawn_camera, update_viewport_rect, zoom_click_system,
+    zoom_key_system,
 };
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
@@ -146,6 +147,7 @@ fn main() {
                 crate::icon::set_window_icon,
                 refresh_theme_system,
                 zoom_click_system,
+                zoom_key_system,
                 apply_canvas_bg_system,
                 apply_floor_color_system,
                 apply_wall_color_system,
@@ -384,6 +386,7 @@ fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {
     }
     if let Ok(ctx) = contexts.ctx_mut() {
         install_fonts(ctx);
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
         *done = true;
     }
 }

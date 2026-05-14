@@ -44,9 +44,11 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 | `Space` + left-drag      | Pan (Figma/Photoshop style)                                    |
 | `Z` + left-click         | Zoom in 2× toward target                                       |
 | `Alt` + `Z` + left-click | Zoom out 2×                                                    |
+| `Cmd/Ctrl + =`           | Zoom in 2×                                                     |
+| `Cmd/Ctrl + -`           | Zoom out 2×                                                    |
+| `Cmd/Ctrl + 0`           | Frame view on the voxel cluster (panel-aware)                  |
 | `Cmd/Ctrl + Z`           | Undo                                                           |
 | `Cmd/Ctrl + Shift + Z`   | Redo                                                           |
-| `F`                      | Frame view on the voxel cluster (panel-aware)                  |
 
 Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
 

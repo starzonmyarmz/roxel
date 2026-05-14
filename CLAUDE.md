@@ -139,7 +139,7 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 ### Camera
 
-`spawn_camera` (`camera.rs`) places the orbit camera at an isometric angle so a fresh project doesn't open looking down a single axis. `frame_view_system` (`F`) computes the AABB of all occupied voxels and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. The bottom-bar zoom % readout is derived from the same `target_radius` that `zoom_click_system` mutates.
+`spawn_camera` (`camera.rs`) places the orbit camera at an isometric angle so a fresh project doesn't open looking down a single axis. `frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. The bottom-bar zoom % readout is derived from the same `target_radius` that `zoom_click_system` mutates.
 
 `zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: halves (zoom in) or doubles (zoom out, when Alt is also held) `PanOrbitCamera.target_radius`, clamped to `zoom_lower_limit`. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
 

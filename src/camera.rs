@@ -76,14 +76,14 @@ pub fn frame_view_system(
     windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
     viewport: Res<ViewportRect>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyF) {
+    if !keys.just_pressed(KeyCode::Digit0) && !keys.just_pressed(KeyCode::Numpad0) {
         return;
     }
-    let modded = keys.pressed(KeyCode::SuperLeft)
+    let cmd = keys.pressed(KeyCode::SuperLeft)
         || keys.pressed(KeyCode::SuperRight)
         || keys.pressed(KeyCode::ControlLeft)
         || keys.pressed(KeyCode::ControlRight);
-    if modded {
+    if !cmd {
         return;
     }
 
@@ -162,6 +162,21 @@ mod tests {
     }
 
     #[test]
+    fn zoom_in_halves_radius() {
+        assert!((apply_zoom(10.0, 0.5, 0.5) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zoom_out_doubles_radius() {
+        assert!((apply_zoom(10.0, 2.0, 0.5) - 20.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zoom_clamps_to_lower_limit() {
+        assert!((apply_zoom(0.6, 0.5, 0.5) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
     fn fit_view_single_voxel_returns_centered_radius() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
@@ -176,7 +191,7 @@ mod tests {
 
 /// Logical-point rect (egui coordinates) describing the visible 3D viewport
 /// area, i.e. window minus side/top/bottom panels. Populated each frame from
-/// `ctx.available_rect()`; read by `frame_view_system` to compensate F's
+/// `ctx.available_rect()`; read by `frame_view_system` to compensate Cmd+0's
 /// centering for asymmetric UI panel layout.
 #[derive(Resource, Default)]
 pub struct ViewportRect(pub Option<bevy::math::Rect>);
@@ -213,6 +228,42 @@ pub fn zoom_click_system(
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     let factor = if alt { 2.0 } else { 0.5 };
     for mut cam in &mut cameras {
-        cam.target_radius = (cam.target_radius * factor).max(cam.zoom_lower_limit);
+        cam.target_radius = apply_zoom(cam.target_radius, factor, cam.zoom_lower_limit);
+    }
+}
+
+/// Apply a zoom factor to `radius`, clamped to `lower_limit`. Pure helper so
+/// the key/click systems share identical math and tests don't need a Bevy app.
+pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32) -> f32 {
+    (radius * factor).max(lower_limit)
+}
+
+pub fn zoom_key_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut contexts: bevy_egui::EguiContexts,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    let egui_wants_keyboard = contexts
+        .ctx_mut()
+        .map(|c| c.wants_keyboard_input())
+        .unwrap_or(false);
+    if egui_wants_keyboard {
+        return;
+    }
+    let cmd = keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight);
+    if !cmd {
+        return;
+    }
+    let zoom_in = keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd);
+    let zoom_out = keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract);
+    if !zoom_in && !zoom_out {
+        return;
+    }
+    let factor = if zoom_in { 0.5 } else { 2.0 };
+    for mut cam in &mut cameras {
+        cam.target_radius = apply_zoom(cam.target_radius, factor, cam.zoom_lower_limit);
     }
 }
