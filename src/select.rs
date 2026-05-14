@@ -803,6 +803,24 @@ mod tests {
     }
 
     #[test]
+    fn in_progress_aabb_picked_voxel_single_cell_selection() {
+        // After select_input's Idle branch on a top-face pick of voxel (3,4,5):
+        // target_layer == picked cell.y, corner1 == corner2 == picked cell,
+        // thickness=0. AABB must equal the picked voxel exactly.
+        let state = SelectState {
+            phase: SelectPhase::Footprint,
+            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 4 }),
+            corner1: Some(IVec3::new(3, 4, 5)),
+            corner2: Some(IVec3::new(3, 4, 5)),
+            normal_sign: 1,
+            thickness: 0,
+        };
+        let aabb = in_progress_aabb(&state).unwrap();
+        assert_eq!(aabb.min, IVec3::new(3, 4, 5));
+        assert_eq!(aabb.max, IVec3::new(3, 4, 5));
+    }
+
+    #[test]
     fn in_progress_aabb_respects_negative_normal_sign() {
         // Pick on bottom face: normal_sign = -1, target_layer below the cube.
         let state = SelectState {

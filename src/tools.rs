@@ -440,15 +440,11 @@ fn select_input(
             let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
             let cell_arr = hit.cell.to_array();
             let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
-            let target_layer = cell_arr[axis] + n_arr[axis];
+            // Select targets the picked voxel itself, not the adjacent empty
+            // cell — clicking a voxel should select that voxel.
+            let target_layer = cell_arr[axis];
             let anchor = StrokeAnchor { axis, plane_world, target_layer };
-            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or_else(|| {
-                IVec3::new(
-                    cell_arr[0] + n_arr[0],
-                    cell_arr[1] + n_arr[1],
-                    cell_arr[2] + n_arr[2],
-                )
-            });
+            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
             state.phase = SelectPhase::Footprint;
             state.anchor = Some(anchor);
             state.normal_sign = sign;
