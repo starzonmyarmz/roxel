@@ -19,6 +19,11 @@ pub enum MenuAction {
     ExportFbx,
     ExportPng,
     ExportSvg,
+    ExportGltf,
+    ExportGox,
+    ImportVox,
+    ImportQb,
+    ImportGox,
     Undo,
     Redo,
     Preferences,
@@ -99,14 +104,26 @@ fn build_menu() -> MenuStore {
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyS)),
     );
 
+    let import_sub = Submenu::new("Import", true);
+    let imp_vox = MenuItem::new("MagicaVoxel (.vox)…", true, None);
+    let imp_qb = MenuItem::new("Qubicle (.qb)…", true, None);
+    let imp_gox = MenuItem::new("Goxel (.gox)…", true, None);
+    import_sub
+        .append_items(&[&imp_vox, &imp_qb, &imp_gox])
+        .expect("append import submenu");
+
     let export_sub = Submenu::new("Export", true);
     let exp_vox = MenuItem::new("MagicaVoxel (.vox)…", true, None);
+    let exp_gox = MenuItem::new("Goxel (.gox)…", true, None);
     let exp_obj = MenuItem::new("Wavefront (.obj)…", true, None);
     let exp_fbx = MenuItem::new("Autodesk (.fbx)…", true, None);
+    let exp_gltf = MenuItem::new("glTF (.glb)…", true, None);
     let exp_png = MenuItem::new("Transparent PNG…", true, None);
     let exp_svg = MenuItem::new("SVG…", true, None);
     export_sub
-        .append_items(&[&exp_vox, &exp_obj, &exp_fbx, &exp_png, &exp_svg])
+        .append_items(&[
+            &exp_vox, &exp_gox, &exp_obj, &exp_fbx, &exp_gltf, &exp_png, &exp_svg,
+        ])
         .expect("append export submenu");
 
     file.append_items(&[
@@ -115,6 +132,7 @@ fn build_menu() -> MenuStore {
         &open_item,
         &save_item,
         &PredefinedMenuItem::separator(),
+        &import_sub,
         &export_sub,
         &PredefinedMenuItem::separator(),
         &PredefinedMenuItem::close_window(None),
@@ -125,9 +143,14 @@ fn build_menu() -> MenuStore {
     actions.insert(new_item.id().0.clone(), MenuAction::NewProject);
     actions.insert(open_item.id().0.clone(), MenuAction::OpenProject);
     actions.insert(save_item.id().0.clone(), MenuAction::SaveProject);
+    actions.insert(imp_vox.id().0.clone(), MenuAction::ImportVox);
+    actions.insert(imp_qb.id().0.clone(), MenuAction::ImportQb);
+    actions.insert(imp_gox.id().0.clone(), MenuAction::ImportGox);
     actions.insert(exp_vox.id().0.clone(), MenuAction::ExportVox);
+    actions.insert(exp_gox.id().0.clone(), MenuAction::ExportGox);
     actions.insert(exp_obj.id().0.clone(), MenuAction::ExportObj);
     actions.insert(exp_fbx.id().0.clone(), MenuAction::ExportFbx);
+    actions.insert(exp_gltf.id().0.clone(), MenuAction::ExportGltf);
     actions.insert(exp_png.id().0.clone(), MenuAction::ExportPng);
     actions.insert(exp_svg.id().0.clone(), MenuAction::ExportSvg);
 
@@ -238,6 +261,11 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ExportFbx => spawn_export_fbx(&mut p.pending),
             MenuAction::ExportPng => spawn_export_png(&mut p.pending),
             MenuAction::ExportSvg => spawn_export_svg(&mut p.pending),
+            MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending),
+            MenuAction::ExportGox => spawn_export_gox(&mut p.pending),
+            MenuAction::ImportVox => spawn_import_vox(&mut p.pending),
+            MenuAction::ImportQb => spawn_import_qb(&mut p.pending),
+            MenuAction::ImportGox => spawn_import_gox(&mut p.pending),
             MenuAction::Undo => p.history.undo(&mut p.grid),
             MenuAction::Redo => p.history.redo(&mut p.grid),
             MenuAction::Preferences => {
@@ -348,5 +376,72 @@ fn spawn_export_svg(pending: &mut PendingDialog) {
             .save_file()
             .await
             .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_import_vox(pending: &mut PendingDialog) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("MagicaVoxel", &["vox"])
+            .pick_file()
+            .await
+            .map(|f| DialogResult::ImportVox(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_import_qb(pending: &mut PendingDialog) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("Qubicle", &["qb"])
+            .pick_file()
+            .await
+            .map(|f| DialogResult::ImportQb(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_import_gox(pending: &mut PendingDialog) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("Goxel", &["gox"])
+            .pick_file()
+            .await
+            .map(|f| DialogResult::ImportGox(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_export_gltf(pending: &mut PendingDialog) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("glTF binary", &["glb"])
+            .set_file_name("model.glb")
+            .save_file()
+            .await
+            .map(|f| DialogResult::ExportGltf(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_export_gox(pending: &mut PendingDialog) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("Goxel", &["gox"])
+            .set_file_name("model.gox")
+            .save_file()
+            .await
+            .map(|f| DialogResult::ExportGox(f.path().to_path_buf()))
     });
 }

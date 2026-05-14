@@ -48,7 +48,10 @@ use crate::tools::{
     alt_eyedropper_system, move_drag_system, tool_input_system, tool_shortcut_system,
     undo_redo_system,
 };
-use crate::ui::{PaletteChoice, Palettes, PendingDialog, poll_dialogs_system, ui_system};
+use crate::ui::{
+    PaletteChoice, Palettes, PendingDialog, PendingImport, Toasts, poll_dialogs_system,
+    toast_lifetime_system, ui_system,
+};
 use bevy_panorbit_camera::PanOrbitCamera;
 
 fn main() {
@@ -104,6 +107,8 @@ fn main() {
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
         .init_resource::<NewProject>()
+        .init_resource::<PendingImport>()
+        .init_resource::<Toasts>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
@@ -149,6 +154,8 @@ fn main() {
             crate::select::move_selection_keys_system,
             start_snapshot_system,
             apply_new_project_system.before(regenerate_mesh_system),
+            apply_import_system.before(regenerate_mesh_system),
+            toast_lifetime_system,
         ),
     )
     .add_systems(
@@ -294,19 +301,42 @@ fn apply_new_project_system(
     history.redo.clear();
     history.current = None;
 
-    let s = new_size as f32;
+    rebuild_for_size(new_size, &mut meshes, &mut floor, &mut walls, &mut cameras);
+}
+
+fn apply_import_system(
+    mut pending: ResMut<PendingImport>,
+    grid: Res<VoxelGrid>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
+    mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    if !pending.0 {
+        return;
+    }
+    pending.0 = false;
+    rebuild_for_size(grid.size, &mut meshes, &mut floor, &mut walls, &mut cameras);
+}
+
+fn rebuild_for_size(
+    size: usize,
+    meshes: &mut Assets<Mesh>,
+    floor: &mut Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
+    walls: &mut Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
+    cameras: &mut Query<&mut PanOrbitCamera>,
+) {
+    let s = size as f32;
     let half = s / 2.0;
 
-    // Replace floor mesh data + reposition.
-    for (mesh3d, mut tf) in &mut floor {
+    for (mesh3d, mut tf) in floor.iter_mut() {
         if let Some(m) = meshes.get_mut(&mesh3d.0) {
             *m = floor_mesh(s);
         }
         *tf = Transform::from_xyz(half, -0.01, half);
     }
 
-    // Walls: 0 = back (z=-0.01, centred at (half, half)), 1 = left (x=-0.01).
-    for (mesh3d, mut tf, plane) in &mut walls {
+    for (mesh3d, mut tf, plane) in walls.iter_mut() {
         if let Some(m) = meshes.get_mut(&mesh3d.0) {
             *m = wall_mesh(plane.0, s);
         }
@@ -316,8 +346,7 @@ fn apply_new_project_system(
         };
     }
 
-    // Recenter the orbit camera on the new grid.
-    for mut cam in &mut cameras {
+    for mut cam in cameras.iter_mut() {
         cam.target_focus = Vec3::new(half, 0.0, half);
         cam.target_radius = s * 1.875;
     }

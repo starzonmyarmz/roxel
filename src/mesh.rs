@@ -80,6 +80,42 @@ pub struct Face {
     pub plane_offset: i32,
 }
 
+/// Visit every voxel face that borders empty space. Shared by every per-face
+/// mesh exporter (FBX, glTF). The callback receives the voxel's grid position,
+/// the face descriptor (giving normal + winding-correct unit-cube corners),
+/// and the cell's color.
+pub fn for_each_exposed_face(
+    grid: &crate::grid::VoxelGrid,
+    mut f: impl FnMut(IVec3, &Face, crate::grid::Color8),
+) {
+    let size_i = grid.size_i();
+    for x in 0..grid.size {
+        for y in 0..grid.size {
+            for z in 0..grid.size {
+                let Some(rgba) = grid.cell(x, y, z) else {
+                    continue;
+                };
+                let cell = IVec3::new(x as i32, y as i32, z as i32);
+                for face in &FACES {
+                    let n = cell + face.d;
+                    let occluded = n.x >= 0
+                        && n.x < size_i
+                        && n.y >= 0
+                        && n.y < size_i
+                        && n.z >= 0
+                        && n.z < size_i
+                        && grid
+                            .cell(n.x as usize, n.y as usize, n.z as usize)
+                            .is_some();
+                    if !occluded {
+                        f(cell, face, rgba);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn face_shade(normal: [f32; 3]) -> f32 {
     if normal[1] > 0.5 {
         1.0

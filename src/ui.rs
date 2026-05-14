@@ -1,10 +1,12 @@
 mod dialogs;
 mod icons;
 mod palette;
+pub mod toast;
 mod widgets;
 
-pub use dialogs::{DialogResult, PendingDialog, poll_dialogs_system};
+pub use dialogs::{DialogResult, PendingDialog, PendingImport, poll_dialogs_system};
 pub use palette::{Palette, PaletteChoice, Palettes};
+pub use toast::{Toasts, toast_lifetime_system};
 
 use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::grid::{ALLOWED_SIZES, NewProject, VoxelGrid};
@@ -45,6 +47,13 @@ pub struct UiInput<'w> {
     pub mouse: Res<'w, ButtonInput<MouseButton>>,
 }
 
+#[derive(SystemParam)]
+pub struct UiState<'w> {
+    pub new_project: ResMut<'w, NewProject>,
+    pub selection: ResMut<'w, crate::select::Selection>,
+    pub toasts: Res<'w, Toasts>,
+}
+
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -59,11 +68,15 @@ pub fn ui_system(
     mut shape_options: ResMut<ShapeOptions>,
     input: UiInput,
     zoom: ZoomReadout,
-    mut new_project: ResMut<NewProject>,
     gizmo_view: GizmoView,
-    mut selection: ResMut<crate::select::Selection>,
+    ui_state: UiState,
 ) -> Result {
     let UiInput { keys, mouse } = input;
+    let UiState {
+        mut new_project,
+        mut selection,
+        toasts,
+    } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
     apply_egui_style(ctx, &theme);
@@ -153,6 +166,54 @@ pub fn ui_system(
                     });
                 }
                 ui.menu_image_text_button(
+                    egui::Image::new(icons::folder_open())
+                        .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                        .tint(TEXT),
+                    egui::RichText::new("Import").size(13.0),
+                    |ui| {
+                        ui.set_min_width(180.0);
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("MagicaVoxel", &["vox"])
+                                    .pick_file()
+                                    .await
+                                    .map(|f| DialogResult::ImportVox(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Qubicle .qb…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Qubicle", &["qb"])
+                                    .pick_file()
+                                    .await
+                                    .map(|f| DialogResult::ImportQb(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Goxel", &["gox"])
+                                    .pick_file()
+                                    .await
+                                    .map(|f| DialogResult::ImportGox(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                    },
+                );
+                ui.menu_image_text_button(
                     egui::Image::new(icons::download())
                         .fit_to_exact_size(egui::vec2(14.0, 14.0))
                         .tint(TEXT),
@@ -198,6 +259,34 @@ pub fn ui_system(
                                     .save_file()
                                     .await
                                     .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("glTF .glb…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("glTF binary", &["glb"])
+                                    .set_file_name("model.glb")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportGltf(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Goxel", &["gox"])
+                                    .set_file_name("model.gox")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportGox(f.path().to_path_buf()))
                             });
                             ui.close();
                         }
@@ -1039,6 +1128,8 @@ pub fn ui_system(
             new_project.dialog_open = false;
         }
     }
+
+    toast::draw_toasts(ctx, &theme, &toasts);
 
     Ok(())
 }

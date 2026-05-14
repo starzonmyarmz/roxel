@@ -400,13 +400,10 @@ pub fn wide_action_button(
             |ui| {
                 ui.add_enabled(
                     enabled,
-                    egui::Button::image_and_text(
-                        img,
-                        egui::RichText::new(label).size(12.0),
-                    )
-                    .corner_radius(egui::CornerRadius::same(6))
-                    .fill(theme.surface)
-                    .stroke(egui::Stroke::new(0.5, theme.border)),
+                    egui::Button::image_and_text(img, egui::RichText::new(label).size(12.0))
+                        .corner_radius(egui::CornerRadius::same(6))
+                        .fill(theme.surface)
+                        .stroke(egui::Stroke::new(0.5, theme.border)),
                 )
             },
         )

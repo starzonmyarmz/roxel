@@ -3,11 +3,12 @@ use crate::history::History;
 use crate::io;
 use crate::snapshot::SnapshotRequest;
 use crate::ui::palette::{Palette, PaletteChoice, Palettes};
+use crate::ui::toast::Toasts;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub enum DialogResult {
     OpenProject(PathBuf),
@@ -17,6 +18,11 @@ pub enum DialogResult {
     ExportFbx(PathBuf),
     ExportPng(PathBuf),
     ExportSvg(PathBuf),
+    ExportGltf(PathBuf),
+    ExportGox(PathBuf),
+    ImportVox(PathBuf),
+    ImportQb(PathBuf),
+    ImportGox(PathBuf),
     ImportAse(PathBuf),
     ExportAse(PathBuf, String, Vec<[u8; 4]>),
 }
@@ -36,6 +42,19 @@ impl PendingDialog {
     }
 }
 
+/// Signals that a non-`.roxel` import just resized the grid. Read by
+/// `apply_import_system` in main.rs to rebuild floor/walls and reframe the
+/// camera, then cleared.
+#[derive(Resource, Default)]
+pub struct PendingImport(pub bool);
+
+fn file_label(p: &Path) -> String {
+    p.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file")
+        .to_string()
+}
+
 pub fn poll_dialogs_system(
     mut pending: ResMut<PendingDialog>,
     mut grid: ResMut<VoxelGrid>,
@@ -43,6 +62,8 @@ pub fn poll_dialogs_system(
     mut palettes: ResMut<Palettes>,
     mut palette_choice: ResMut<PaletteChoice>,
     mut snapshot: ResMut<SnapshotRequest>,
+    mut pending_import: ResMut<PendingImport>,
+    mut toasts: ResMut<Toasts>,
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -54,51 +75,86 @@ pub fn poll_dialogs_system(
     };
     pending.0 = None;
     match result {
-        Some(DialogResult::OpenProject(path)) => {
-            if let Err(e) = io::project::load(&path, &mut grid) {
-                eprintln!("Open failed: {e:?}");
-            } else {
+        Some(DialogResult::OpenProject(path)) => match io::project::load(&path, &mut grid) {
+            Ok(()) => {
                 history.undo.clear();
                 history.redo.clear();
+                pending_import.0 = true;
+                toasts.success(format!("Opened {}", file_label(&path)));
             }
-        }
-        Some(DialogResult::SaveProject(path)) => {
-            if let Err(e) = io::project::save(&path, &grid) {
-                eprintln!("Save failed: {e:?}");
-            }
-        }
-        Some(DialogResult::ExportVox(path)) => {
-            if let Err(e) = io::vox::export(&path, &grid) {
-                eprintln!("Export .vox failed: {e:?}");
-            }
-        }
-        Some(DialogResult::ExportObj(path)) => {
-            if let Err(e) = io::obj::export(&path, &grid) {
-                eprintln!("Export .obj failed: {e:?}");
-            }
-        }
-        Some(DialogResult::ExportFbx(path)) => {
-            if let Err(e) = io::fbx::export(&path, &grid) {
-                eprintln!("Export .fbx failed: {e:?}");
-            }
-        }
+            Err(e) => toasts.error(format!("Open failed: {e}")),
+        },
+        Some(DialogResult::SaveProject(path)) => match io::project::save(&path, &grid) {
+            Ok(()) => toasts.success(format!("Saved {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Save failed: {e}")),
+        },
+        Some(DialogResult::ExportVox(path)) => match io::vox::export(&path, &grid) {
+            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Export .vox failed: {e}")),
+        },
+        Some(DialogResult::ExportObj(path)) => match io::obj::export(&path, &grid) {
+            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Export .obj failed: {e}")),
+        },
+        Some(DialogResult::ExportFbx(path)) => match io::fbx::export(&path, &grid) {
+            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Export .fbx failed: {e}")),
+        },
         Some(DialogResult::ExportPng(path)) => {
+            // PNG export is async — the snapshot system finishes the save and
+            // posts its own toast.
             snapshot.0 = Some(path);
         }
         Some(DialogResult::ExportSvg(path)) => match (camera.single(), windows.single()) {
             (Ok((xform, projection)), Ok(window)) => {
                 let viewport = Vec2::new(window.width(), window.height());
-                if let Err(e) = io::svg::export(&path, &grid, xform, projection, viewport) {
-                    eprintln!("Export .svg failed: {e:?}");
+                match io::svg::export(&path, &grid, xform, projection, viewport) {
+                    Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+                    Err(e) => toasts.error(format!("Export .svg failed: {e}")),
                 }
             }
-            (Err(e), _) => eprintln!("Export .svg failed: no camera found: {e:?}"),
-            (_, Err(e)) => eprintln!("Export .svg failed: no window: {e:?}"),
+            (Err(e), _) => toasts.error(format!("Export .svg failed: no camera ({e})")),
+            (_, Err(e)) => toasts.error(format!("Export .svg failed: no window ({e})")),
+        },
+        Some(DialogResult::ExportGltf(path)) => match io::gltf::export(&path, &grid) {
+            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Export .glb failed: {e}")),
+        },
+        Some(DialogResult::ExportGox(path)) => match io::gox::export(&path, &grid) {
+            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Err(e) => toasts.error(format!("Export .gox failed: {e}")),
+        },
+        Some(DialogResult::ImportGox(path)) => match io::gox::import(&path, &mut grid) {
+            Ok(()) => {
+                history.undo.clear();
+                history.redo.clear();
+                pending_import.0 = true;
+                toasts.success(format!("Imported {}", file_label(&path)));
+            }
+            Err(e) => toasts.error(format!("Import .gox failed: {e}")),
+        },
+        Some(DialogResult::ImportVox(path)) => match io::vox::import(&path, &mut grid) {
+            Ok(()) => {
+                history.undo.clear();
+                history.redo.clear();
+                pending_import.0 = true;
+                toasts.success(format!("Imported {}", file_label(&path)));
+            }
+            Err(e) => toasts.error(format!("Import .vox failed: {e}")),
+        },
+        Some(DialogResult::ImportQb(path)) => match io::qb::import(&path, &mut grid) {
+            Ok(()) => {
+                history.undo.clear();
+                history.redo.clear();
+                pending_import.0 = true;
+                toasts.success(format!("Imported {}", file_label(&path)));
+            }
+            Err(e) => toasts.error(format!("Import .qb failed: {e}")),
         },
         Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
             Ok((name, colors)) => {
                 if colors.is_empty() {
-                    eprintln!("Import .ase: no usable colors found");
+                    toasts.error("Import .ase: no usable colors found");
                 } else {
                     palettes.0.push(Palette {
                         name,
@@ -107,13 +163,15 @@ pub fn poll_dialogs_system(
                     });
                     palette_choice.0 = palettes.0.len() - 1;
                     io::palettes::save(&palettes.0);
+                    toasts.success(format!("Imported {}", file_label(&path)));
                 }
             }
-            Err(e) => eprintln!("Import .ase failed: {e:?}"),
+            Err(e) => toasts.error(format!("Import .ase failed: {e}")),
         },
         Some(DialogResult::ExportAse(path, name, colors)) => {
-            if let Err(e) = io::ase::export(&path, &name, &colors) {
-                eprintln!("Export .ase failed: {e:?}");
+            match io::ase::export(&path, &name, &colors) {
+                Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+                Err(e) => toasts.error(format!("Export .ase failed: {e}")),
             }
         }
         None => {}

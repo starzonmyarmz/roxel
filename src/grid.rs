@@ -21,6 +21,19 @@ const _: () = assert!(
 pub const ALLOWED_SIZES: [usize; 4] = [32, 64, 96, 128];
 pub const DEFAULT_SIZE: usize = 32;
 
+/// Smallest `ALLOWED_SIZES` value that fits `needed` cells, capped at
+/// `MAX_GRID`. Used by every importer to pick a grid size from inbound
+/// voxel bounds, and by `io::project::load` for files whose stored size
+/// isn't one of the legal sizes.
+pub fn snap_to_allowed_size(needed: usize) -> usize {
+    ALLOWED_SIZES
+        .iter()
+        .copied()
+        .find(|&s| s >= needed)
+        .unwrap_or(MAX_GRID)
+        .min(MAX_GRID)
+}
+
 pub type Color8 = [u8; 4];
 
 /// X-major flat index into the MAX_GRID³ cell array.

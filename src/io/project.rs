@@ -1,4 +1,4 @@
-use crate::grid::{ALLOWED_SIZES, Color8, DEFAULT_SIZE, VoxelGrid};
+use crate::grid::{Color8, VoxelGrid, snap_to_allowed_size};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -37,19 +37,10 @@ pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let s = std::fs::read_to_string(path)?;
     let pf: ProjectFile = ron::from_str(&s)?;
     // Resize first so voxels falling inside the saved size land within bounds.
-    // If the file's size isn't one of the legal sizes (old project, hand
-    // edit), snap to the smallest legal size that fits.
+    // Non-legal stored sizes (old project, hand edit) snap up to the smallest
+    // fitting `ALLOWED_SIZES` value, capped at `MAX_GRID`.
     let stored = pf.size[0] as usize;
-    let new_size = if ALLOWED_SIZES.contains(&stored) {
-        stored
-    } else {
-        ALLOWED_SIZES
-            .iter()
-            .copied()
-            .find(|&s| s >= stored)
-            .unwrap_or(DEFAULT_SIZE)
-    };
-    grid.resize(new_size);
+    grid.resize(snap_to_allowed_size(stored));
     for ([x, y, z], c) in pf.voxels {
         let p = bevy::math::IVec3::new(x, y, z);
         grid.set(p, Some(c));
@@ -60,18 +51,12 @@ pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::test_util::tmp_path as raw_tmp_path;
     use bevy::math::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {
-        let mut p = std::env::temp_dir();
-        let pid = std::process::id();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        p.push(format!("roxel-test-{pid}-{nanos}-{name}.roxel"));
-        p
+        raw_tmp_path(name, "roxel")
     }
 
     #[test]

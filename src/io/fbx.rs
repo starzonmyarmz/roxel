@@ -1,5 +1,5 @@
 use crate::grid::VoxelGrid;
-use crate::mesh::FACES;
+use crate::mesh::for_each_exposed_face;
 use anyhow::Result;
 use std::io::Write;
 use std::path::Path;
@@ -38,62 +38,35 @@ fn build_mesh(grid: &VoxelGrid) -> (Vec<f64>, Vec<i32>, Vec<f64>, Vec<f64>) {
     let mut colors: Vec<f64> = Vec::new();
     let mut vidx: i32 = 0;
 
-    let size_i = grid.size_i();
-    for x in 0..grid.size {
-        for y in 0..grid.size {
-            for z in 0..grid.size {
-                let Some(rgba) = grid.cell(x, y, z) else {
-                    continue;
-                };
-                let cx = x as i32;
-                let cy = y as i32;
-                let cz = z as i32;
-                let r = rgba[0] as f64 / 255.0;
-                let g = rgba[1] as f64 / 255.0;
-                let bl = rgba[2] as f64 / 255.0;
-                let a = rgba[3] as f64 / 255.0;
+    for_each_exposed_face(grid, |cell, face, rgba| {
+        let r = rgba[0] as f64 / 255.0;
+        let g = rgba[1] as f64 / 255.0;
+        let bl = rgba[2] as f64 / 255.0;
+        let a = rgba[3] as f64 / 255.0;
 
-                for f in &FACES {
-                    let nx = cx + f.d.x;
-                    let ny = cy + f.d.y;
-                    let nz = cz + f.d.z;
-                    let neighbor_filled = nx >= 0
-                        && nx < size_i
-                        && ny >= 0
-                        && ny < size_i
-                        && nz >= 0
-                        && nz < size_i
-                        && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
-                    if neighbor_filled {
-                        continue;
-                    }
-
-                    let mut idx = [0i32; 4];
-                    for (i, c) in f.corners.iter().enumerate() {
-                        verts.push((cx + c[0]) as f64);
-                        verts.push((cy + c[1]) as f64);
-                        verts.push((cz + c[2]) as f64);
-                        idx[i] = vidx;
-                        vidx += 1;
-                    }
-                    polys.push(idx[0]);
-                    polys.push(idx[1]);
-                    polys.push(idx[2]);
-                    polys.push(-(idx[3]) - 1);
-
-                    for _ in 0..4 {
-                        normals.push(f.normal[0] as f64);
-                        normals.push(f.normal[1] as f64);
-                        normals.push(f.normal[2] as f64);
-                        colors.push(r);
-                        colors.push(g);
-                        colors.push(bl);
-                        colors.push(a);
-                    }
-                }
-            }
+        let mut idx = [0i32; 4];
+        for (i, c) in face.corners.iter().enumerate() {
+            verts.push((cell.x + c[0]) as f64);
+            verts.push((cell.y + c[1]) as f64);
+            verts.push((cell.z + c[2]) as f64);
+            idx[i] = vidx;
+            vidx += 1;
         }
-    }
+        polys.push(idx[0]);
+        polys.push(idx[1]);
+        polys.push(idx[2]);
+        polys.push(-(idx[3]) - 1);
+
+        for _ in 0..4 {
+            normals.push(face.normal[0] as f64);
+            normals.push(face.normal[1] as f64);
+            normals.push(face.normal[2] as f64);
+            colors.push(r);
+            colors.push(g);
+            colors.push(bl);
+            colors.push(a);
+        }
+    });
     (verts, polys, normals, colors)
 }
 

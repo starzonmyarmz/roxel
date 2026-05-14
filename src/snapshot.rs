@@ -18,6 +18,8 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
 
+use crate::ui::Toasts;
+
 #[derive(Component)]
 pub struct GroundPlane;
 
@@ -43,6 +45,7 @@ pub fn start_snapshot_system(
     mut commands: Commands,
     mut request: ResMut<SnapshotRequest>,
     mut session: ResMut<SnapshotSession>,
+    mut toasts: ResMut<Toasts>,
     windows: Query<&Window, With<PrimaryWindow>>,
     main_cam: Query<(&GlobalTransform, &Projection, Option<&Tonemapping>), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
@@ -51,7 +54,7 @@ pub fn start_snapshot_system(
 ) {
     let Some(path) = request.0.take() else { return };
     if session.camera.is_some() {
-        eprintln!("Snapshot already in progress; ignoring request");
+        toasts.error("Snapshot already in progress");
         return;
     }
 
@@ -100,11 +103,17 @@ pub fn start_snapshot_system(
         move |trigger: On<ScreenshotCaptured>,
               mut commands: Commands,
               mut session: ResMut<SnapshotSession>,
+              mut toasts: ResMut<Toasts>,
               mut vis: Query<&mut Visibility>| {
-            if let Err(e) = save_rgba_png(&path_for_observer, &trigger.image) {
-                eprintln!("Snapshot save failed: {e:?}");
-            } else {
-                info!("Snapshot saved to {}", path_for_observer.display());
+            match save_rgba_png(&path_for_observer, &trigger.image) {
+                Ok(()) => {
+                    let label = path_for_observer
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("image.png");
+                    toasts.success(format!("Saved {label}"));
+                }
+                Err(e) => toasts.error(format!("Snapshot save failed: {e}")),
             }
             if let Some(cam) = session.camera.take() {
                 commands.entity(cam).despawn();
