@@ -46,8 +46,75 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
-  release:
+  changelog:
     needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      notes_path: release-notes.md
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Finalize CHANGELOG.md
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -e
+          VERSION="${TAG_NAME#v}"
+          DATE="$(date -u +%Y-%m-%d)"
+          PREV_TAG="$(git tag --sort=-version:refname | grep -v "^${TAG_NAME}\$" | head -n 1 || true)"
+          if [ -n "$PREV_TAG" ]; then RANGE="${PREV_TAG}..${TAG_NAME}"; else RANGE="$TAG_NAME"; fi
+          git log --pretty=format:'- %s' "$RANGE" > /tmp/bullets.txt
+          VERSION="$VERSION" DATE="$DATE" python3 <<'PY'
+          import os, pathlib
+          version = os.environ["VERSION"]
+          date = os.environ["DATE"]
+          bullets = pathlib.Path("/tmp/bullets.txt").read_text().rstrip() + "\n"
+          path = pathlib.Path("CHANGELOG.md")
+          text = path.read_text()
+          lines = text.splitlines(keepends=True)
+          out, i, header = [], 0, f"## [{version}] - {date}\n"
+          while i < len(lines):
+              line = lines[i]
+              if line.startswith("## [Unreleased]"):
+                  out.append(line)
+                  out.append("\n")
+                  out.append(header)
+                  out.append("\n")
+                  out.append(bullets)
+                  i += 1
+                  # Drop old Unreleased body until next "## " header or EOF.
+                  while i < len(lines) and not lines[i].startswith("## "):
+                      i += 1
+                  # Re-emit a blank line before the next section if missing.
+                  if i < len(lines) and out[-1] != "\n":
+                      out.append("\n")
+                  continue
+              out.append(line)
+              i += 1
+          path.write_text("".join(out))
+          pathlib.Path("release-notes.md").write_text(header + "\n" + bullets)
+          PY
+      - name: Commit + push to main
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: finalize CHANGELOG for ${TAG_NAME} [skip ci]"
+            git push origin main
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  release:
+    needs: [build, changelog]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -57,4 +124,4 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
-          generate_release_notes: true
+          body_path: dist/release-notes.md

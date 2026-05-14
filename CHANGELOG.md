@@ -4,11 +4,15 @@ All notable changes to Roxel are recorded here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The `[Unreleased]` section is appended to automatically by
-`.githooks/prepare-commit-msg` on each commit.
+Add bullets under `## [Unreleased]` as you land work. When a `v*` tag is
+pushed, `.github/workflows/release.yml` renames the section to the new
+version + date, regenerates the bullets from the tag's commit range,
+commits the result back to `main`, and uses the same body for the GitHub
+Release notes.
 
 ## [Unreleased]
 
+- ci: tag-driven CHANGELOG finalize (drop prepare-commit-msg hook)
 - chore: add CHANGELOG.md and prepare-commit-msg hook
 - polish: macOS .app distribution — bleed icon, About metadata, ad-hoc sign
 - docs: trim README features list and drop project layout
