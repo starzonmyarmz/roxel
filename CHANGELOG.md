@@ -12,13 +12,19 @@ Release notes.
 
 ## [Unreleased]
 
-- polish: style New-project modal Create / Cancel buttons via new `dialog_button` helper
-- refactor: extract reusable egui widget helpers (`swatch_button`, `swatch_grid`, `modal_window`, `chip_button`, `prefs_row`, `wide_action_button`, `hex_label`) from `ui.rs` into `ui/widgets.rs`
-- ci: run `cargo test` on push and pull request to `main`
-- feat: animated marching-ants selection outline with x-ray per-cell wireframes
-- fix: Select tool picks the clicked voxel instead of the adjacent empty cell
+## [0.3.2] - 2026-05-14
+
+- release: 0.3.2
+- polish: declutter palette UI, tighten right sidebar
+- polish: themed Create / Cancel buttons in New-project modal
+- style: cargo fmt
+- refactor: extract reusable egui widget helpers from ui.rs
+- docs: add CI status badge to README
+- ci: run cargo test on push and pull request
+- feat: animated marching-ants selection outline with x-ray wireframes
+- fix: Select tool picks clicked voxel, not adjacent empty cell
 - feat: macOS Help menu with Changelog link
-- feat: Cmd/Ctrl + `=`/`-` zoom and Cmd/Ctrl + `0` frame-view shortcuts
+- feat: Cmd/Ctrl + =/-/0 zoom and frame-view shortcuts
 - ci: tag-driven CHANGELOG finalize (drop prepare-commit-msg hook)
 - chore: add CHANGELOG.md and prepare-commit-msg hook
 - polish: macOS .app distribution — bleed icon, About metadata, ad-hoc sign
