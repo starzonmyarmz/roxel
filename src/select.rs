@@ -1,12 +1,29 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
-use crate::shape_preview::build_cubes_mesh;
-use crate::theme::Theme;
 use crate::tools::{StrokeAnchor, Tool, ToolState};
-use bevy::asset::RenderAssetUsages;
-use bevy::ecs::system::SystemParam;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+
+/// Gizmo group for selection visuals: marching-ants AABB outline + per-cell
+/// wireframe markers. Configured with `depth_bias = -1.0` so the overlay
+/// x-rays through voxels — users need to see which cells are selected inside
+/// a solid block.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct SelectionGizmos;
+
+pub fn configure_selection_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<SelectionGizmos>();
+    config.depth_bias = -1.0;
+    config.line.width = 1.5;
+}
+
+/// World-units per dash stripe along the AABB outline.
+const STRIPE_LEN: f32 = 0.18;
+/// Phase advance per second — sets how fast the ants march.
+const STRIPE_SPEED: f32 = 0.35;
+/// Max occupied cells we'll draw per-cell wireframes for. Selections larger
+/// than this fall back to the outline only — drawing 100k cuboid gizmos per
+/// frame is not viable.
+const MAX_CELL_WIREFRAMES: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectionAabb {
@@ -205,106 +222,69 @@ pub fn in_progress_aabb(state: &SelectState) -> Option<SelectionAabb> {
     ))
 }
 
-#[derive(Component)]
-pub struct SelectionPreview;
-
-#[derive(Resource)]
-pub struct SelectionPreviewHandles {
-    pub mesh: Handle<Mesh>,
-    pub material: Handle<StandardMaterial>,
+/// One stripe along a marching-ants edge: (start, end, is_white). Pure helper
+/// so the phase math is unit-testable without spinning up a render.
+pub fn marching_segments(len: f32, phase: f32, stripe: f32) -> Vec<(f32, f32, bool)> {
+    let mut out = Vec::new();
+    if len <= 0.0 || stripe <= 0.0 {
+        return out;
+    }
+    let cycle = 2.0 * stripe;
+    let p = phase.rem_euclid(cycle);
+    let mut s = -p;
+    let mut idx = 0;
+    while s < len {
+        let e = (s + stripe).min(len);
+        let cs = s.max(0.0);
+        if e > cs {
+            out.push((cs, e, idx % 2 == 0));
+        }
+        s += stripe;
+        idx += 1;
+    }
+    out
 }
 
-fn empty_mesh() -> Mesh {
-    let mut m = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
-    m.insert_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new());
-    m.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<[f32; 3]>::new());
-    m.insert_indices(Indices::U32(Vec::new()));
-    m
+fn draw_marching_edge(gizmos: &mut Gizmos<SelectionGizmos>, a: Vec3, b: Vec3, phase: f32) {
+    let dir = b - a;
+    let len = dir.length();
+    if len <= 0.0 {
+        return;
+    }
+    let dirn = dir / len;
+    for (s, e, white) in marching_segments(len, phase, STRIPE_LEN) {
+        let p0 = a + dirn * s;
+        let p1 = a + dirn * e;
+        let color = if white { Color::WHITE } else { Color::BLACK };
+        gizmos.line(p0, p1, color);
+    }
 }
 
-pub fn spawn_selection_preview(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
+pub fn selection_render_system(
+    selection: Res<Selection>,
+    state: Res<SelectState>,
+    grid: Res<VoxelGrid>,
+    time: Res<Time>,
+    mut gizmos: Gizmos<SelectionGizmos>,
 ) {
-    let mesh = meshes.add(empty_mesh());
-    let material = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.35, 0.55, 1.0, 0.28),
-        unlit: true,
-        alpha_mode: AlphaMode::Blend,
-        cull_mode: None,
-        ..default()
-    });
-    commands.spawn((
-        Mesh3d(mesh.clone()),
-        MeshMaterial3d(material.clone()),
-        Transform::default(),
-        Visibility::Hidden,
-        SelectionPreview,
-    ));
-    commands.insert_resource(SelectionPreviewHandles { mesh, material });
-}
-
-#[derive(SystemParam)]
-pub struct SelectionRenderParams<'w, 's> {
-    pub selection: Res<'w, Selection>,
-    pub state: Res<'w, SelectState>,
-    pub grid: Res<'w, VoxelGrid>,
-    pub theme: Res<'w, Theme>,
-    pub handles: Res<'w, SelectionPreviewHandles>,
-    pub meshes: ResMut<'w, Assets<Mesh>>,
-    pub materials: ResMut<'w, Assets<StandardMaterial>>,
-    pub preview_q: Query<'w, 's, &'static mut Visibility, With<SelectionPreview>>,
-}
-
-pub fn selection_render_system(mut p: SelectionRenderParams, mut gizmos: Gizmos) {
     // In-progress drag takes priority over a committed selection so the user
     // sees the new region they're drawing.
-    let active_aabb = if p.state.phase != SelectPhase::Idle {
-        in_progress_aabb(&p.state).or(p.selection.aabb)
+    let active_aabb = if state.phase != SelectPhase::Idle {
+        in_progress_aabb(&state).or(selection.aabb)
     } else {
-        p.selection.aabb
+        selection.aabb
     };
+    let Some(aabb) = active_aabb else { return; };
 
-    let Ok(mut vis) = p.preview_q.single_mut() else { return; };
-
-    let accent = p.theme.accent;
-    // Refresh material color so theme switches recolor the overlay.
-    if let Some(mat) = p.materials.get_mut(&p.handles.material) {
-        mat.base_color = Color::srgba(
-            accent.r() as f32 / 255.0,
-            accent.g() as f32 / 255.0,
-            accent.b() as f32 / 255.0,
-            0.25,
-        );
-    }
-
-    let Some(aabb) = active_aabb else {
-        *vis = Visibility::Hidden;
-        if let Some(mesh) = p.meshes.get_mut(&p.handles.mesh) {
-            *mesh = empty_mesh();
-        }
-        return;
-    };
-
-    let mut filled_cells: Vec<IVec3> = Vec::new();
-    for cell in aabb.iter_cells() {
-        if p.grid.in_bounds(cell) && p.grid.get(cell).is_some() {
-            filled_cells.push(cell);
-        }
-    }
-
-    if let Some(mesh) = p.meshes.get_mut(&p.handles.mesh) {
-        let (pos, nor, idx) = build_cubes_mesh(&filled_cells);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nor);
-        mesh.insert_indices(Indices::U32(idx));
-    }
-    *vis = Visibility::Visible;
-
-    // AABB outline. Slightly inflated so it sits outside cell faces.
+    // Outline corners, slightly inflated so the stroke sits just outside cell
+    // faces rather than z-fighting them (depth_bias handles the x-ray, this
+    // keeps the line crisp at edge corners).
     let pad = 0.01;
-    let min = Vec3::new(aabb.min.x as f32 - pad, aabb.min.y as f32 - pad, aabb.min.z as f32 - pad);
+    let min = Vec3::new(
+        aabb.min.x as f32 - pad,
+        aabb.min.y as f32 - pad,
+        aabb.min.z as f32 - pad,
+    );
     let max = Vec3::new(
         aabb.max.x as f32 + 1.0 + pad,
         aabb.max.y as f32 + 1.0 + pad,
@@ -325,14 +305,27 @@ pub fn selection_render_system(mut p: SelectionRenderParams, mut gizmos: Gizmos)
         (4, 5), (5, 6), (6, 7), (7, 4),
         (0, 4), (1, 5), (2, 6), (3, 7),
     ];
-    let line_color = Color::srgba(
-        accent.r() as f32 / 255.0,
-        accent.g() as f32 / 255.0,
-        accent.b() as f32 / 255.0,
-        1.0,
-    );
+    let phase = time.elapsed_secs() * STRIPE_SPEED;
     for (a, b) in edges {
-        gizmos.line(corners[a], corners[b], line_color);
+        draw_marching_edge(&mut gizmos, corners[a], corners[b], phase);
+    }
+
+    // Per-cell wireframes so users can see which voxels inside a solid block
+    // are actually in the selection. The depth_bias on the gizmo group makes
+    // these draw on top of voxel faces (x-ray).
+    let mut drawn = 0usize;
+    for cell in aabb.iter_cells() {
+        if drawn >= MAX_CELL_WIREFRAMES {
+            break;
+        }
+        if grid.in_bounds(cell) && grid.get(cell).is_some() {
+            let center = cell.as_vec3() + Vec3::splat(0.5);
+            gizmos.cube(
+                Transform::from_translation(center),
+                Color::srgba(1.0, 1.0, 1.0, 0.7),
+            );
+            drawn += 1;
+        }
     }
 }
 
@@ -800,6 +793,43 @@ mod tests {
         let aabb = in_progress_aabb(&state).unwrap();
         assert_eq!(aabb.min.y, 5);
         assert_eq!(aabb.max.y, 5);
+    }
+
+    #[test]
+    fn marching_segments_zero_phase_alternates_white_black() {
+        let segs = marching_segments(3.0, 0.0, 1.0);
+        assert_eq!(
+            segs,
+            vec![(0.0, 1.0, true), (1.0, 2.0, false), (2.0, 3.0, true)]
+        );
+    }
+
+    #[test]
+    fn marching_segments_phase_clips_leading_stripe() {
+        // phase=0.5 → first white stripe rendered from 0..0.5, then black 0.5..1.5, ...
+        let segs = marching_segments(3.0, 0.5, 1.0);
+        assert_eq!(segs[0], (0.0, 0.5, true));
+        assert_eq!(segs[1], (0.5, 1.5, false));
+        assert_eq!(segs[2], (1.5, 2.5, true));
+        assert_eq!(segs[3], (2.5, 3.0, false));
+    }
+
+    #[test]
+    fn marching_segments_phase_cycles_with_period_two_stripes() {
+        // Adding 2*stripe to phase yields the same segmentation.
+        let a = marching_segments(5.0, 0.5, 1.0);
+        let b = marching_segments(5.0, 0.5 + 2.0, 1.0);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn marching_segments_handles_zero_length() {
+        assert!(marching_segments(0.0, 1.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn marching_segments_handles_zero_stripe() {
+        assert!(marching_segments(5.0, 0.0, 0.0).is_empty());
     }
 
     #[test]

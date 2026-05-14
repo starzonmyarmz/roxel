@@ -98,7 +98,8 @@ fn main() {
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
         .init_resource::<NewProject>()
-        .init_gizmo_group::<AxisGizmoGroup>();
+        .init_gizmo_group::<AxisGizmoGroup>()
+        .init_gizmo_group::<crate::select::SelectionGizmos>();
 
     #[cfg(target_os = "macos")]
     {
@@ -117,7 +118,14 @@ fn main() {
             );
     }
 
-    app.add_systems(Startup, (setup_scene, configure_axis_gizmo))
+    app.add_systems(
+            Startup,
+            (
+                setup_scene,
+                configure_axis_gizmo,
+                crate::select::configure_selection_gizmos,
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -183,7 +191,6 @@ fn setup_scene(
     spawn_lights(&mut commands);
     spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
     spawn_shape_preview(&mut commands, &mut meshes, &mut materials);
-    crate::select::spawn_selection_preview(&mut commands, &mut meshes, &mut materials);
 
     // One mesh entity per chunk. Mesher rebuilds only flagged chunks each
     // frame so a single-cell edit doesn't touch the whole grid.

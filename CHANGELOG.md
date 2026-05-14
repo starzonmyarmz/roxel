@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: animated marching-ants selection outline with x-ray per-cell wireframes
 - fix: Select tool picks the clicked voxel instead of the adjacent empty cell
 - feat: macOS Help menu with Changelog link
 - feat: Cmd/Ctrl + `=`/`-` zoom and Cmd/Ctrl + `0` frame-view shortcuts
