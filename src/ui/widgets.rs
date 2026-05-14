@@ -14,9 +14,7 @@ pub fn plane_color_row(
     ui.horizontal(|ui| {
         ui.add_sized(
             [72.0, 20.0],
-            egui::Label::new(
-                egui::RichText::new(label).color(theme.text_dim).size(12.0),
-            ),
+            egui::Label::new(egui::RichText::new(label).color(theme.text_dim).size(12.0)),
         );
         if ui.radio(!is_custom, "Match theme").clicked() {
             *pref = PlaneColorPref::MatchTheme;
@@ -35,28 +33,19 @@ pub fn plane_color_row(
         ui.horizontal(|ui| {
             ui.add_space(76.0);
             ui.color_edit_button_srgb(rgb);
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(format!(
-                        "#{:02X}{:02X}{:02X}",
-                        rgb[0], rgb[1], rgb[2]
-                    ))
-                    .monospace()
-                    .color(theme.text_dim)
-                    .size(12.0),
-                )
-                .selectable(true),
-            );
+            hex_label(ui, theme, *rgb, true);
         });
     }
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(1.0, 20.0), egui::Sense::hover());
-    ui.painter()
-        .vline(rect.center().x, rect.y_range(), egui::Stroke::new(0.5, theme.border));
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, 20.0), egui::Sense::hover());
+    ui.painter().vline(
+        rect.center().x,
+        rect.y_range(),
+        egui::Stroke::new(0.5, theme.border),
+    );
 }
 
 pub fn tool_label(t: Tool) -> &'static str {
@@ -208,9 +197,207 @@ pub fn hint_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
 /// Dim 12 pt readout label, non-selectable. Used in status bar.
 pub fn status_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     ui.add(
-        egui::Label::new(
-            egui::RichText::new(text).color(theme.text_dim).size(12.0),
-        )
-        .selectable(false),
+        egui::Label::new(egui::RichText::new(text).color(theme.text_dim).size(12.0))
+            .selectable(false),
     );
+}
+
+/// `#RRGGBB` uppercase. Single source of truth for hex codes shown in the UI
+/// (foreground swatch readout, palette/recent hover tips, custom-colour pref
+/// rows).
+pub fn hex_string(rgb: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
+}
+
+/// Selectable monospace hex label. `dim = true` uses `theme.text_dim` + 12 pt
+/// (settings-row style); `dim = false` uses `theme.text` + 13 pt (inspector
+/// readout style).
+pub fn hex_label(ui: &mut egui::Ui, theme: &Theme, rgb: [u8; 3], dim: bool) {
+    let (colour, size) = if dim {
+        (theme.text_dim, 12.0)
+    } else {
+        (theme.text, 13.0)
+    };
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(hex_string(rgb))
+                .monospace()
+                .color(colour)
+                .size(size),
+        )
+        .selectable(true),
+    );
+}
+
+/// Single colour-square button. Selected swatches get a 2.0 px accent stroke;
+/// unselected swatches a 0.5 px border. The caller wraps for DnD,
+/// context-menus, and hover-text — keep this focused on rendering.
+pub fn swatch_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    color: egui::Color32,
+    size: egui::Vec2,
+    corner_radius: u8,
+    selected: bool,
+) -> egui::Response {
+    let stroke = if selected {
+        egui::Stroke::new(2.0, theme.accent)
+    } else {
+        egui::Stroke::new(0.5, theme.border)
+    };
+    ui.add_sized(
+        [size.x, size.y],
+        egui::Button::new("")
+            .fill(color)
+            .stroke(stroke)
+            .corner_radius(egui::CornerRadius::same(corner_radius)),
+    )
+}
+
+/// Opens a `horizontal_wrapped` row with the spacing tweaks every swatch grid
+/// in this app shares: zero button padding, zero interact size, 5 px gaps.
+pub fn swatch_grid<R>(
+    ui: &mut egui::Ui,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+        add(ui)
+    })
+}
+
+/// Themed centred-modal `egui::Window` builder. Nunito-700 14 pt title,
+/// non-collapsible, non-resizable, panel-fill frame with 0.5 border and
+/// rounded corners. Caller adds `.show(ctx, |ui| { ... })`.
+pub fn modal_window<'a>(
+    ctx: &egui::Context,
+    theme: &Theme,
+    title: &str,
+    open: &'a mut bool,
+) -> egui::Window<'a> {
+    egui::Window::new(
+        egui::RichText::new(title)
+            .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
+            .size(14.0),
+    )
+    .collapsible(false)
+    .resizable(false)
+    .open(open)
+    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+    .frame(
+        egui::Frame::window(&ctx.style())
+            .fill(theme.panel)
+            .inner_margin(egui::Margin::symmetric(16, 14))
+            .stroke(egui::Stroke::new(0.5, theme.border))
+            .corner_radius(egui::CornerRadius::same(10)),
+    )
+}
+
+/// Toggle chip used by selection rows (Theme: System / Light / Dark). Selected
+/// = accent fill + white text + no stroke; unselected = surface + text + 0.5
+/// border. Generic over the value so future selectors (shape kind, etc.) can
+/// reuse it.
+pub fn chip_button<T: PartialEq + Copy>(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    current: &mut T,
+    value: T,
+    label: &str,
+) -> egui::Response {
+    let selected = *current == value;
+    let (fill, fg, stroke) = if selected {
+        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+    } else {
+        (
+            theme.surface,
+            theme.text,
+            egui::Stroke::new(0.5, theme.border),
+        )
+    };
+    let resp = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
+            ui.add(
+                egui::Button::new(egui::RichText::new(label).color(fg).size(12.0))
+                    .fill(fill)
+                    .stroke(stroke)
+                    .corner_radius(egui::CornerRadius::same(6)),
+            )
+        })
+        .inner;
+    if resp.clicked() {
+        *current = value;
+    }
+    resp
+}
+
+/// Settings-modal row: fixed-width dim label on the left, custom content on
+/// the right. Used by every row of the Preferences modal.
+pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            [72.0, 20.0],
+            egui::Label::new(egui::RichText::new(label).color(theme.text_dim).size(12.0)),
+        );
+        add(ui);
+    });
+}
+
+/// Full-width icon + text button with the look used by inspector action rows
+/// (the "Add current color" button). `width` is the explicit min width — pass
+/// `ui.available_width()` for a panel-filling button.
+pub fn wide_action_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    icon: egui::ImageSource<'static>,
+    label: &str,
+    width: f32,
+    enabled: bool,
+) -> egui::Response {
+    let tint = if enabled { theme.text } else { theme.text_dim };
+    let img = egui::Image::new(icon)
+        .fit_to_exact_size(egui::vec2(13.0, 13.0))
+        .tint(tint);
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = egui::vec2(8.0, 0.0);
+        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+        ui.add_enabled(
+            enabled,
+            egui::Button::image_and_text(img, egui::RichText::new(label).size(12.0))
+                .min_size(egui::vec2(width, 26.0))
+                .corner_radius(egui::CornerRadius::same(6))
+                .stroke(egui::Stroke::new(0.5, theme.border)),
+        )
+    })
+    .inner
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_string_formats_uppercase_with_hash() {
+        assert_eq!(hex_string([0, 0, 0]), "#000000");
+        assert_eq!(hex_string([255, 255, 255]), "#FFFFFF");
+        assert_eq!(hex_string([18, 26, 200]), "#121AC8");
+        assert_eq!(hex_string([171, 205, 239]), "#ABCDEF");
+    }
+
+    #[test]
+    fn tool_label_covers_every_variant() {
+        for t in [
+            Tool::Brush,
+            Tool::Erase,
+            Tool::Paint,
+            Tool::Eyedropper,
+            Tool::Shape,
+            Tool::Select,
+            Tool::Move,
+        ] {
+            assert!(!tool_label(t).is_empty(), "missing label for {t:?}");
+        }
+    }
 }

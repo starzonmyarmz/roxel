@@ -12,8 +12,8 @@ use crate::history::History;
 use crate::io;
 use crate::shapes::ShapePrimitive;
 use crate::theme::{
-    CanvasBgPref, NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref,
-    apply_egui_style, save_preferences,
+    CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
+    save_preferences,
 };
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 use bevy::ecs::system::SystemParam;
@@ -21,7 +21,6 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
 use palette::PaletteParams;
-
 
 #[derive(SystemParam)]
 pub struct ZoomReadout<'w, 's> {
@@ -113,12 +112,15 @@ pub fn ui_system(
                 }
                 let dialog_busy = pending.is_active();
                 if ui
-                    .add_enabled(!dialog_busy, egui::Button::image_and_text(
-                        egui::Image::new(icons::folder_open())
-                            .fit_to_exact_size(egui::vec2(14.0, 14.0))
-                            .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                        egui::RichText::new("Open…").size(13.0),
-                    ))
+                    .add_enabled(
+                        !dialog_busy,
+                        egui::Button::image_and_text(
+                            egui::Image::new(icons::folder_open())
+                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                            egui::RichText::new("Open…").size(13.0),
+                        ),
+                    )
                     .clicked()
                 {
                     pending.spawn(async move {
@@ -130,12 +132,15 @@ pub fn ui_system(
                     });
                 }
                 if ui
-                    .add_enabled(!dialog_busy, egui::Button::image_and_text(
-                        egui::Image::new(icons::save())
-                            .fit_to_exact_size(egui::vec2(14.0, 14.0))
-                            .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                        egui::RichText::new("Save…").size(13.0),
-                    ))
+                    .add_enabled(
+                        !dialog_busy,
+                        egui::Button::image_and_text(
+                            egui::Image::new(icons::save())
+                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                            egui::RichText::new("Save…").size(13.0),
+                        ),
+                    )
                     .clicked()
                 {
                     pending.spawn(async move {
@@ -154,62 +159,78 @@ pub fn ui_system(
                     egui::RichText::new("Export").size(13.0),
                     |ui| {
                         ui.set_min_width(180.0);
-                    if ui.add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…")).clicked() {
-                        pending.spawn(async move {
-                            rfd::AsyncFileDialog::new()
-                                .add_filter("MagicaVoxel", &["vox"])
-                                .set_file_name("model.vox")
-                                .save_file()
-                                .await
-                                .map(|f| DialogResult::ExportVox(f.path().to_path_buf()))
-                        });
-                        ui.close();
-                    }
-                    if ui.add_enabled(!dialog_busy, egui::Button::new("Wavefront .obj…")).clicked() {
-                        pending.spawn(async move {
-                            rfd::AsyncFileDialog::new()
-                                .add_filter("Wavefront OBJ", &["obj"])
-                                .set_file_name("model.obj")
-                                .save_file()
-                                .await
-                                .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
-                        });
-                        ui.close();
-                    }
-                    if ui.add_enabled(!dialog_busy, egui::Button::new("Autodesk .fbx…")).clicked() {
-                        pending.spawn(async move {
-                            rfd::AsyncFileDialog::new()
-                                .add_filter("Autodesk FBX", &["fbx"])
-                                .set_file_name("model.fbx")
-                                .save_file()
-                                .await
-                                .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
-                        });
-                        ui.close();
-                    }
-                    if ui.add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…")).clicked() {
-                        pending.spawn(async move {
-                            rfd::AsyncFileDialog::new()
-                                .add_filter("PNG image", &["png"])
-                                .set_file_name("roxel.png")
-                                .save_file()
-                                .await
-                                .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
-                        });
-                        ui.close();
-                    }
-                    if ui.add_enabled(!dialog_busy, egui::Button::new("SVG…")).clicked() {
-                        pending.spawn(async move {
-                            rfd::AsyncFileDialog::new()
-                                .add_filter("SVG image", &["svg"])
-                                .set_file_name("roxel.svg")
-                                .save_file()
-                                .await
-                                .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
-                        });
-                        ui.close();
-                    }
-                });
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("MagicaVoxel", &["vox"])
+                                    .set_file_name("model.vox")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportVox(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Wavefront .obj…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Wavefront OBJ", &["obj"])
+                                    .set_file_name("model.obj")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Autodesk .fbx…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("Autodesk FBX", &["fbx"])
+                                    .set_file_name("model.fbx")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("PNG image", &["png"])
+                                    .set_file_name("roxel.png")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(!dialog_busy, egui::Button::new("SVG…"))
+                            .clicked()
+                        {
+                            pending.spawn(async move {
+                                rfd::AsyncFileDialog::new()
+                                    .add_filter("SVG image", &["svg"])
+                                    .set_file_name("roxel.svg")
+                                    .save_file()
+                                    .await
+                                    .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
+                            });
+                            ui.close();
+                        }
+                    },
+                );
 
                 ui.add_space(8.0);
                 widgets::vertical_rule(ui, &theme);
@@ -281,11 +302,7 @@ pub fn ui_system(
                     .selectable(false),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    widgets::status_label(
-                        ui,
-                        &theme,
-                        &format!("Grid {g}×{g}×{g}", g = grid.size),
-                    );
+                    widgets::status_label(ui, &theme, &format!("Grid {g}×{g}×{g}", g = grid.size));
                     ui.add_space(12.0);
                     widgets::status_label(
                         ui,
@@ -376,15 +393,15 @@ pub fn ui_system(
                         color.0[0], color.0[1], color.0[2], color.0[3],
                     );
                     let swatch_w = ui.available_width();
-                    let swatch_resp = ui
-                        .add_sized(
-                            [swatch_w, 56.0],
-                            egui::Button::new("")
-                                .fill(srgba)
-                                .stroke(egui::Stroke::new(0.5, theme.border))
-                                .corner_radius(egui::CornerRadius::same(8)),
-                        )
-                        .on_hover_text("Click to edit color");
+                    let swatch_resp = widgets::swatch_button(
+                        ui,
+                        &theme,
+                        srgba,
+                        egui::vec2(swatch_w, 56.0),
+                        8,
+                        false,
+                    )
+                    .on_hover_text("Click to edit color");
                     egui::Popup::menu(&swatch_resp)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                         .show(|ui| {
@@ -399,16 +416,11 @@ pub fn ui_system(
                         });
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!(
-                                    "#{:02X}{:02X}{:02X}",
-                                    color.0[0], color.0[1], color.0[2]
-                                ))
-                                .monospace()
-                                .size(13.0),
-                            )
-                            .selectable(true),
+                        widgets::hex_label(
+                            ui,
+                            &theme,
+                            [color.0[0], color.0[1], color.0[2]],
+                            false,
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add(
@@ -642,33 +654,22 @@ pub fn ui_system(
                     ui.add_space(6.0);
                     let add_enabled = !active_is_builtin
                         && !palettes.0[active_idx].colors.contains(&color.0);
-                    let add_icon = egui::Image::new(icons::plus())
-                        .fit_to_exact_size(egui::vec2(13.0, 13.0))
-                        .tint(if add_enabled { theme.text } else { theme.text_dim });
-                    if ui
-                        .scope(|ui| {
-                            ui.spacing_mut().button_padding = egui::vec2(8.0, 0.0);
-                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-                            ui.add_enabled(
-                                add_enabled,
-                                egui::Button::image_and_text(
-                                    add_icon,
-                                    egui::RichText::new("Add current color").size(12.0),
-                                )
-                                .min_size(egui::vec2(row_w, 26.0))
-                                .corner_radius(egui::CornerRadius::same(6))
-                                .stroke(egui::Stroke::new(0.5, theme.border)),
-                            )
-                        })
-                        .inner
-                        .on_hover_text(if active_is_builtin {
-                            "Duplicate this palette first to edit it"
-                        } else if !add_enabled {
-                            "Color already in palette"
-                        } else {
-                            "Add current color as a swatch"
-                        })
-                        .clicked()
+                    if widgets::wide_action_button(
+                        ui,
+                        &theme,
+                        icons::plus(),
+                        "Add current color",
+                        row_w,
+                        add_enabled,
+                    )
+                    .on_hover_text(if active_is_builtin {
+                        "Duplicate this palette first to edit it"
+                    } else if !add_enabled {
+                        "Color already in palette"
+                    } else {
+                        "Add current color as a swatch"
+                    })
+                    .clicked()
                     {
                         palettes.0[active_idx].colors.push(color.0);
                         io::palettes::save(&palettes.0);
@@ -690,47 +691,37 @@ pub fn ui_system(
                             },
                         );
                     } else {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-                            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                        widgets::swatch_grid(ui, |ui| {
                             for (si, c) in active_palette.iter().enumerate() {
                                 let col = egui::Color32::from_rgba_unmultiplied(
                                     c[0], c[1], c[2], 255,
                                 );
                                 let is_current = color.0 == *c;
-                                let stroke = if is_current {
-                                    egui::Stroke::new(2.0, ACCENT)
-                                } else {
-                                    egui::Stroke::new(0.5, theme.border)
-                                };
                                 let swatch_id =
                                     egui::Id::new(("swatch", active_idx, si));
                                 let mut clicked = false;
                                 let resp = if editable {
                                     ui.dnd_drag_source(swatch_id, si, |ui| {
-                                        let r = ui.add_sized(
-                                            [22.0, 22.0],
-                                            egui::Button::new("")
-                                                .fill(col)
-                                                .stroke(stroke)
-                                                .corner_radius(
-                                                    egui::CornerRadius::same(4),
-                                                ),
+                                        let r = widgets::swatch_button(
+                                            ui,
+                                            &theme,
+                                            col,
+                                            egui::vec2(22.0, 22.0),
+                                            4,
+                                            is_current,
                                         );
                                         clicked = r.clicked();
                                         r
                                     })
                                     .response
                                 } else {
-                                    let r = ui.add_sized(
-                                        [22.0, 22.0],
-                                        egui::Button::new("")
-                                            .fill(col)
-                                            .stroke(stroke)
-                                            .corner_radius(
-                                                egui::CornerRadius::same(4),
-                                            ),
+                                    let r = widgets::swatch_button(
+                                        ui,
+                                        &theme,
+                                        col,
+                                        egui::vec2(22.0, 22.0),
+                                        4,
+                                        is_current,
                                     );
                                     clicked = r.clicked();
                                     r
@@ -747,10 +738,8 @@ pub fn ui_system(
                                     });
                                 }
                                 resp.clone().on_hover_text(format!(
-                                    "#{:02X}{:02X}{:02X}{}",
-                                    c[0],
-                                    c[1],
-                                    c[2],
+                                    "{}{}",
+                                    widgets::hex_string([c[0], c[1], c[2]]),
                                     if editable {
                                         "  (drag to reorder, right-click to remove)"
                                     } else {
@@ -793,34 +782,26 @@ pub fn ui_system(
                     if recent.0.is_empty() {
                         widgets::hint_label(ui, &theme, "No recent colors");
                     } else {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-                            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-                            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                        widgets::swatch_grid(ui, |ui| {
                             for c in &recent.0 {
                                 let col = egui::Color32::from_rgba_unmultiplied(
                                     c[0], c[1], c[2], 255,
                                 );
                                 let is_current = color.0 == *c;
-                                let stroke = if is_current {
-                                    egui::Stroke::new(2.0, ACCENT)
-                                } else {
-                                    egui::Stroke::new(0.5, theme.border)
-                                };
-                                let resp = ui.add_sized(
-                                    [26.0, 26.0],
-                                    egui::Button::new("")
-                                        .fill(col)
-                                        .stroke(stroke)
-                                        .corner_radius(egui::CornerRadius::same(5)),
+                                let resp = widgets::swatch_button(
+                                    ui,
+                                    &theme,
+                                    col,
+                                    egui::vec2(26.0, 26.0),
+                                    5,
+                                    is_current,
                                 );
                                 if resp.clicked() {
                                     color.0 = *c;
                                 }
-                                resp.on_hover_text(format!(
-                                    "#{:02X}{:02X}{:02X}",
-                                    c[0], c[1], c[2]
-                                ));
+                                resp.on_hover_text(widgets::hex_string([
+                                    c[0], c[1], c[2],
+                                ]));
                             }
                         });
                     }
@@ -936,11 +917,13 @@ pub fn ui_system(
         let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
         let z = keys.pressed(KeyCode::KeyZ);
         let over_gizmo = gizmo_view.drag.active
-            || gizmo_view.rect.0.zip(ctx.pointer_latest_pos()).is_some_and(
-                |(r, p)| {
+            || gizmo_view
+                .rect
+                .0
+                .zip(ctx.pointer_latest_pos())
+                .is_some_and(|(r, p)| {
                     p.x >= r.min.x && p.x <= r.max.x && p.y >= r.min.y && p.y <= r.max.y
-                },
-            );
+                });
         let cursor = if gizmo_view.drag.active {
             egui::CursorIcon::Grabbing
         } else if over_gizmo {
@@ -970,35 +953,19 @@ pub fn ui_system(
     if prefs_window.open {
         let before = *prefs;
         let mut open_flag = true;
-        egui::Window::new(
-            egui::RichText::new("Preferences")
-                .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
-                .size(14.0),
-        )
-        .collapsible(false)
-        .resizable(false)
-        .open(&mut open_flag)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .frame(
-            egui::Frame::window(&ctx.style())
-                .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(16, 14))
-                .stroke(egui::Stroke::new(0.5, theme.border))
-                .corner_radius(egui::CornerRadius::same(10)),
-        )
-        .show(ctx, |ui| {
+        widgets::modal_window(ctx, &theme, "Preferences", &mut open_flag).show(ctx, |ui| {
             ui.set_min_width(340.0);
             widgets::section(ui, &theme, "Appearance", |ui| {
-                prefs_row(ui, &theme, "Theme", |ui| {
-                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::System, "System");
-                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::Light, "Light");
-                    theme_chip(ui, &theme, &mut prefs.theme, ThemePref::Dark, "Dark");
+                widgets::prefs_row(ui, &theme, "Theme", |ui| {
+                    widgets::chip_button(ui, &theme, &mut prefs.theme, ThemePref::System, "System");
+                    widgets::chip_button(ui, &theme, &mut prefs.theme, ThemePref::Light, "Light");
+                    widgets::chip_button(ui, &theme, &mut prefs.theme, ThemePref::Dark, "Dark");
                 });
             });
 
             widgets::section(ui, &theme, "Canvas", |ui| {
                 let mut is_custom = matches!(prefs.canvas_bg, CanvasBgPref::Custom(_));
-                prefs_row(ui, &theme, "Background", |ui| {
+                widgets::prefs_row(ui, &theme, "Background", |ui| {
                     if ui.radio(!is_custom, "Match theme").clicked() {
                         prefs.canvas_bg = CanvasBgPref::MatchTheme;
                         is_custom = false;
@@ -1006,9 +973,7 @@ pub fn ui_system(
                     if ui.radio(is_custom, "Custom").clicked() {
                         let seed = match prefs.canvas_bg {
                             CanvasBgPref::Custom(rgb) => rgb,
-                            CanvasBgPref::MatchTheme => {
-                                [theme.bg.r(), theme.bg.g(), theme.bg.b()]
-                            }
+                            CanvasBgPref::MatchTheme => [theme.bg.r(), theme.bg.g(), theme.bg.b()],
                         };
                         prefs.canvas_bg = CanvasBgPref::Custom(seed);
                     }
@@ -1018,18 +983,7 @@ pub fn ui_system(
                     ui.horizontal(|ui| {
                         ui.add_space(76.0);
                         ui.color_edit_button_srgb(rgb);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!(
-                                    "#{:02X}{:02X}{:02X}",
-                                    rgb[0], rgb[1], rgb[2]
-                                ))
-                                .monospace()
-                                .color(theme.text_dim)
-                                .size(12.0),
-                            )
-                            .selectable(true),
-                        );
+                        widgets::hex_label(ui, &theme, *rgb, true);
                     });
                 }
                 widgets::plane_color_row(ui, &theme, theme.mode, "Floor", &mut prefs.floor_color);
@@ -1058,44 +1012,25 @@ pub fn ui_system(
         let mut open = true;
         let mut create_clicked = false;
         let mut cancel_clicked = false;
-        egui::Window::new(
-            egui::RichText::new("New project")
-                .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
-                .size(14.0),
-        )
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .open(&mut open)
-            .frame(
-                egui::Frame::window(&ctx.style())
-                    .fill(PANEL)
-                    .inner_margin(egui::Margin::symmetric(16, 14))
-                    .stroke(egui::Stroke::new(0.5, theme.border))
-                    .corner_radius(egui::CornerRadius::same(10)),
-            )
-            .show(ctx, |ui| {
-                ui.set_min_width(260.0);
-                widgets::section(ui, &theme, "Grid size", |ui| {
-                    for &s in &ALLOWED_SIZES {
-                        let label = format!("{s} × {s} × {s}");
-                        if ui
-                            .radio(new_project.picker_size == s, label)
-                            .clicked()
-                        {
-                            new_project.picker_size = s;
-                        }
+        widgets::modal_window(ctx, &theme, "New project", &mut open).show(ctx, |ui| {
+            ui.set_min_width(260.0);
+            widgets::section(ui, &theme, "Grid size", |ui| {
+                for &s in &ALLOWED_SIZES {
+                    let label = format!("{s} × {s} × {s}");
+                    if ui.radio(new_project.picker_size == s, label).clicked() {
+                        new_project.picker_size = s;
                     }
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Create").clicked() {
-                        create_clicked = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel_clicked = true;
-                    }
-                });
+                }
             });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Create").clicked() {
+                    create_clicked = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel_clicked = true;
+                }
+            });
+        });
         if create_clicked {
             new_project.apply = Some(new_project.picker_size);
             new_project.dialog_open = false;
@@ -1105,52 +1040,4 @@ pub fn ui_system(
     }
 
     Ok(())
-}
-
-fn prefs_row(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    label: &str,
-    add: impl FnOnce(&mut egui::Ui),
-) {
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [72.0, 20.0],
-            egui::Label::new(
-                egui::RichText::new(label).color(theme.text_dim).size(12.0),
-            ),
-        );
-        add(ui);
-    });
-}
-
-fn theme_chip(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    current: &mut ThemePref,
-    value: ThemePref,
-    label: &str,
-) {
-    let selected = *current == value;
-    let (fill, fg, stroke) = if selected {
-        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
-    } else {
-        (theme.surface, theme.text, egui::Stroke::new(0.5, theme.border))
-    };
-    let resp = ui
-        .scope(|ui| {
-            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
-            ui.add(
-                egui::Button::new(
-                    egui::RichText::new(label).color(fg).size(12.0),
-                )
-                .fill(fill)
-                .stroke(stroke)
-                .corner_radius(egui::CornerRadius::same(6)),
-            )
-        })
-        .inner;
-    if resp.clicked() {
-        *current = value;
-    }
 }

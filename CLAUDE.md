@@ -99,6 +99,16 @@ Sections in the inspector are flat: bold title, then content, then a thin full-w
 
 Egui labels disable text selection except on numeric values in the stats panel (so users can copy a count or hex without dragging the whole label).
 
+### UI widget helpers
+
+Reusable egui widget helpers live in `src/ui/widgets.rs`:
+
+- Structural: `section` (titled block + full-width divider), `prefs_row` (settings-modal label + content row), `modal_window` (centred themed `egui::Window` builder used by Preferences + New-project), `swatch_grid` (zero-padding `horizontal_wrapped` for swatch rows), `vertical_rule`.
+- Buttons: `tool_button` (left rail), `icon_button` (top bar text + icon), `icon_only_button` (palette toolbar), `wide_action_button` ("Add current color" style full-width row), `chip_button` (generic selectable toggle, used by Theme: System/Light/Dark), `swatch_button` (foreground/palette/recent colour squares).
+- Labels: `stat_row` (label + right-aligned monospace value), `hint_label` (dim italic body text), `status_label` (status-bar readout), `hex_label` / `hex_string` (canonical `#RRGGBB` rendering), `tool_label` (`Tool` → display string), `plane_color_row` (radio + custom-colour pref row).
+
+**Prefer these over hand-rolling new one-off styles.** When adding UI, reach for an existing helper first. Only introduce a new inline pattern if no helper fits and the shape is genuinely single-use; if a second call site appears, promote it to `widgets.rs` rather than copying. Helpers own the `ui.scope` + `spacing_mut` boilerplate, the themed strokes/fills, the corner radii, and the title font selection — duplicating those inline drifts the look over time. The same rule applies to modal frames (`modal_window`) and section dividers (`section`): never reach for `egui::Window::new` or hand-painted hlines directly.
+
 ### Theme + Preferences
 
 `Theme` (`theme.rs`) is a `Resource` carrying every egui color slot (bg / panel / surface / surface_hover / accent / accent_dim / text / text_dim / border / faint) plus a `mode: ThemeMode::{Light, Dark}` discriminator. `Theme::dark()` (UI bg `#191A2E`) and `Theme::light()` are the two presets.
