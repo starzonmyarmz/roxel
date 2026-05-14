@@ -1,7 +1,7 @@
 use bevy::ecs::system::{NonSendMarker, SystemParam};
 use bevy::prelude::*;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use std::collections::HashMap;
 
 use crate::grid::{NewProject, VoxelGrid};
@@ -57,7 +57,15 @@ fn build_menu() -> MenuStore {
     actions.insert(prefs_item.id().0.clone(), MenuAction::Preferences);
     app_menu
         .append_items(&[
-            &PredefinedMenuItem::about(Some("About Roxel"), None),
+            &PredefinedMenuItem::about(
+                Some("About Roxel"),
+                Some(AboutMetadata {
+                    name: Some("Roxel".into()),
+                    version: Some(env!("CARGO_PKG_VERSION").into()),
+                    copyright: Some("© 2026 Daniel Marino".into()),
+                    ..Default::default()
+                }),
+            ),
             &PredefinedMenuItem::separator(),
             &prefs_item,
             &PredefinedMenuItem::separator(),

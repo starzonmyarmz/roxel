@@ -31,8 +31,8 @@ jobs:
         run: |
           cargo install cargo-bundle --locked
           cargo bundle --release
-          cd target/release/bundle/osx
-          zip -r ../../../../Roxel-macos.zip Roxel.app
+          codesign --force --deep --sign - target/release/bundle/osx/Roxel.app
+          ditto -c -k --keepParent target/release/bundle/osx/Roxel.app Roxel-macos.zip
 
       - name: Build Windows .exe
         if: matrix.os == 'windows-latest'
