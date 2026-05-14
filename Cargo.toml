@@ -21,6 +21,11 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 winit = "0.30"
 dirs = "5"
 
+[features]
+# Fast dev iteration: link Bevy as a shared library to slash link times.
+# Use: `cargo run --features dev`
+dev = ["bevy/dynamic_linking"]
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage"] }
