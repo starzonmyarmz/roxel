@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- polish: left tool rail — transparent unselected buttons, gray selected, lighter-gray hover; tighter spacing; shorter status bar
 - feat: optional voxel-grid overlay on the floor plane (Preferences → Show floor grid, Cmd+K toggle)
 - feat: brush-style hover ghost for the Shape tool before the first click
 - polish: subtler brush + shape previews — outline alpha halved, shape silhouette draws only boundary edges instead of per-cell wireframes

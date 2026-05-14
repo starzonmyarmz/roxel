@@ -380,7 +380,7 @@ pub fn ui_system(
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 8))
+                .inner_margin(egui::Margin::symmetric(12, 4))
                 .stroke(egui::Stroke::new(0.5, BORDER)),
         )
         .show(ctx, |ui| {
@@ -438,17 +438,17 @@ pub fn ui_system(
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Brush, "Brush", "B");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Erase, "Erase", "E");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
-                ui.add_space(4.0);
+                ui.add_space(1.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Move, "Move", "V");
             });
         });

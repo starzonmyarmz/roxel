@@ -69,22 +69,38 @@ pub fn tool_button(
     shortcut: &str,
 ) {
     let active = tool.current == kind;
-    let (fill, fg) = if active {
-        (theme.accent, egui::Color32::WHITE)
+    let sh = theme.surface_hover;
+    let lighten = |c: u8| ((c as u16 + 255 * 3) / 4) as u8;
+    let hover_fill = egui::Color32::from_rgb(lighten(sh.r()), lighten(sh.g()), lighten(sh.b()));
+    let resting = if active {
+        theme.surface_hover
     } else {
-        (theme.surface, theme.text)
+        egui::Color32::TRANSPARENT
     };
+    let hovered = if active { theme.surface_hover } else { hover_fill };
     let icon = egui::Image::new(icons::tool(kind))
         .fit_to_exact_size(egui::vec2(18.0, 18.0))
-        .tint(fg);
+        .tint(theme.text);
     let resp = ui
         .scope(|ui| {
             ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
             ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+            let w = ui.visuals_mut();
+            w.widgets.inactive.bg_fill = resting;
+            w.widgets.inactive.weak_bg_fill = resting;
+            w.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+            w.widgets.inactive.expansion = 0.0;
+            w.widgets.hovered.bg_fill = hovered;
+            w.widgets.hovered.weak_bg_fill = hovered;
+            w.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+            w.widgets.hovered.expansion = 0.0;
+            w.widgets.active.bg_fill = hovered;
+            w.widgets.active.weak_bg_fill = hovered;
+            w.widgets.active.bg_stroke = egui::Stroke::NONE;
+            w.widgets.active.expansion = 0.0;
             ui.add_sized(
                 [40.0, 40.0],
                 egui::Button::image(icon)
-                    .fill(fill)
                     .stroke(egui::Stroke::NONE)
                     .corner_radius(egui::CornerRadius::same(6)),
             )
