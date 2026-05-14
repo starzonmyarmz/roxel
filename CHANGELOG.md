@@ -12,6 +12,12 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: optional voxel-grid overlay on the floor plane (Preferences → Show floor grid, Cmd+K toggle)
+- feat: brush-style hover ghost for the Shape tool before the first click
+- polish: subtler brush + shape previews — outline alpha halved, shape silhouette draws only boundary edges instead of per-cell wireframes
+- polish: drop per-cell wireframes from selection render; keep the marching-ants AABB
+- polish: regroup left tool rail (Brush · Erase · Paint · Pick · Shape · Select · Move)
+- polish: pin Cmd+K palette to the top of the canvas so it doesn't jump as results filter
 - polish: move per-tool instructions from right sidebar into status bar; truncate when narrow
 - feat: Cmd+K command palette — fuzzy-searchable surface for every action (file ops, tools, view toggles, palette + color switching, preferences)
 - feat: import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox` files

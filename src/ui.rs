@@ -443,13 +443,13 @@ pub fn ui_system(
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
                 ui.add_space(4.0);
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
+                ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
                 ui.add_space(4.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Move, "Move", "V");
-                ui.add_space(4.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
             });
         });
     let left_rect = left_resp.response.rect;
@@ -1064,6 +1064,8 @@ pub fn ui_system(
                 ui.checkbox(&mut prefs.show_floor, "Show floor plane");
                 ui.add_space(2.0);
                 ui.checkbox(&mut prefs.show_walls, "Show wall planes");
+                ui.add_space(2.0);
+                ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
                 ui.add_space(2.0);
                 ui.checkbox(&mut prefs.preview_outline, "Show preview outline");
             });

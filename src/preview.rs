@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
@@ -15,10 +16,16 @@ pub fn outline_color_for(c: Color8) -> Color {
     let b = c[2] as f32 / 255.0;
     let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     if lum > 0.55 {
-        Color::srgba(0.0, 0.0, 0.0, 0.45)
+        Color::srgba(0.0, 0.0, 0.0, 0.22)
     } else {
-        Color::srgba(1.0, 1.0, 1.0, 0.5)
+        Color::srgba(1.0, 1.0, 1.0, 0.25)
     }
+}
+
+#[derive(SystemParam)]
+pub struct StrokeGates<'w> {
+    pub pointer: Res<'w, PointerState>,
+    pub shape: Res<'w, crate::tools::ShapeState>,
 }
 
 #[derive(Component)]
@@ -61,7 +68,7 @@ pub fn brush_preview_system(
     grid: Res<VoxelGrid>,
     tool: Res<ToolState>,
     color: Res<CurrentColor>,
-    pointer: Res<PointerState>,
+    gates: StrokeGates,
     mat_handle: Res<BrushPreviewMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut hide: ResMut<PreviewHide>,
@@ -88,7 +95,7 @@ pub fn brush_preview_system(
         || gizmo_view.drag.active
         || keys.pressed(KeyCode::Space)
         || mouse.pressed(MouseButton::Right)
-        || pointer.stroking
+        || gates.pointer.stroking
     {
         clear(&mut vis, &mut hide);
         return;
@@ -110,33 +117,39 @@ pub fn brush_preview_system(
         return;
     };
 
-    match tool.current {
-        Tool::Brush => {
-            hide.set(None);
-            let target = hit.cell + hit.normal;
-            if !grid.in_bounds(target) {
-                *vis = Visibility::Hidden;
-                return;
-            }
-            let c = color.0;
-            let pos = target.as_vec3() + Vec3::splat(0.5);
-            *tf = Transform::from_translation(pos);
-            *vis = Visibility::Visible;
-            if let Some(m) = materials.get_mut(&mat_handle.0) {
-                m.base_color = Color::srgba(
-                    c[0] as f32 / 255.0,
-                    c[1] as f32 / 255.0,
-                    c[2] as f32 / 255.0,
-                    0.45,
-                );
-            }
-            if prefs.preview_outline {
-                gizmos.cube(
-                    Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
-                    outline_color_for(c),
-                );
-            }
+    let show_brush_ghost = match tool.current {
+        Tool::Brush => true,
+        Tool::Shape => gates.shape.phase.is_none(),
+        _ => false,
+    };
+    if show_brush_ghost {
+        hide.set(None);
+        let target = hit.cell + hit.normal;
+        if !grid.in_bounds(target) {
+            *vis = Visibility::Hidden;
+            return;
         }
+        let c = color.0;
+        let pos = target.as_vec3() + Vec3::splat(0.5);
+        *tf = Transform::from_translation(pos);
+        *vis = Visibility::Visible;
+        if let Some(m) = materials.get_mut(&mat_handle.0) {
+            m.base_color = Color::srgba(
+                c[0] as f32 / 255.0,
+                c[1] as f32 / 255.0,
+                c[2] as f32 / 255.0,
+                0.45,
+            );
+        }
+        if prefs.preview_outline {
+            gizmos.cube(
+                Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
+                outline_color_for(c),
+            );
+        }
+        return;
+    }
+    match tool.current {
         Tool::Erase => {
             *vis = Visibility::Hidden;
             if hit.hit_voxel {

@@ -91,6 +91,7 @@ mod tests {
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor);
         assert!(!p.show_walls);
+        assert!(!p.show_floor_grid);
     }
 
     #[test]
@@ -187,6 +188,7 @@ mod tests {
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor);
         assert!(!p.show_walls);
+        assert!(!p.show_floor_grid);
         assert!(p.preview_outline);
     }
 }
@@ -204,6 +206,8 @@ pub struct Preferences {
     pub show_floor: bool,
     #[serde(default = "default_show_walls")]
     pub show_walls: bool,
+    #[serde(default = "default_show_floor_grid")]
+    pub show_floor_grid: bool,
     #[serde(default = "default_preview_outline")]
     pub preview_outline: bool,
 }
@@ -220,6 +224,9 @@ fn default_show_floor() -> bool {
 fn default_show_walls() -> bool {
     false
 }
+fn default_show_floor_grid() -> bool {
+    false
+}
 fn default_preview_outline() -> bool {
     true
 }
@@ -233,6 +240,7 @@ impl Default for Preferences {
             wall_color: default_plane_color(),
             show_floor: default_show_floor(),
             show_walls: default_show_walls(),
+            show_floor_grid: default_show_floor_grid(),
             preview_outline: default_preview_outline(),
         }
     }

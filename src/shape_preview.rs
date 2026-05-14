@@ -130,8 +130,8 @@ fn draw_silhouette(gizmos: &mut Gizmos, cells: &[IVec3], color: Color) {
     let set: HashSet<IVec3> = cells.iter().copied().collect();
     for &cell in cells {
         let p = cell.as_vec3();
-        for &(axis, face_coord, off) in &OFFSETS {
-            if set.contains(&(cell + off)) {
+        for &(axis, face_coord, normal) in &OFFSETS {
+            if set.contains(&(cell + normal)) {
                 continue;
             }
             let u_axis = (axis + 1) % 3;
@@ -143,8 +143,24 @@ fn draw_silhouette(gizmos: &mut Gizmos, cells: &[IVec3], color: Color) {
                 a[v_axis] = uv[1];
                 p + Vec3::from_array(a)
             });
-            for i in 0..4 {
-                gizmos.line(corners[i], corners[(i + 1) % 4], color);
+            let mut u_unit = IVec3::ZERO;
+            u_unit[u_axis] = 1;
+            let mut v_unit = IVec3::ZERO;
+            v_unit[v_axis] = 1;
+            let edges: [(usize, usize, IVec3); 4] = [
+                (0, 1, -v_unit),
+                (1, 2, u_unit),
+                (2, 3, v_unit),
+                (3, 0, -u_unit),
+            ];
+            for (a, b, tangent) in edges {
+                let neighbor = cell + tangent;
+                let neighbor_face_exposed =
+                    set.contains(&neighbor) && !set.contains(&(neighbor + normal));
+                if neighbor_face_exposed {
+                    continue;
+                }
+                gizmos.line(corners[a], corners[b], color);
             }
         }
     }

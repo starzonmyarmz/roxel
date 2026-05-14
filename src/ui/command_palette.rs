@@ -112,6 +112,7 @@ pub enum CommandAction {
     SetThemePref(ThemePref),
     ToggleShowFloor,
     ToggleShowWalls,
+    ToggleShowFloorGrid,
     TogglePreviewOutline,
 }
 
@@ -593,6 +594,18 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::ToggleShowWalls,
     ));
     out.push(entry(
+        if state.prefs.show_floor_grid {
+            "Hide floor grid"
+        } else {
+            "Show floor grid"
+        },
+        Category::Preferences,
+        "voxel cell lines on floor toggle",
+        None,
+        true,
+        CommandAction::ToggleShowFloorGrid,
+    ));
+    out.push(entry(
         if state.prefs.preview_outline {
             "Hide brush preview outline"
         } else {
@@ -754,7 +767,7 @@ pub fn draw(
     .collapsible(false)
     .resizable(false)
     .open(&mut open_flag)
-    .anchor(egui::Align2::CENTER_CENTER, [0.0, -120.0])
+    .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
     .default_width(520.0)
     .min_width(520.0)
     .frame(
@@ -1181,6 +1194,10 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ToggleShowWalls => {
             p.prefs.show_walls = !p.prefs.show_walls;
+            crate::theme::save_preferences(&p.prefs);
+        }
+        CommandAction::ToggleShowFloorGrid => {
+            p.prefs.show_floor_grid = !p.prefs.show_floor_grid;
             crate::theme::save_preferences(&p.prefs);
         }
         CommandAction::TogglePreviewOutline => {

@@ -20,11 +20,6 @@ pub fn configure_selection_gizmos(mut store: ResMut<GizmoConfigStore>) {
 const STRIPE_LEN: f32 = 0.18;
 /// Phase advance per second — sets how fast the ants march.
 const STRIPE_SPEED: f32 = 0.35;
-/// Max occupied cells we'll draw per-cell wireframes for. Selections larger
-/// than this fall back to the outline only — drawing 100k cuboid gizmos per
-/// frame is not viable.
-const MAX_CELL_WIREFRAMES: usize = 4096;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectionAabb {
     pub min: IVec3,
@@ -275,7 +270,7 @@ fn draw_marching_edge(gizmos: &mut Gizmos<SelectionGizmos>, a: Vec3, b: Vec3, ph
 pub fn selection_render_system(
     selection: Res<Selection>,
     state: Res<SelectState>,
-    grid: Res<VoxelGrid>,
+    _grid: Res<VoxelGrid>,
     time: Res<Time>,
     mut gizmos: Gizmos<SelectionGizmos>,
 ) {
@@ -331,24 +326,6 @@ pub fn selection_render_system(
     let phase = time.elapsed_secs() * STRIPE_SPEED;
     for (a, b) in edges {
         draw_marching_edge(&mut gizmos, corners[a], corners[b], phase);
-    }
-
-    // Per-cell wireframes so users can see which voxels inside a solid block
-    // are actually in the selection. The depth_bias on the gizmo group makes
-    // these draw on top of voxel faces (x-ray).
-    let mut drawn = 0usize;
-    for cell in aabb.iter_cells() {
-        if drawn >= MAX_CELL_WIREFRAMES {
-            break;
-        }
-        if grid.in_bounds(cell) && grid.get(cell).is_some() {
-            let center = cell.as_vec3() + Vec3::splat(0.5);
-            gizmos.cube(
-                Transform::from_translation(center),
-                Color::srgba(1.0, 1.0, 1.0, 0.7),
-            );
-            drawn += 1;
-        }
     }
 }
 

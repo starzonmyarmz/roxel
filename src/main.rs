@@ -172,6 +172,7 @@ fn main() {
             apply_wall_color_system,
             apply_floor_visibility_system,
             apply_walls_visibility_system,
+            floor_grid_system,
             command_palette_shortcut_system,
             dispatch_command_palette_system,
         ),
@@ -431,6 +432,32 @@ fn apply_walls_visibility_system(
         if *v != want {
             *v = want;
         }
+    }
+}
+
+fn floor_grid_system(
+    prefs: Res<Preferences>,
+    theme: Res<crate::theme::Theme>,
+    grid: Res<VoxelGrid>,
+    mut gizmos: Gizmos,
+) {
+    if !prefs.show_floor_grid || !prefs.show_floor {
+        return;
+    }
+    let n = grid.size as i32;
+    let lift = 0.001;
+    let alpha = match theme.mode {
+        crate::theme::ThemeMode::Dark => 0.10,
+        crate::theme::ThemeMode::Light => 0.16,
+    };
+    let color = match theme.mode {
+        crate::theme::ThemeMode::Dark => Color::srgba(1.0, 1.0, 1.0, alpha),
+        crate::theme::ThemeMode::Light => Color::srgba(0.0, 0.0, 0.0, alpha),
+    };
+    for i in 0..=n {
+        let a = i as f32;
+        gizmos.line(Vec3::new(a, lift, 0.0), Vec3::new(a, lift, n as f32), color);
+        gizmos.line(Vec3::new(0.0, lift, a), Vec3::new(n as f32, lift, a), color);
     }
 }
 
