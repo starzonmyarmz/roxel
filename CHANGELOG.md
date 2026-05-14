@@ -12,6 +12,12 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox` files
+- feat: export Goxel `.gox` and glTF `.glb` (Unity / Godot compatible)
+- feat: in-app toast notifications for save / load / import / export
+- feat: foreign-tool axis remap for `.vox` / `.gox` (Z-up ↔ Y-up) so MagicaVoxel and Goxel files open upright in both directions
+- refactor: extract shared io helpers (`snap_to_allowed_size`, `LeReader`, `for_each_exposed_face`, test `tmp_path`)
+
 ## [0.3.2] - 2026-05-14
 
 - release: 0.3.2

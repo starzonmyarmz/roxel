@@ -71,9 +71,22 @@ Synchronous `rfd::FileDialog` calls **block winit's event loop on macOS** (spinn
 
 1. Button click → `pending.spawn(async move { rfd::AsyncFileDialog... })` on `AsyncComputeTaskPool`.
 2. `poll_dialogs_system` (registered in `Update`) calls `block_on(future::poll_once(task))` each frame.
-3. On `Some(DialogResult::*)`, dispatch to `io::project::{save,load}` / `io::vox::export` / `io::obj::export` / `io::fbx::export` / `io::svg::export` / `io::ase::{import,export}` (PNG goes through `snapshot.rs` which spawns a transparent-clear render pass).
+3. On `Some(DialogResult::*)`, dispatch to `io::project::{save,load}` / `io::vox::{import,export}` / `io::qb::import` / `io::gox::{import,export}` / `io::obj::export` / `io::fbx::export` / `io::gltf::export` / `io::svg::export` / `io::ase::{import,export}` (PNG goes through `snapshot.rs` which spawns a transparent-clear render pass).
 
 `io::fbx::export` writes binary FBX 7.4 (Geometry + Model + Connections + Definitions + GlobalSettings + footer with the canonical magic). Per-face quads with vertex colors via `LayerElementColor` (`ByPolygonVertex`/`Direct`). Y-up to match Bevy and Blender's default importer expectations. The ASCII variant accepted by Maya / 3ds Max / Unity but not Blender was the first attempt — do not revive it without a reason.
+
+`io::gltf::export` writes glTF 2.0 binary (`.glb`): 12-byte header + JSON chunk + BIN chunk, all 4-byte aligned. Indexed triangle mesh, per-vertex `COLOR_0` as u8-normalized RGBA, Y-up (glTF spec default — Unity and Godot import upright with no extra transform). Per-face quads share the iteration path with FBX through `mesh::for_each_exposed_face`; do not reintroduce a separate grid-walk loop.
+
+Foreign-tool axis handling: MagicaVoxel `.vox` and Goxel `.gox` are Z-up; both importer + exporter remap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` so foreign files load upright and Roxel-exported files open upright in the target tool. Qubicle `.qb` is Y-up natively — no remap. Every importer auto-resizes the grid to the smallest `ALLOWED_SIZES` value that fits inbound voxel bounds (capped at `MAX_GRID`) via `crate::grid::snap_to_allowed_size`; voxels outside the resulting box are dropped with a stderr count. `.gox` BL16 blocks are written as raw 16³ RGBA bytes; PNG-encoded BL16 (used by current Goxel versions) is rejected with a clear error rather than silently misparsing — the limitation is intentional until someone needs it.
+
+Imports that change `grid.size` set `PendingImport(true)`; `apply_import_system` (`main.rs`) consumes it next frame to rebuild floor/wall planes and reframe the camera via the shared `rebuild_for_size` helper. This is the same plane/camera reset path as `apply_new_project_system`. New imports must take this path so the planes stay in sync — don't call `grid.resize` from a one-shot system without setting the flag.
+
+Shared io helpers (use them; don't reroll):
+
+- `crate::grid::snap_to_allowed_size(needed)` — pick smallest legal grid size that fits.
+- `crate::mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by `fbx::build_mesh` + `gltf::build_mesh`.
+- `crate::io::reader::LeReader` — bounds-checked little-endian binary reader. Shared by `qb::import` + `gox::import`.
+- `crate::io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` helper that produces a unique temp-file path for io tests.
 
 Buttons are disabled while `pending.is_active()` so only one dialog runs at a time. **Never** reintroduce sync `rfd::FileDialog::*` calls inside egui draw code.
 
@@ -108,6 +121,14 @@ Reusable egui widget helpers live in `src/ui/widgets.rs`:
 - Labels: `stat_row` (label + right-aligned monospace value), `hint_label` (dim italic body text), `status_label` (status-bar readout), `hex_label` / `hex_string` (canonical `#RRGGBB` rendering), `tool_label` (`Tool` → display string), `plane_color_row` (radio + custom-colour pref row).
 
 **Prefer these over hand-rolling new one-off styles.** When adding UI, reach for an existing helper first. Only introduce a new inline pattern if no helper fits and the shape is genuinely single-use; if a second call site appears, promote it to `widgets.rs` rather than copying. Helpers own the `ui.scope` + `spacing_mut` boilerplate, the themed strokes/fills, the corner radii, and the title font selection — duplicating those inline drifts the look over time. The same rule applies to modal frames (`modal_window`) and section dividers (`section`): never reach for `egui::Window::new` or hand-painted hlines directly.
+
+### Toast notifications
+
+User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a `Resource` holding a capped `VecDeque<Toast>` (max 4 visible, oldest evicted). Call sites use `toasts.success(msg)` / `toasts.error(msg)` / `toasts.info(msg)`; `toast_lifetime_system` ticks each toast's `remaining` field down by `time.delta_secs()` and removes expired ones. Success TTL is 3.5 s, error 6 s (errors linger for readability).
+
+`draw_toasts` runs last in `ui_system` and anchors the stack to **bottom-center of the canvas** (`ctx.available_rect()` after all panels have been registered), pivot `CENTER_BOTTOM`, so newest toast sits closest to the action and the stack grows upward without colliding with the status bar.
+
+**Never reintroduce `eprintln!` for user-facing I/O errors.** All save/open/export/import paths in `ui/dialogs.rs` (and `snapshot.rs`'s PNG observer) emit toasts; terminal output is invisible to packaged-app users. Internal diagnostics (dropped-voxel counts, multi-model warnings) can still go to stderr — those aren't actionable.
 
 ### Theme + Preferences
 
