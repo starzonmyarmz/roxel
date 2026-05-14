@@ -79,8 +79,8 @@ pub fn shape_preview_system(
     };
 
     let base = match options.primitive {
-        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, options.filled),
-        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
+        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
+        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, true),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
     let base_sign = if state.normal_sign == 0 {

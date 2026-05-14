@@ -30,6 +30,12 @@ pub enum DialogResult {
 #[derive(Resource, Default)]
 pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 
+/// Path of the most recently saved or opened `.roxel` project. `None` until
+/// the user picks a target via Save As… or opens an existing project. A bare
+/// "Save" reuses this path; a missing path falls through to Save As behavior.
+#[derive(Resource, Default)]
+pub struct CurrentProjectPath(pub Option<PathBuf>);
+
 impl PendingDialog {
     pub fn is_active(&self) -> bool {
         self.0.is_some()
@@ -48,6 +54,49 @@ impl PendingDialog {
 #[derive(Resource, Default)]
 pub struct PendingImport(pub bool);
 
+/// Suggested file name for the Save As dialog: reuse the current path's file
+/// name when there is one, otherwise fall back to "scene.roxel".
+fn save_as_default_name(current: &CurrentProjectPath) -> String {
+    current
+        .0
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("scene.roxel")
+        .to_string()
+}
+
+/// Save As: always opens the file dialog. Pre-fills with the current project
+/// file name if known so the user can overwrite without retyping.
+pub fn spawn_save_as(pending: &mut PendingDialog, current: &CurrentProjectPath) {
+    if pending.is_active() {
+        return;
+    }
+    let suggested = save_as_default_name(current);
+    pending.spawn(async move {
+        rfd::AsyncFileDialog::new()
+            .add_filter("Roxel project", &["roxel"])
+            .set_file_name(&suggested)
+            .save_file()
+            .await
+            .map(|f| DialogResult::SaveProject(f.path().to_path_buf()))
+    });
+}
+
+/// Save: writes to the last-saved path if one is known. Falls through to
+/// Save As when the project has never been saved.
+pub fn spawn_save(pending: &mut PendingDialog, current: &CurrentProjectPath) {
+    if pending.is_active() {
+        return;
+    }
+    match current.0.clone() {
+        Some(path) => {
+            pending.spawn(async move { Some(DialogResult::SaveProject(path)) });
+        }
+        None => spawn_save_as(pending, current),
+    }
+}
+
 fn file_label(p: &Path) -> String {
     p.file_name()
         .and_then(|s| s.to_str())
@@ -64,6 +113,7 @@ pub fn poll_dialogs_system(
     mut snapshot: ResMut<SnapshotRequest>,
     mut pending_import: ResMut<PendingImport>,
     mut toasts: ResMut<Toasts>,
+    mut current_path: ResMut<CurrentProjectPath>,
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -81,11 +131,15 @@ pub fn poll_dialogs_system(
                 history.redo.clear();
                 pending_import.0 = true;
                 toasts.success(format!("Opened {}", file_label(&path)));
+                current_path.0 = Some(path);
             }
             Err(e) => toasts.error(format!("Open failed: {e}")),
         },
         Some(DialogResult::SaveProject(path)) => match io::project::save(&path, &grid) {
-            Ok(()) => toasts.success(format!("Saved {}", file_label(&path))),
+            Ok(()) => {
+                toasts.success(format!("Saved {}", file_label(&path)));
+                current_path.0 = Some(path);
+            }
             Err(e) => toasts.error(format!("Save failed: {e}")),
         },
         Some(DialogResult::ExportVox(path)) => match io::vox::export(&path, &grid) {

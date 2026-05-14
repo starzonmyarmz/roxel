@@ -7,13 +7,16 @@ use std::collections::HashMap;
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::theme::PreferencesWindow;
-use crate::ui::{CommandPalette, DialogResult, PendingDialog};
+use crate::ui::{
+    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, spawn_save, spawn_save_as,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum MenuAction {
     NewProject,
     OpenProject,
     SaveProject,
+    SaveProjectAs,
     ExportVox,
     ExportObj,
     ExportFbx,
@@ -110,9 +113,17 @@ fn build_menu() -> MenuStore {
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyO)),
     );
     let save_item = MenuItem::new(
-        "Save…",
+        "Save",
         true,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyS)),
+    );
+    let save_as_item = MenuItem::new(
+        "Save As…",
+        true,
+        Some(Accelerator::new(
+            Some(Modifiers::SUPER | Modifiers::SHIFT),
+            Code::KeyS,
+        )),
     );
 
     let import_sub = Submenu::new("Import", true);
@@ -142,6 +153,7 @@ fn build_menu() -> MenuStore {
         &PredefinedMenuItem::separator(),
         &open_item,
         &save_item,
+        &save_as_item,
         &PredefinedMenuItem::separator(),
         &import_sub,
         &export_sub,
@@ -154,6 +166,7 @@ fn build_menu() -> MenuStore {
     actions.insert(new_item.id().0.clone(), MenuAction::NewProject);
     actions.insert(open_item.id().0.clone(), MenuAction::OpenProject);
     actions.insert(save_item.id().0.clone(), MenuAction::SaveProject);
+    actions.insert(save_as_item.id().0.clone(), MenuAction::SaveProjectAs);
     actions.insert(imp_vox.id().0.clone(), MenuAction::ImportVox);
     actions.insert(imp_qb.id().0.clone(), MenuAction::ImportQb);
     actions.insert(imp_gox.id().0.clone(), MenuAction::ImportGox);
@@ -253,6 +266,7 @@ pub struct MenuActionParams<'w> {
     pub new_project: ResMut<'w, NewProject>,
     pub prefs_window: ResMut<'w, PreferencesWindow>,
     pub cmd_palette: ResMut<'w, CommandPalette>,
+    pub current_path: Res<'w, CurrentProjectPath>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -267,7 +281,8 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.new_project.dialog_open = true;
             }
             MenuAction::OpenProject => spawn_open(&mut p.pending),
-            MenuAction::SaveProject => spawn_save(&mut p.pending),
+            MenuAction::SaveProject => spawn_save(&mut p.pending, &p.current_path),
+            MenuAction::SaveProjectAs => spawn_save_as(&mut p.pending, &p.current_path),
             MenuAction::ExportVox => spawn_export_vox(&mut p.pending),
             MenuAction::ExportObj => spawn_export_obj(&mut p.pending),
             MenuAction::ExportFbx => spawn_export_fbx(&mut p.pending),
@@ -314,20 +329,6 @@ fn spawn_open(pending: &mut PendingDialog) {
             .pick_file()
             .await
             .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
-    });
-}
-
-fn spawn_save(pending: &mut PendingDialog) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
-            .add_filter("Roxel project", &["roxel"])
-            .set_file_name("scene.roxel")
-            .save_file()
-            .await
-            .map(|f| DialogResult::SaveProject(f.path().to_path_buf()))
     });
 }
 

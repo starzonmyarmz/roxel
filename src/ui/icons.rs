@@ -1,3 +1,4 @@
+use crate::shapes::ShapePrimitive;
 use crate::tools::Tool;
 use bevy_egui::egui;
 
@@ -75,6 +76,23 @@ pub fn arrow_down() -> egui::ImageSource<'static> {
 }
 pub fn corner_down_left() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/corner-down-left.svg")
+}
+pub fn square() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/square.svg")
+}
+pub fn circle() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/circle.svg")
+}
+pub fn slash() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/slash.svg")
+}
+
+pub fn shape_primitive(p: ShapePrimitive) -> egui::ImageSource<'static> {
+    match p {
+        ShapePrimitive::Rectangle => square(),
+        ShapePrimitive::Ellipse => circle(),
+        ShapePrimitive::Line => slash(),
+    }
 }
 
 pub fn tool(t: Tool) -> egui::ImageSource<'static> {

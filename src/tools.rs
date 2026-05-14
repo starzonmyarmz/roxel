@@ -111,19 +111,9 @@ pub struct PointerState {
     pub last_placed: Option<IVec3>,
 }
 
-#[derive(Resource, Clone, Copy)]
+#[derive(Resource, Clone, Copy, Default)]
 pub struct ShapeOptions {
     pub primitive: ShapePrimitive,
-    pub filled: bool,
-}
-
-impl Default for ShapeOptions {
-    fn default() -> Self {
-        Self {
-            primitive: ShapePrimitive::Rectangle,
-            filled: true,
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -334,8 +324,8 @@ fn shape_commit(
         return;
     };
     let base = match options.primitive {
-        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, options.filled),
-        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
+        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
+        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, true),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
     let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);

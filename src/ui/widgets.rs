@@ -1,6 +1,5 @@
 use crate::theme::{NUNITO_700_FAMILY, PlaneColorPref, Theme, plane_match_color};
 use crate::tools::{Tool, ToolState};
-use crate::ui::icons;
 use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
 use bevy_egui::egui;
 
@@ -70,9 +69,10 @@ pub fn tool_button(
     theme: &Theme,
     tool: &mut ToolState,
     kind: Tool,
+    icon_src: egui::ImageSource<'static>,
     label: &str,
     shortcut: &str,
-) {
+) -> egui::Response {
     let active = tool.current == kind;
     let sh = theme.surface_hover;
     let lighten = |c: u8| ((c as u16 + 255 * 3) / 4) as u8;
@@ -83,7 +83,7 @@ pub fn tool_button(
         egui::Color32::TRANSPARENT
     };
     let hovered = if active { theme.surface_hover } else { hover_fill };
-    let icon_img = egui::Image::new(icons::tool(kind))
+    let icon_img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::lg_square())
         .tint(theme.text);
     let resp = ui
@@ -115,7 +115,7 @@ pub fn tool_button(
         tool.previous = tool.current;
         tool.current = kind;
     }
-    resp.on_hover_text(format!("{label}  ({shortcut})"));
+    resp.on_hover_text(format!("{label}  ({shortcut})"))
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -143,16 +143,31 @@ pub fn icon_only_button(
     let img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::md_square())
         .tint(tint);
+    let sh = theme.surface_hover;
+    let lighten = |c: u8| ((c as u16 + 255 * 3) / 4) as u8;
+    let hover_fill = egui::Color32::from_rgb(lighten(sh.r()), lighten(sh.g()), lighten(sh.b()));
     ui.scope(|ui| {
         ui.spacing_mut().button_padding = pad::NONE;
         ui.spacing_mut().interact_size = gap::NONE;
+        let w = ui.visuals_mut();
+        w.widgets.inactive.bg_fill = egui::Color32::TRANSPARENT;
+        w.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+        w.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+        w.widgets.inactive.expansion = 0.0;
+        w.widgets.hovered.bg_fill = hover_fill;
+        w.widgets.hovered.weak_bg_fill = hover_fill;
+        w.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+        w.widgets.hovered.expansion = 0.0;
+        w.widgets.active.bg_fill = hover_fill;
+        w.widgets.active.weak_bg_fill = hover_fill;
+        w.widgets.active.bg_stroke = egui::Stroke::NONE;
+        w.widgets.active.expansion = 0.0;
         ui.add_enabled(
             enabled,
             egui::Button::image(img)
                 .min_size(egui::vec2(28.0, 26.0))
                 .corner_radius(egui::CornerRadius::same(radius::SM))
-                .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
-                .fill(theme.surface),
+                .stroke(egui::Stroke::NONE),
         )
     })
     .inner

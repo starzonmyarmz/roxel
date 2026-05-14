@@ -4,7 +4,7 @@ use crate::history::History;
 use crate::shapes::ShapePrimitive;
 use crate::theme::{NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
-use crate::ui::dialogs::{DialogResult, PendingDialog};
+use super::dialogs::{DialogResult, PendingDialog};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
 };
@@ -74,6 +74,7 @@ pub enum CommandAction {
     NewProject,
     OpenProject,
     SaveProject,
+    SaveProjectAs,
     ImportVox,
     ImportQb,
     ImportGox,
@@ -92,7 +93,6 @@ pub enum CommandAction {
 
     SelectTool(Tool),
     SelectShape(ShapePrimitive),
-    ToggleShapeFilled,
 
     FrameView,
     ZoomIn,
@@ -240,12 +240,20 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::OpenProject,
     ));
     out.push(entry(
-        "Save project…",
+        "Save project",
         Category::File,
         "roxel write file",
         Some("⌘S"),
         dialog_ok,
         CommandAction::SaveProject,
+    ));
+    out.push(entry(
+        "Save project as…",
+        Category::File,
+        "roxel write file save as",
+        Some("⇧⌘S"),
+        dialog_ok,
+        CommandAction::SaveProjectAs,
     ));
     out.push(entry(
         "Import MagicaVoxel (.vox)…",
@@ -416,18 +424,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         None,
         state.shape.primitive != ShapePrimitive::Line,
         CommandAction::SelectShape(ShapePrimitive::Line),
-    ));
-    out.push(entry(
-        if state.shape.filled {
-            "Shape: Toggle Filled (currently on)"
-        } else {
-            "Shape: Toggle Filled (currently off)"
-        },
-        Category::Shape,
-        "fill outline hollow",
-        None,
-        state.shape.primitive != ShapePrimitive::Line,
-        CommandAction::ToggleShapeFilled,
     ));
 
     // View
@@ -983,6 +979,7 @@ pub struct DispatchParams<'w> {
     palettes: ResMut<'w, Palettes>,
     color: ResMut<'w, CurrentColor>,
     prefs: ResMut<'w, Preferences>,
+    current_path: Res<'w, super::dialogs::CurrentProjectPath>,
 }
 
 pub fn dispatch_command_palette_system(
@@ -998,7 +995,12 @@ pub fn dispatch_command_palette_system(
             p.new_project.dialog_open = true;
         }
         CommandAction::OpenProject => spawn_open(&mut p.pending),
-        CommandAction::SaveProject => spawn_save(&mut p.pending),
+        CommandAction::SaveProject => {
+            super::dialogs::spawn_save(&mut p.pending, &p.current_path)
+        }
+        CommandAction::SaveProjectAs => {
+            super::dialogs::spawn_save_as(&mut p.pending, &p.current_path)
+        }
         CommandAction::ImportVox => spawn_import(
             &mut p.pending,
             "MagicaVoxel",
@@ -1075,7 +1077,6 @@ pub fn dispatch_command_palette_system(
             }
         }
         CommandAction::SelectShape(prim) => p.shape.primitive = prim,
-        CommandAction::ToggleShapeFilled => p.shape.filled = !p.shape.filled,
         CommandAction::FrameView => {
             let (centroid, radius) = fit_view(&p.grid).unwrap_or_else(|| {
                 let c = Vec3::splat(p.grid.size as f32 / 2.0);
@@ -1088,12 +1089,22 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ZoomIn => {
             for mut cam in &mut cameras {
-                cam.target_radius = apply_zoom(cam.target_radius, 0.5, cam.zoom_lower_limit);
+                cam.target_radius = apply_zoom(
+                    cam.target_radius,
+                    0.5,
+                    cam.zoom_lower_limit,
+                    cam.zoom_upper_limit,
+                );
             }
         }
         CommandAction::ZoomOut => {
             for mut cam in &mut cameras {
-                cam.target_radius = apply_zoom(cam.target_radius, 2.0, cam.zoom_lower_limit);
+                cam.target_radius = apply_zoom(
+                    cam.target_radius,
+                    2.0,
+                    cam.zoom_lower_limit,
+                    cam.zoom_upper_limit,
+                );
             }
         }
         CommandAction::OpenPreferences => p.prefs_window.open = true,
@@ -1222,20 +1233,6 @@ fn spawn_open(pending: &mut PendingDialog) {
             .pick_file()
             .await
             .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
-    });
-}
-
-fn spawn_save(pending: &mut PendingDialog) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
-            .add_filter("Roxel project", &["roxel"])
-            .set_file_name("scene.roxel")
-            .save_file()
-            .await
-            .map(|f| DialogResult::SaveProject(f.path().to_path_buf()))
     });
 }
 

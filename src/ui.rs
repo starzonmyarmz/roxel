@@ -9,7 +9,10 @@ mod widgets;
 pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
-pub use dialogs::{DialogResult, PendingDialog, PendingImport, poll_dialogs_system};
+pub use dialogs::{
+    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, poll_dialogs_system,
+    spawn_save, spawn_save_as,
+};
 pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};
 
@@ -60,6 +63,7 @@ pub struct UiState<'w> {
     pub new_project: ResMut<'w, NewProject>,
     pub selection: ResMut<'w, crate::select::Selection>,
     pub toasts: Res<'w, Toasts>,
+    pub current_path: Res<'w, CurrentProjectPath>,
 }
 
 pub fn ui_system(
@@ -81,10 +85,12 @@ pub fn ui_system(
     mut cmd_palette: ResMut<CommandPalette>,
 ) -> Result {
     let UiInput { keys, mouse } = input;
+    #[cfg_attr(target_os = "macos", allow(unused_variables))]
     let UiState {
         mut new_project,
-        mut selection,
+        selection,
         toasts,
+        current_path,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -158,19 +164,26 @@ pub fn ui_system(
                             egui::Image::new(icons::save())
                                 .fit_to_exact_size(icon::md_square())
                                 .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                            egui::RichText::new("Save…").size(font::BODY),
+                            egui::RichText::new("Save").size(font::BODY),
                         ),
                     )
                     .clicked()
                 {
-                    pending.spawn(async move {
-                        rfd::AsyncFileDialog::new()
-                            .add_filter("Roxel project", &["roxel"])
-                            .set_file_name("scene.roxel")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::SaveProject(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_save(&mut pending, &current_path);
+                }
+                if ui
+                    .add_enabled(
+                        !dialog_busy,
+                        egui::Button::image_and_text(
+                            egui::Image::new(icons::save())
+                                .fit_to_exact_size(icon::md_square())
+                                .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                            egui::RichText::new("Save As…").size(font::BODY),
+                        ),
+                    )
+                    .clicked()
+                {
+                    dialogs::spawn_save_as(&mut pending, &current_path);
                 }
                 ui.menu_image_text_button(
                     egui::Image::new(icons::folder_open())
@@ -421,8 +434,10 @@ pub fn ui_system(
                     if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
                         && let Some(cam) = zoom.cameras.iter().next()
                     {
-                        let zoom_pct =
-                            (fit_radius / cam.target_radius.max(0.0001) * 100.0).round() as i32;
+                        let raw = fit_radius / cam.target_radius.max(0.0001) * 100.0;
+                        let zoom_pct = raw
+                            .clamp(crate::camera::MIN_ZOOM_PCT, crate::camera::MAX_ZOOM_PCT)
+                            .round() as i32;
                         ui.add_space(12.0);
                         widgets::status_label(ui, &theme, &format!("Zoom {zoom_pct}%"));
                     }
@@ -441,19 +456,59 @@ pub fn ui_system(
         )
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Brush, "Brush", "B");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Brush, icons::tool(Tool::Brush), "Brush", "B");
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Erase, "Erase", "E");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Erase, icons::tool(Tool::Erase), "Erase", "E");
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, icons::tool(Tool::Paint), "Paint", "P");
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, icons::tool(Tool::Eyedropper), "Pick", "I");
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
+                let shape_resp = widgets::tool_button(
+                    ui,
+                    &theme,
+                    &mut tool,
+                    Tool::Shape,
+                    icons::shape_primitive(shape_options.primitive),
+                    "Shape",
+                    "S",
+                );
+                egui::Popup::menu(&shape_resp)
+                    .align(egui::RectAlign::RIGHT_START)
+                    .gap(6.0)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                        ui.spacing_mut().button_padding = egui::vec2(6.0, 6.0);
+                        ui.horizontal(|ui| {
+                            for (prim, label) in [
+                                (ShapePrimitive::Rectangle, "Rectangle"),
+                                (ShapePrimitive::Ellipse, "Ellipse"),
+                                (ShapePrimitive::Line, "Line"),
+                            ] {
+                                let selected = shape_options.primitive == prim;
+                                let img = egui::Image::new(icons::shape_primitive(prim))
+                                    .fit_to_exact_size(crate::ui::tokens::icon::md_square())
+                                    .tint(if selected { egui::Color32::WHITE } else { theme.text });
+                                let btn = egui::Button::image(img)
+                                    .fill(if selected { theme.accent } else { theme.surface })
+                                    .stroke(if selected {
+                                        egui::Stroke::NONE
+                                    } else {
+                                        egui::Stroke::new(stroke::HAIR, theme.border)
+                                    })
+                                    .corner_radius(egui::CornerRadius::same(radius::SM));
+                                if ui.add(btn).on_hover_text(label).clicked() {
+                                    shape_options.primitive = prim;
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Select, icons::tool(Tool::Select), "Select", "M");
                 ui.add_space(2.0);
-                widgets::tool_button(ui, &theme, &mut tool, Tool::Move, "Move", "V");
+                widgets::tool_button(ui, &theme, &mut tool, Tool::Move, icons::tool(Tool::Move), "Move", "V");
             });
         });
     let left_rect = left_resp.response.rect;
@@ -930,48 +985,9 @@ pub fn ui_system(
                             "Voxels",
                             aabb.voxel_count(&grid).to_string(),
                         );
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("Delete").clicked() {
-                                crate::select::clear_aabb(
-                                    &mut grid,
-                                    &mut history,
-                                    &aabb,
-                                );
-                            }
-                            if ui.button("Clear selection").clicked() {
-                                selection.aabb = None;
-                            }
-                        });
                     });
                 }
 
-                // Shape section (only when Shape tool is active)
-                if tool.current == Tool::Shape {
-                    widgets::section(ui, &theme, "Shape", |ui| {
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(
-                                &mut shape_options.primitive,
-                                ShapePrimitive::Rectangle,
-                                "Rect",
-                            );
-                            ui.selectable_value(
-                                &mut shape_options.primitive,
-                                ShapePrimitive::Ellipse,
-                                "Ellipse",
-                            );
-                            ui.selectable_value(
-                                &mut shape_options.primitive,
-                                ShapePrimitive::Line,
-                                "Line",
-                            );
-                        });
-                        if shape_options.primitive != ShapePrimitive::Line {
-                            ui.add_space(4.0);
-                            ui.checkbox(&mut shape_options.filled, "Filled");
-                        }
-                    });
-                }
                 });
             });
         });

@@ -12,6 +12,12 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: Save remembers the last-used file path; new Save As… entry (⇧⌘S) under File menu and command palette
+- feat: Shape tool — primitive popup on the left rail; rail icon reflects the active primitive (Rectangle / Ellipse / Line); drop the Filled toggle (always filled)
+- feat: Cmd/Ctrl+D clears the current selection
+- feat: zoom percentage clamped to a bounded range (0–1000%) so the readout never overshoots
+- fix: initial framing is panel-aware on startup and after every project rebuild — voxels no longer land offscreen behind side panels
+- chore: optional `dev` cargo feature for Bevy dynamic linking (`cargo run --features dev`) for faster link times
 - polish: left tool rail — transparent unselected buttons, gray selected, lighter-gray hover; tighter spacing; shorter status bar
 - feat: optional voxel-grid overlay on the floor plane (Preferences → Show floor grid, Cmd+K toggle)
 - feat: brush-style hover ghost for the Shape tool before the first click

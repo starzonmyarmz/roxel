@@ -356,6 +356,14 @@ pub fn selection_key_action_system(
         }
         return;
     }
+    let cmd = keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight);
+    if cmd && keys.just_pressed(KeyCode::KeyD) && selection.aabb.is_some() {
+        selection.aabb = None;
+        return;
+    }
     if (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete))
         && let Some(aabb) = selection.aabb
         && select_state.phase == SelectPhase::Idle
