@@ -7,7 +7,9 @@ use std::collections::HashSet;
 use crate::preview::outline_color_for;
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use crate::theme::Preferences;
-use crate::tools::{CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset};
+use crate::tools::{
+    CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset,
+};
 
 #[derive(Component)]
 pub struct ShapePreview;
@@ -81,7 +83,11 @@ pub fn shape_preview_system(
         ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, options.filled),
         ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
     };
-    let base_sign = if state.normal_sign == 0 { 1 } else { state.normal_sign };
+    let base_sign = if state.normal_sign == 0 {
+        1
+    } else {
+        state.normal_sign
+    };
     let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, base_sign);
     let cells = extrude(&base, anchor.axis, count, dir_sign);
 
@@ -149,12 +155,60 @@ pub(crate) fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>
     let mut nor = Vec::with_capacity(cells.len() * 24);
     let mut idx = Vec::with_capacity(cells.len() * 36);
     const FACES: [([f32; 3], [[f32; 3]; 4]); 6] = [
-        ([1.0, 0.0, 0.0],  [[1.0,0.0,0.0],[1.0,0.0,1.0],[1.0,1.0,1.0],[1.0,1.0,0.0]]),
-        ([-1.0, 0.0, 0.0], [[0.0,0.0,0.0],[0.0,1.0,0.0],[0.0,1.0,1.0],[0.0,0.0,1.0]]),
-        ([0.0, 1.0, 0.0],  [[0.0,1.0,0.0],[1.0,1.0,0.0],[1.0,1.0,1.0],[0.0,1.0,1.0]]),
-        ([0.0, -1.0, 0.0], [[0.0,0.0,0.0],[0.0,0.0,1.0],[1.0,0.0,1.0],[1.0,0.0,0.0]]),
-        ([0.0, 0.0, 1.0],  [[0.0,0.0,1.0],[0.0,1.0,1.0],[1.0,1.0,1.0],[1.0,0.0,1.0]]),
-        ([0.0, 0.0, -1.0], [[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]]),
+        (
+            [1.0, 0.0, 0.0],
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 0.0],
+            ],
+        ),
+        (
+            [-1.0, 0.0, 0.0],
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ],
+        ),
+        (
+            [0.0, 1.0, 0.0],
+            [
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ],
+        ),
+        (
+            [0.0, -1.0, 0.0],
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+            ],
+        ),
+        (
+            [0.0, 0.0, 1.0],
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0],
+            ],
+        ),
+        (
+            [0.0, 0.0, -1.0],
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+        ),
     ];
     for c in cells {
         let base = [c.x as f32, c.y as f32, c.z as f32];

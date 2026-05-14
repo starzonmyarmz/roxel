@@ -33,7 +33,9 @@ impl History {
     }
 
     pub fn record(&mut self, grid: &mut VoxelGrid, pos: IVec3, after: Option<Color8>) {
-        let Some(stroke) = self.current.as_mut() else { return; };
+        let Some(stroke) = self.current.as_mut() else {
+            return;
+        };
         let key = (pos.x, pos.y, pos.z);
         if stroke.touched.contains_key(&key) {
             // Already touched this stroke — overwrite without doubling history.
@@ -66,14 +68,18 @@ impl History {
     /// Use when the caller wants to cancel an in-progress, continuously-
     /// updating stroke (e.g. an interactive drag that the user aborts).
     pub fn abort(&mut self, grid: &mut VoxelGrid) {
-        let Some(stroke) = self.current.take() else { return; };
+        let Some(stroke) = self.current.take() else {
+            return;
+        };
         for d in stroke.deltas.iter().rev() {
             grid.set(d.pos, d.before);
         }
     }
 
     pub fn end(&mut self) {
-        let Some(stroke) = self.current.take() else { return; };
+        let Some(stroke) = self.current.take() else {
+            return;
+        };
         if stroke.deltas.is_empty() {
             return;
         }
@@ -85,7 +91,9 @@ impl History {
     }
 
     pub fn undo(&mut self, grid: &mut VoxelGrid) {
-        let Some(stroke) = self.undo.pop() else { return; };
+        let Some(stroke) = self.undo.pop() else {
+            return;
+        };
         for d in stroke.deltas.iter().rev() {
             grid.set(d.pos, d.before);
         }
@@ -93,7 +101,9 @@ impl History {
     }
 
     pub fn redo(&mut self, grid: &mut VoxelGrid) {
-        let Some(stroke) = self.redo.pop() else { return; };
+        let Some(stroke) = self.redo.pop() else {
+            return;
+        };
         for d in &stroke.deltas {
             grid.set(d.pos, d.after);
         }
@@ -189,7 +199,12 @@ mod tests {
         let mut h = History::default();
         for i in 0..205 {
             h.begin();
-            rec(&mut h, &mut g, IVec3::new(i % 60, 0, 0), Some([i as u8, 0, 0, 255]));
+            rec(
+                &mut h,
+                &mut g,
+                IVec3::new(i % 60, 0, 0),
+                Some([i as u8, 0, 0, 255]),
+            );
             h.end();
         }
         assert_eq!(h.undo.len(), 200);
@@ -266,14 +281,22 @@ mod tests {
     fn multi_cell_undo_restores_all() {
         let mut g = VoxelGrid::default();
         let mut h = History::default();
-        let pts = [IVec3::new(0,0,0), IVec3::new(1,0,0), IVec3::new(2,0,0)];
+        let pts = [
+            IVec3::new(0, 0, 0),
+            IVec3::new(1, 0, 0),
+            IVec3::new(2, 0, 0),
+        ];
         h.begin();
         for p in pts {
             rec(&mut h, &mut g, p, Some([9, 9, 9, 255]));
         }
         h.end();
-        for p in pts { assert_eq!(g.get(p), Some([9,9,9,255])); }
+        for p in pts {
+            assert_eq!(g.get(p), Some([9, 9, 9, 255]));
+        }
         h.undo(&mut g);
-        for p in pts { assert_eq!(g.get(p), None); }
+        for p in pts {
+            assert_eq!(g.get(p), None);
+        }
     }
 }

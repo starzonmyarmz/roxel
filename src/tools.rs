@@ -1,7 +1,7 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick, pick_with};
-use crate::select::{Selection, SelectPhase, SelectState, SelectionAabb, clear_aabb, recolor_aabb};
+use crate::select::{SelectPhase, SelectState, Selection, SelectionAabb, clear_aabb, recolor_aabb};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -34,7 +34,10 @@ pub struct ToolState {
 
 impl Default for ToolState {
     fn default() -> Self {
-        Self { current: Tool::Brush, previous: Tool::Brush }
+        Self {
+            current: Tool::Brush,
+            previous: Tool::Brush,
+        }
     }
 }
 
@@ -116,7 +119,10 @@ pub struct ShapeOptions {
 
 impl Default for ShapeOptions {
     fn default() -> Self {
-        Self { primitive: ShapePrimitive::Rectangle, filled: true }
+        Self {
+            primitive: ShapePrimitive::Rectangle,
+            filled: true,
+        }
     }
 }
 
@@ -161,8 +167,14 @@ fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
     if dx >= dy && dx >= dz {
         let (mut p1, mut p2) = (2 * dy - dx, 2 * dz - dx);
         while cur.x != b.x {
-            if p1 >= 0 { cur.y += s.y; p1 -= 2 * dx; }
-            if p2 >= 0 { cur.z += s.z; p2 -= 2 * dx; }
+            if p1 >= 0 {
+                cur.y += s.y;
+                p1 -= 2 * dx;
+            }
+            if p2 >= 0 {
+                cur.z += s.z;
+                p2 -= 2 * dx;
+            }
             cur.x += s.x;
             p1 += 2 * dy;
             p2 += 2 * dz;
@@ -171,8 +183,14 @@ fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
     } else if dy >= dx && dy >= dz {
         let (mut p1, mut p2) = (2 * dx - dy, 2 * dz - dy);
         while cur.y != b.y {
-            if p1 >= 0 { cur.x += s.x; p1 -= 2 * dy; }
-            if p2 >= 0 { cur.z += s.z; p2 -= 2 * dy; }
+            if p1 >= 0 {
+                cur.x += s.x;
+                p1 -= 2 * dy;
+            }
+            if p2 >= 0 {
+                cur.z += s.z;
+                p2 -= 2 * dy;
+            }
             cur.y += s.y;
             p1 += 2 * dx;
             p2 += 2 * dz;
@@ -181,8 +199,14 @@ fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
     } else {
         let (mut p1, mut p2) = (2 * dy - dz, 2 * dx - dz);
         while cur.z != b.z {
-            if p1 >= 0 { cur.y += s.y; p1 -= 2 * dz; }
-            if p2 >= 0 { cur.x += s.x; p2 -= 2 * dz; }
+            if p1 >= 0 {
+                cur.y += s.y;
+                p1 -= 2 * dz;
+            }
+            if p2 >= 0 {
+                cur.x += s.x;
+                p2 -= 2 * dz;
+            }
             cur.z += s.z;
             p1 += 2 * dy;
             p2 += 2 * dx;
@@ -193,7 +217,13 @@ fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
 }
 
 fn axis_of_normal(n: IVec3) -> usize {
-    if n.x != 0 { 0 } else if n.y != 0 { 1 } else { 2 }
+    if n.x != 0 {
+        0
+    } else if n.y != 0 {
+        1
+    } else {
+        2
+    }
 }
 
 fn anchor_target(anchor: &StrokeAnchor, origin: Vec3, dir: Vec3) -> Option<IVec3> {
@@ -237,11 +267,7 @@ fn footprint_center_world(c1: IVec3, c2: IVec3, axis: usize, plane_world: f32) -
 /// so a drag stays on the picked face plane. When `lock_horizontal` is set
 /// (Shift held), also zero the Y component so the voxel stays on the same
 /// horizontal plane regardless of which face the user grabbed.
-pub(crate) fn constrain_move_delta(
-    delta: IVec3,
-    axis: usize,
-    lock_horizontal: bool,
-) -> IVec3 {
+pub(crate) fn constrain_move_delta(delta: IVec3, axis: usize, lock_horizontal: bool) -> IVec3 {
     let mut out = delta;
     match axis {
         0 => out.x = 0,
@@ -353,14 +379,20 @@ fn shape_input(
             if !lmb_just || blocked {
                 return;
             }
-            let Some(hit) = pick(grid, origin, dir) else { return; };
+            let Some(hit) = pick(grid, origin, dir) else {
+                return;
+            };
             let axis = axis_of_normal(hit.normal);
             let n_arr = hit.normal.to_array();
             let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
             let cell_arr = hit.cell.to_array();
             let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
             let target_layer = cell_arr[axis] + n_arr[axis];
-            let anchor = StrokeAnchor { axis, plane_world, target_layer };
+            let anchor = StrokeAnchor {
+                axis,
+                plane_world,
+                target_layer,
+            };
             let start_cell = anchor_target(&anchor, origin, dir).unwrap_or_else(|| {
                 IVec3::new(
                     cell_arr[0] + n_arr[0],
@@ -376,7 +408,9 @@ fn shape_input(
             state.thickness = 0;
         }
         Some(ShapePhase::Footprint) => {
-            let Some(anchor) = state.anchor else { return; };
+            let Some(anchor) = state.anchor else {
+                return;
+            };
             if let Some(target) = anchor_target(&anchor, origin, dir) {
                 state.corner2 = Some(target);
             }
@@ -386,8 +420,12 @@ fn shape_input(
             }
         }
         Some(ShapePhase::Extrude) => {
-            let Some(anchor) = state.anchor else { return; };
-            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
+            let Some(anchor) = state.anchor else {
+                return;
+            };
+            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else {
+                return;
+            };
             let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
             state.thickness =
                 signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
@@ -434,7 +472,9 @@ fn select_input(
             if !lmb_just || blocked {
                 return;
             }
-            let Some(hit) = pick(grid, origin, dir) else { return; };
+            let Some(hit) = pick(grid, origin, dir) else {
+                return;
+            };
             let axis = axis_of_normal(hit.normal);
             let n_arr = hit.normal.to_array();
             let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
@@ -443,7 +483,11 @@ fn select_input(
             // Select targets the picked voxel itself, not the adjacent empty
             // cell — clicking a voxel should select that voxel.
             let target_layer = cell_arr[axis];
-            let anchor = StrokeAnchor { axis, plane_world, target_layer };
+            let anchor = StrokeAnchor {
+                axis,
+                plane_world,
+                target_layer,
+            };
             let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
             state.phase = SelectPhase::Footprint;
             state.anchor = Some(anchor);
@@ -453,7 +497,9 @@ fn select_input(
             state.thickness = 0;
         }
         SelectPhase::Footprint => {
-            let Some(anchor) = state.anchor else { return; };
+            let Some(anchor) = state.anchor else {
+                return;
+            };
             if let Some(target) = anchor_target(&anchor, origin, dir) {
                 state.corner2 = Some(target);
             }
@@ -463,8 +509,12 @@ fn select_input(
             }
         }
         SelectPhase::Extrude => {
-            let Some(anchor) = state.anchor else { return; };
-            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else { return; };
+            let Some(anchor) = state.anchor else {
+                return;
+            };
+            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else {
+                return;
+            };
             let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
             state.thickness =
                 signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
@@ -493,7 +543,10 @@ pub fn tool_input_system(
     gizmo_drag: Res<crate::gizmo::GizmoDrag>,
     gizmo_rect: Res<crate::gizmo::GizmoRect>,
 ) {
-    let SelectParams { state: mut select_state, mut selection } = select_params;
+    let SelectParams {
+        state: mut select_state,
+        mut selection,
+    } = select_params;
     let egui_wants_pointer = contexts
         .ctx_mut()
         .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
@@ -612,11 +665,14 @@ pub fn tool_input_system(
     // Suppress tool clicks that land on the gizmo viewport rect.
     if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
         && let Some(c) = window.cursor_position()
-            && rect.contains(c) {
-                return;
-            }
+        && rect.contains(c)
+    {
+        return;
+    }
 
-    let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
+    let Some((origin, dir)) = cursor_ray(&cameras, &windows) else {
+        return;
+    };
 
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
 
@@ -624,10 +680,11 @@ pub fn tool_input_system(
     if lmb_just && tool.current == Tool::Eyedropper {
         if let Some(hit) = pick(&grid, origin, dir)
             && hit.hit_voxel
-                && let Some(c) = grid.get(hit.cell) {
-                    color.0 = c;
-                    recent.push(c);
-                }
+            && let Some(c) = grid.get(hit.cell)
+        {
+            color.0 = c;
+            recent.push(c);
+        }
         // Stay in eyedropper while Alt is held; otherwise restore previous tool.
         if !alt {
             tool.current = tool.previous;
@@ -639,42 +696,46 @@ pub fn tool_input_system(
 
     // Shift + click: draw a 3D line from the last placed voxel to the new target.
     // Performs a single-frame stroke; does not enter drag mode.
-    if lmb_just && shift
-        && let Some(from) = state.last_placed {
-            let Some(hit) = pick(&grid, origin, dir) else { return; };
-            let target = match tool.current {
-                Tool::Brush => hit.cell + hit.normal,
-                Tool::Erase | Tool::Paint if hit.hit_voxel => hit.cell,
-                _ => return,
-            };
-            if !grid.in_bounds(target) {
-                return;
-            }
-            history.begin();
-            for cell in line3d(from, target) {
-                if !grid.in_bounds(cell) {
-                    continue;
-                }
-                match tool.current {
-                    Tool::Brush => history.record(&mut grid, cell, Some(color.0)),
-                    Tool::Erase => {
-                        if grid.get(cell).is_some() {
-                            history.record(&mut grid, cell, None);
-                        }
-                    }
-                    Tool::Paint => {
-                        if grid.get(cell).is_some() {
-                            history.record(&mut grid, cell, Some(color.0));
-                        }
-                    }
-                    Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
-                }
-            }
-            history.end();
-            state.last_placed = Some(target);
-            recent.push(color.0);
+    if lmb_just
+        && shift
+        && let Some(from) = state.last_placed
+    {
+        let Some(hit) = pick(&grid, origin, dir) else {
+            return;
+        };
+        let target = match tool.current {
+            Tool::Brush => hit.cell + hit.normal,
+            Tool::Erase | Tool::Paint if hit.hit_voxel => hit.cell,
+            _ => return,
+        };
+        if !grid.in_bounds(target) {
             return;
         }
+        history.begin();
+        for cell in line3d(from, target) {
+            if !grid.in_bounds(cell) {
+                continue;
+            }
+            match tool.current {
+                Tool::Brush => history.record(&mut grid, cell, Some(color.0)),
+                Tool::Erase => {
+                    if grid.get(cell).is_some() {
+                        history.record(&mut grid, cell, None);
+                    }
+                }
+                Tool::Paint => {
+                    if grid.get(cell).is_some() {
+                        history.record(&mut grid, cell, Some(color.0));
+                    }
+                }
+                Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
+            }
+        }
+        history.end();
+        state.last_placed = Some(target);
+        recent.push(color.0);
+        return;
+    }
 
     // Paint/Erase on a voxel inside the active selection → operate on the
     // whole selection in a single history stroke. Click outside the selection
@@ -701,7 +762,9 @@ pub fn tool_input_system(
     // for the duration of the stroke. Prevents runaway stacking when the freshly
     // placed voxel becomes the next frame's pick target.
     if lmb_just {
-        let Some(hit) = pick(&grid, origin, dir) else { return; };
+        let Some(hit) = pick(&grid, origin, dir) else {
+            return;
+        };
         let axis = axis_of_normal(hit.normal);
         let cell_arr = hit.cell.to_array();
         let n_arr = hit.normal.to_array();
@@ -712,7 +775,11 @@ pub fn tool_input_system(
         };
         history.begin();
         state.stroking = true;
-        state.anchor = Some(StrokeAnchor { axis, plane_world, target_layer });
+        state.anchor = Some(StrokeAnchor {
+            axis,
+            plane_world,
+            target_layer,
+        });
         state.last_placed = None;
         recent.push(color.0);
     }
@@ -720,8 +787,12 @@ pub fn tool_input_system(
     if !state.stroking {
         return;
     }
-    let Some(anchor) = state.anchor else { return; };
-    let Some(anchored) = anchor_target(&anchor, origin, dir) else { return; };
+    let Some(anchor) = state.anchor else {
+        return;
+    };
+    let Some(anchored) = anchor_target(&anchor, origin, dir) else {
+        return;
+    };
 
     // Goxel-style: pick against the pre-stroke state, never the live grid.
     // History tracks the pre-stroke value of every cell touched this stroke,
@@ -736,7 +807,10 @@ pub fn tool_input_system(
                 None => grid_ref.get(p),
             }
         };
-        match (tool.current, pick_with(read, grid_ref.size_i(), origin, dir)) {
+        match (
+            tool.current,
+            pick_with(read, grid_ref.size_i(), origin, dir),
+        ) {
             (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,
@@ -801,7 +875,11 @@ pub fn move_drag_system(
     if tool.current != Tool::Move {
         if drag.active {
             history.abort(&mut grid);
-            selection.aabb = if drag.ad_hoc { None } else { drag.original_aabb };
+            selection.aabb = if drag.ad_hoc {
+                None
+            } else {
+                drag.original_aabb
+            };
             drag.reset();
         }
         return;
@@ -832,7 +910,11 @@ pub fn move_drag_system(
     // Cancel mid-drag → revert and abandon the stroke.
     if drag.active && (esc || rmb_just) {
         history.abort(&mut grid);
-        selection.aabb = if drag.ad_hoc { None } else { drag.original_aabb };
+        selection.aabb = if drag.ad_hoc {
+            None
+        } else {
+            drag.original_aabb
+        };
         drag.reset();
         return;
     }
@@ -843,8 +925,12 @@ pub fn move_drag_system(
         if !lmb_just || blocked {
             return;
         }
-        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
-        let Some(hit) = pick(&grid, origin, dir) else { return; };
+        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else {
+            return;
+        };
+        let Some(hit) = pick(&grid, origin, dir) else {
+            return;
+        };
         if !hit.hit_voxel {
             return;
         }
@@ -858,7 +944,11 @@ pub fn move_drag_system(
         let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
         let cell_arr = hit.cell.to_array();
         let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
-        let anchor = StrokeAnchor { axis, plane_world, target_layer: cell_arr[axis] };
+        let anchor = StrokeAnchor {
+            axis,
+            plane_world,
+            target_layer: cell_arr[axis],
+        };
         let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
 
         let originals: Vec<(IVec3, Color8)> = effective_aabb
@@ -887,13 +977,17 @@ pub fn move_drag_system(
 
     // Drag in progress.
     if lmb_pressed {
-        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else { return; };
+        let Some((origin, dir)) = cursor_ray(&cameras, &windows) else {
+            return;
+        };
         let (Some(anchor), Some(start), Some(orig_aabb)) =
             (drag.anchor, drag.start_cell, drag.original_aabb)
         else {
             return;
         };
-        let Some(target) = anchor_target(&anchor, origin, dir) else { return; };
+        let Some(target) = anchor_target(&anchor, origin, dir) else {
+            return;
+        };
         let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
         let new_delta = constrain_move_delta(target - start, anchor.axis, shift);
         if new_delta == drag.applied_delta {
@@ -904,8 +998,12 @@ pub fn move_drag_system(
         let s = grid.size_i();
         let new_min = orig_aabb.min + new_delta;
         let new_max = orig_aabb.max + new_delta;
-        if new_min.x < 0 || new_min.y < 0 || new_min.z < 0
-            || new_max.x >= s || new_max.y >= s || new_max.z >= s
+        if new_min.x < 0
+            || new_min.y < 0
+            || new_min.z < 0
+            || new_max.x >= s
+            || new_max.y >= s
+            || new_max.z >= s
         {
             return;
         }
@@ -984,8 +1082,10 @@ pub fn undo_redo_system(
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
 ) {
-    let cmd = keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let cmd = keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight);
     if !cmd {
         return;
     }
@@ -999,10 +1099,7 @@ pub fn undo_redo_system(
     }
 }
 
-pub fn alt_eyedropper_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut tool: ResMut<ToolState>,
-) {
+pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<ToolState>) {
     let alt_just = keys.just_pressed(KeyCode::AltLeft) || keys.just_pressed(KeyCode::AltRight);
     let alt_released =
         keys.just_released(KeyCode::AltLeft) || keys.just_released(KeyCode::AltRight);
@@ -1054,10 +1151,11 @@ pub fn tool_shortcut_system(
         None
     };
     if let Some(t) = next
-        && tool.current != t {
-            tool.previous = tool.current;
-            tool.current = t;
-        }
+        && tool.current != t
+    {
+        tool.previous = tool.current;
+        tool.current = t;
+    }
 }
 
 #[cfg(test)]

@@ -18,7 +18,9 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     for x in 0..grid.size {
         for y in 0..grid.size {
             for z in 0..grid.size {
-                let Some(rgba) = grid.cell(x, y, z) else { continue; };
+                let Some(rgba) = grid.cell(x, y, z) else {
+                    continue;
+                };
                 let cx = x as i32;
                 let cy = y as i32;
                 let cz = z as i32;
@@ -30,9 +32,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                     let nx = cx + f.d.x;
                     let ny = cy + f.d.y;
                     let nz = cz + f.d.z;
-                    let neighbor_filled = nx >= 0 && nx < size_i
-                        && ny >= 0 && ny < size_i
-                        && nz >= 0 && nz < size_i
+                    let neighbor_filled = nx >= 0
+                        && nx < size_i
+                        && ny >= 0
+                        && ny < size_i
+                        && nz >= 0
+                        && nz < size_i
                         && grid.cell(nx as usize, ny as usize, nz as usize).is_some();
                     if neighbor_filled {
                         continue;
@@ -49,7 +54,9 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
                             cx + c[0],
                             cy + c[1],
                             cz + c[2],
-                            r, g, b
+                            r,
+                            g,
+                            b
                         )?;
                         quad[i] = vert_idx;
                         vert_idx += 1;
@@ -121,7 +128,9 @@ mod tests {
         export(&path, &g).expect("export");
         let s = std::fs::read_to_string(&path).expect("read");
         // r=1.000 g=0.000 b=0.000 appears on every vertex line
-        let any_red = s.lines().any(|l| l.starts_with("v ") && l.contains("1.000 0.000 0.000"));
+        let any_red = s
+            .lines()
+            .any(|l| l.starts_with("v ") && l.contains("1.000 0.000 0.000"));
         assert!(any_red, "expected red vertex color line");
         let _ = std::fs::remove_file(&path);
     }

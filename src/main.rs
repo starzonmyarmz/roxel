@@ -33,17 +33,23 @@ use crate::gizmo::{
 use crate::grid::{MAX_CHUNKS_PER_AXIS, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::lighting::spawn_lights;
-use bevy_panorbit_camera::PanOrbitCamera;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, VoxelMesh, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
-use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system};
-use crate::tools::{CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState, alt_eyedropper_system, move_drag_system, tool_input_system, tool_shortcut_system, undo_redo_system};
+use crate::snapshot::{
+    GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system,
+};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
     resolve_canvas_color, resolve_floor_color, resolve_theme, resolve_wall_color,
 };
+use crate::tools::{
+    CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState,
+    alt_eyedropper_system, move_drag_system, tool_input_system, tool_shortcut_system,
+    undo_redo_system,
+};
 use crate::ui::{PaletteChoice, Palettes, PendingDialog, poll_dialogs_system, ui_system};
+use bevy_panorbit_camera::PanOrbitCamera;
 
 fn main() {
     let prefs = load_preferences();
@@ -103,80 +109,76 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        app.init_resource::<crate::menu::MenuQueue>()
-            .add_systems(
-                Update,
-                (
-                    crate::menu::install_menu_system,
-                    crate::menu::poll_menu_events_system
-                        .after(crate::menu::install_menu_system),
-                    crate::menu::apply_menu_actions_system
-                        .after(crate::menu::poll_menu_events_system),
-                    crate::menu::update_menu_enabled_system
-                        .after(crate::menu::install_menu_system),
-                ),
-            );
+        app.init_resource::<crate::menu::MenuQueue>().add_systems(
+            Update,
+            (
+                crate::menu::install_menu_system,
+                crate::menu::poll_menu_events_system.after(crate::menu::install_menu_system),
+                crate::menu::apply_menu_actions_system.after(crate::menu::poll_menu_events_system),
+                crate::menu::update_menu_enabled_system.after(crate::menu::install_menu_system),
+            ),
+        );
     }
 
     app.add_systems(
-            Startup,
-            (
-                setup_scene,
-                configure_axis_gizmo,
-                crate::select::configure_selection_gizmos,
-            ),
-        )
-        .add_systems(
-            Update,
-            (
-                alt_eyedropper_system,
-                tool_input_system,
-                move_drag_system,
-                tool_shortcut_system,
-                undo_redo_system,
-                regenerate_mesh_system,
-                poll_dialogs_system,
-                sync_gizmo_camera,
-                gizmo_drag_system,
-                update_gizmo_hover,
-                frame_view_system,
-                brush_preview_system.before(regenerate_mesh_system),
-                shape_preview_system.before(regenerate_mesh_system),
-                crate::select::selection_render_system.before(regenerate_mesh_system),
-                crate::select::selection_key_action_system,
-                crate::select::move_selection_keys_system,
-                start_snapshot_system,
-                apply_new_project_system.before(regenerate_mesh_system),
-            ),
-        )
-        .add_systems(
-            Update,
-            (
-                crate::icon::set_window_icon,
-                refresh_theme_system,
-                zoom_click_system,
-                zoom_key_system,
-                apply_canvas_bg_system,
-                apply_floor_color_system,
-                apply_wall_color_system,
-                apply_floor_visibility_system,
-                apply_walls_visibility_system,
-            ),
-        )
-        .add_systems(
-            PreUpdate,
-            font_setup
-                .after(bevy_egui::EguiPreUpdateSet::InitContexts)
-                .before(bevy_egui::EguiPreUpdateSet::BeginPass),
-        )
-        .add_systems(
-            bevy_egui::EguiPrimaryContextPass,
-            (
-                ui_system,
-                update_gizmo_viewport.after(ui_system),
-                update_viewport_rect.after(ui_system),
-            ),
-        );
+        Startup,
+        (
+            setup_scene,
+            configure_axis_gizmo,
+            crate::select::configure_selection_gizmos,
+        ),
+    )
+    .add_systems(
+        Update,
+        (
+            alt_eyedropper_system,
+            tool_input_system,
+            move_drag_system,
+            tool_shortcut_system,
+            undo_redo_system,
+            regenerate_mesh_system,
+            poll_dialogs_system,
+            sync_gizmo_camera,
+            gizmo_drag_system,
+            update_gizmo_hover,
+            frame_view_system,
+            brush_preview_system.before(regenerate_mesh_system),
+            shape_preview_system.before(regenerate_mesh_system),
+            crate::select::selection_render_system.before(regenerate_mesh_system),
+            crate::select::selection_key_action_system,
+            crate::select::move_selection_keys_system,
+            start_snapshot_system,
+            apply_new_project_system.before(regenerate_mesh_system),
+        ),
+    )
+    .add_systems(
+        Update,
+        (
+            crate::icon::set_window_icon,
+            refresh_theme_system,
+            zoom_click_system,
+            zoom_key_system,
+            apply_canvas_bg_system,
+            apply_floor_color_system,
+            apply_wall_color_system,
+            apply_floor_visibility_system,
+            apply_walls_visibility_system,
+        ),
+    )
+    .add_systems(
+        PreUpdate,
+        font_setup
+            .after(bevy_egui::EguiPreUpdateSet::InitContexts)
+            .before(bevy_egui::EguiPreUpdateSet::BeginPass),
+    )
+    .add_systems(
+        bevy_egui::EguiPrimaryContextPass,
+        (
+            ui_system,
+            update_gizmo_viewport.after(ui_system),
+            update_viewport_rect.after(ui_system),
+        ),
+    );
 
     app.run();
 }
@@ -202,7 +204,9 @@ fn setup_scene(
     let chunk_count = MAX_CHUNKS_PER_AXIS.pow(3);
     let mut chunk_handles = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
-        let h = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(0.0, 0.0, 0.0)));
+        let h = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(
+            0.0, 0.0, 0.0,
+        )));
         commands.spawn((
             Mesh3d(h.clone()),
             MeshMaterial3d(mat.clone()),
@@ -211,7 +215,9 @@ fn setup_scene(
         ));
         chunk_handles.push(h);
     }
-    commands.insert_resource(VoxelChunkMeshes { handles: chunk_handles });
+    commands.insert_resource(VoxelChunkMeshes {
+        handles: chunk_handles,
+    });
 
     // Separate materials for floor vs walls so each can have its own color.
     let size = crate::grid::DEFAULT_SIZE as f32;
@@ -367,7 +373,11 @@ fn apply_floor_visibility_system(
     prefs: Res<Preferences>,
     mut floor: Query<&mut Visibility, With<GroundPlane>>,
 ) {
-    let want = if prefs.show_floor { Visibility::Inherited } else { Visibility::Hidden };
+    let want = if prefs.show_floor {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
     for mut v in &mut floor {
         if *v != want {
             *v = want;
@@ -379,7 +389,11 @@ fn apply_walls_visibility_system(
     prefs: Res<Preferences>,
     mut walls: Query<&mut Visibility, With<WallPlane>>,
 ) {
-    let want = if prefs.show_walls { Visibility::Inherited } else { Visibility::Hidden };
+    let want = if prefs.show_walls {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
     for mut v in &mut walls {
         if *v != want {
             *v = want;

@@ -97,7 +97,10 @@ mod tests {
     fn resolve_canvas_match_theme_uses_neutral_dark_not_theme_bg() {
         // Important: must not pick up the bluish UI panel bg (#191A2E).
         // Voxel hues stay true when the canvas is near-neutral grey.
-        let prefs = Preferences { canvas_bg: CanvasBgPref::MatchTheme, ..Default::default() };
+        let prefs = Preferences {
+            canvas_bg: CanvasBgPref::MatchTheme,
+            ..Default::default()
+        };
         let dark = resolve_canvas_color(&prefs, &Theme::dark());
         assert_eq!(dark, [0x1C, 0x1C, 0x1E]);
         let light = resolve_canvas_color(&prefs, &Theme::light());
@@ -119,7 +122,10 @@ mod tests {
         let p = plane_match_color(ThemeMode::Dark);
         let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
         let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
-        assert!(pl > cl, "dark plane must be lighter than canvas: c={c:?} p={p:?}");
+        assert!(
+            pl > cl,
+            "dark plane must be lighter than canvas: c={c:?} p={p:?}"
+        );
     }
 
     #[test]
@@ -128,7 +134,10 @@ mod tests {
         let p = plane_match_color(ThemeMode::Light);
         let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
         let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
-        assert!(pl < cl, "light plane must be darker than canvas: c={c:?} p={p:?}");
+        assert!(
+            pl < cl,
+            "light plane must be darker than canvas: c={c:?} p={p:?}"
+        );
     }
 
     #[test]
@@ -138,8 +147,14 @@ mod tests {
             wall_color: PlaneColorPref::MatchTheme,
             ..Default::default()
         };
-        assert_eq!(resolve_floor_color(&prefs, &Theme::dark()), plane_match_color(ThemeMode::Dark));
-        assert_eq!(resolve_wall_color(&prefs, &Theme::light()), plane_match_color(ThemeMode::Light));
+        assert_eq!(
+            resolve_floor_color(&prefs, &Theme::dark()),
+            plane_match_color(ThemeMode::Dark)
+        );
+        assert_eq!(
+            resolve_wall_color(&prefs, &Theme::light()),
+            plane_match_color(ThemeMode::Light)
+        );
     }
 
     #[test]
@@ -193,11 +208,21 @@ pub struct Preferences {
     pub preview_outline: bool,
 }
 
-fn default_canvas_bg() -> CanvasBgPref { CanvasBgPref::MatchTheme }
-fn default_plane_color() -> PlaneColorPref { PlaneColorPref::MatchTheme }
-fn default_show_floor() -> bool { true }
-fn default_show_walls() -> bool { false }
-fn default_preview_outline() -> bool { true }
+fn default_canvas_bg() -> CanvasBgPref {
+    CanvasBgPref::MatchTheme
+}
+fn default_plane_color() -> PlaneColorPref {
+    PlaneColorPref::MatchTheme
+}
+fn default_show_floor() -> bool {
+    true
+}
+fn default_show_walls() -> bool {
+    false
+}
+fn default_preview_outline() -> bool {
+    true
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -463,10 +488,23 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
 
     use egui::{FontFamily, FontId, TextStyle};
     let bold = FontFamily::Name(NUNITO_700_FAMILY.into());
-    style.text_styles.insert(TextStyle::Heading, FontId::new(16.0, bold.clone()));
-    style.text_styles.insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
-    style.text_styles.insert(TextStyle::Button, FontId::new(14.0, FontFamily::Proportional));
-    style.text_styles.insert(TextStyle::Small, FontId::new(12.0, FontFamily::Proportional));
-    style.text_styles.insert(TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace));
+    style
+        .text_styles
+        .insert(TextStyle::Heading, FontId::new(16.0, bold.clone()));
+    style
+        .text_styles
+        .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
+    style.text_styles.insert(
+        TextStyle::Button,
+        FontId::new(14.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Small,
+        FontId::new(12.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Monospace,
+        FontId::new(13.0, FontFamily::Monospace),
+    );
     ctx.set_style(style);
 }

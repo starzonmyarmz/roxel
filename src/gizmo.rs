@@ -79,17 +79,37 @@ pub fn spawn_gizmo(
 
     let faces: [(Vec3, Quat, Color); 6] = [
         // +X
-        (Vec3::X * FACE_HALF, Quat::from_axis_angle(Vec3::Y, FRAC_PI_2), red),
+        (
+            Vec3::X * FACE_HALF,
+            Quat::from_axis_angle(Vec3::Y, FRAC_PI_2),
+            red,
+        ),
         // -X
-        (-Vec3::X * FACE_HALF, Quat::from_axis_angle(Vec3::Y, -FRAC_PI_2), red_dim),
+        (
+            -Vec3::X * FACE_HALF,
+            Quat::from_axis_angle(Vec3::Y, -FRAC_PI_2),
+            red_dim,
+        ),
         // +Y
-        (Vec3::Y * FACE_HALF, Quat::from_axis_angle(Vec3::X, -FRAC_PI_2), green),
+        (
+            Vec3::Y * FACE_HALF,
+            Quat::from_axis_angle(Vec3::X, -FRAC_PI_2),
+            green,
+        ),
         // -Y
-        (-Vec3::Y * FACE_HALF, Quat::from_axis_angle(Vec3::X, FRAC_PI_2), green_dim),
+        (
+            -Vec3::Y * FACE_HALF,
+            Quat::from_axis_angle(Vec3::X, FRAC_PI_2),
+            green_dim,
+        ),
         // +Z
         (Vec3::Z * FACE_HALF, Quat::IDENTITY, blue),
         // -Z
-        (-Vec3::Z * FACE_HALF, Quat::from_axis_angle(Vec3::Y, std::f32::consts::PI), blue_dim),
+        (
+            -Vec3::Z * FACE_HALF,
+            Quat::from_axis_angle(Vec3::Y, std::f32::consts::PI),
+            blue_dim,
+        ),
     ];
 
     for (idx, (pos, rot, color)) in faces.into_iter().enumerate() {
@@ -107,7 +127,10 @@ pub fn spawn_gizmo(
                 scale: Vec3::ONE,
             },
             RenderLayers::layer(GIZMO_LAYER),
-            GizmoFace { index: idx, base: color },
+            GizmoFace {
+                index: idx,
+                base: color,
+            },
         ));
     }
 }
@@ -123,8 +146,12 @@ pub fn sync_gizmo_camera(
     primary: Query<&Transform, (With<PanOrbitCamera>, Without<GizmoCamera>)>,
     mut gizmo_cam: Query<&mut Transform, With<GizmoCamera>>,
 ) {
-    let Ok(p) = primary.single() else { return; };
-    let Ok(mut t) = gizmo_cam.single_mut() else { return; };
+    let Ok(p) = primary.single() else {
+        return;
+    };
+    let Ok(mut t) = gizmo_cam.single_mut() else {
+        return;
+    };
     t.rotation = p.rotation;
     t.translation = t.rotation * Vec3::Z * 5.0;
 }
@@ -136,8 +163,12 @@ pub fn update_gizmo_viewport(
     mut rect_res: ResMut<GizmoRect>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
-    let Ok(window) = windows.single() else { return Ok(()); };
-    let Ok(mut cam) = cameras.single_mut() else { return Ok(()); };
+    let Ok(window) = windows.single() else {
+        return Ok(());
+    };
+    let Ok(mut cam) = cameras.single_mut() else {
+        return Ok(());
+    };
 
     let rect = ctx.available_rect();
     let ppp = ctx.pixels_per_point();
@@ -260,7 +291,9 @@ pub fn gizmo_drag_system(
     mut drag: ResMut<GizmoDrag>,
     mut cameras: Query<&mut PanOrbitCamera>,
 ) {
-    let Ok(window) = windows.single() else { return; };
+    let Ok(window) = windows.single() else {
+        return;
+    };
     let Some(cursor) = window.cursor_position() else {
         if mouse.just_released(MouseButton::Left) {
             drag.active = false;
@@ -274,10 +307,11 @@ pub fn gizmo_drag_system(
 
     if mouse.just_pressed(MouseButton::Left)
         && let Some(rect) = gizmo_rect.0
-            && rect.contains(cursor) {
-                drag.active = true;
-                drag.last_cursor = cursor;
-            }
+        && rect.contains(cursor)
+    {
+        drag.active = true;
+        drag.last_cursor = cursor;
+    }
 
     if !drag.active || !mouse.pressed(MouseButton::Left) {
         return;

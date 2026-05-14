@@ -46,7 +46,6 @@ pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
     *done = true;
 }
 
-
 fn build_menu() -> MenuStore {
     let menu = Menu::new();
     let mut actions: HashMap<String, MenuAction> = HashMap::new();

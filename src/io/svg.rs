@@ -108,12 +108,7 @@ fn collect_cell_quads(grid: &VoxelGrid, camera_pos: Vec3) -> Vec<CellQuad> {
     out
 }
 
-fn project_quads(
-    quads: &[CellQuad],
-    view: Mat4,
-    clip: Mat4,
-    viewport: Vec2,
-) -> Vec<ProjectedQuad> {
+fn project_quads(quads: &[CellQuad], view: Mat4, clip: Mat4, viewport: Vec2) -> Vec<ProjectedQuad> {
     let view_proj = clip * view;
     let half = viewport * 0.5;
     let mut out = Vec::with_capacity(quads.len());
@@ -206,10 +201,14 @@ fn write_svg(path: &Path, quads: &[ProjectedQuad]) -> Result<()> {
         let _ = write!(
             &mut body,
             "M{:.3},{:.3}L{:.3},{:.3}L{:.3},{:.3}L{:.3},{:.3}Z",
-            q.pts[0].x, q.pts[0].y,
-            q.pts[1].x, q.pts[1].y,
-            q.pts[2].x, q.pts[2].y,
-            q.pts[3].x, q.pts[3].y,
+            q.pts[0].x,
+            q.pts[0].y,
+            q.pts[1].x,
+            q.pts[1].y,
+            q.pts[2].x,
+            q.pts[2].y,
+            q.pts[3].x,
+            q.pts[3].y,
         );
     }
     close_path(&mut body, &mut in_path);
@@ -245,7 +244,8 @@ mod tests {
     }
 
     fn test_camera() -> (GlobalTransform, Projection) {
-        let xform = Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::new(16.0, 16.0, 16.0), Vec3::Y);
+        let xform =
+            Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::new(16.0, 16.0, 16.0), Vec3::Y);
         let gt = GlobalTransform::from(xform);
         let proj = Projection::Perspective(PerspectiveProjection {
             fov: std::f32::consts::FRAC_PI_4,

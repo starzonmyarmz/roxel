@@ -110,10 +110,7 @@ pub fn frame_view_system(
         let world_per_pixel = 2.0 * radius * (persp.fov * 0.5).tan() / win.height();
         let view_right = xform.right().as_vec3();
         let view_up = xform.up().as_vec3();
-        Some(
-            view_right * (delta.x * world_per_pixel)
-                + view_up * (-delta.y * world_per_pixel),
-        )
+        Some(view_right * (delta.x * world_per_pixel) + view_up * (-delta.y * world_per_pixel))
     })()
     .unwrap_or(Vec3::ZERO);
 

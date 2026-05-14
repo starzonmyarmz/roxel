@@ -40,9 +40,12 @@ impl SelectionAabb {
     }
 
     pub fn contains(&self, p: IVec3) -> bool {
-        p.x >= self.min.x && p.x <= self.max.x
-            && p.y >= self.min.y && p.y <= self.max.y
-            && p.z >= self.min.z && p.z <= self.max.z
+        p.x >= self.min.x
+            && p.x <= self.max.x
+            && p.y >= self.min.y
+            && p.y <= self.max.y
+            && p.z >= self.min.z
+            && p.z <= self.max.z
     }
 
     pub fn extents(&self) -> IVec3 {
@@ -146,13 +149,19 @@ pub fn move_selection(
     if delta == IVec3::ZERO {
         return false;
     }
-    let Some(aabb) = selection.aabb else { return false; };
+    let Some(aabb) = selection.aabb else {
+        return false;
+    };
 
     let new_min = aabb.min + delta;
     let new_max = aabb.max + delta;
     let s = grid.size_i();
-    if new_min.x < 0 || new_min.y < 0 || new_min.z < 0
-        || new_max.x >= s || new_max.y >= s || new_max.z >= s
+    if new_min.x < 0
+        || new_min.y < 0
+        || new_min.z < 0
+        || new_max.x >= s
+        || new_max.y >= s
+        || new_max.z >= s
     {
         return false;
     }
@@ -165,16 +174,17 @@ pub fn move_selection(
         .collect();
 
     if occupied.is_empty() {
-        selection.aabb = Some(SelectionAabb { min: new_min, max: new_max });
+        selection.aabb = Some(SelectionAabb {
+            min: new_min,
+            max: new_max,
+        });
         return true;
     }
 
     // Refuse when any destination collides with a voxel outside the moving
     // set — the move must not destroy unrelated voxels in its path.
-    let source_set: std::collections::HashSet<(i32, i32, i32)> = occupied
-        .iter()
-        .map(|(p, _)| (p.x, p.y, p.z))
-        .collect();
+    let source_set: std::collections::HashSet<(i32, i32, i32)> =
+        occupied.iter().map(|(p, _)| (p.x, p.y, p.z)).collect();
     for (src, _) in &occupied {
         let dst = *src + delta;
         let key = (dst.x, dst.y, dst.z);
@@ -195,7 +205,10 @@ pub fn move_selection(
     }
     history.end();
 
-    selection.aabb = Some(SelectionAabb { min: new_min, max: new_max });
+    selection.aabb = Some(SelectionAabb {
+        min: new_min,
+        max: new_max,
+    });
     true
 }
 
@@ -207,8 +220,7 @@ pub fn move_selection(
 /// extends `N` cells in the face-normal direction, `-N` extends `N` cells back
 /// into the surface.
 pub fn in_progress_aabb(state: &SelectState) -> Option<SelectionAabb> {
-    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2)
-    else {
+    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
         return None;
     };
     let depth_end = anchor.target_layer + state.thickness * state.normal_sign;
@@ -274,7 +286,9 @@ pub fn selection_render_system(
     } else {
         selection.aabb
     };
-    let Some(aabb) = active_aabb else { return; };
+    let Some(aabb) = active_aabb else {
+        return;
+    };
 
     // Outline corners, slightly inflated so the stroke sits just outside cell
     // faces rather than z-fighting them (depth_bias handles the x-ray, this
@@ -301,9 +315,18 @@ pub fn selection_render_system(
         Vec3::new(min.x, max.y, max.z),
     ];
     let edges = [
-        (0, 1), (1, 2), (2, 3), (3, 0),
-        (4, 5), (5, 6), (6, 7), (7, 4),
-        (0, 4), (1, 5), (2, 6), (3, 7),
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
     ];
     let phase = time.elapsed_secs() * STRIPE_SPEED;
     for (a, b) in edges {
@@ -483,9 +506,15 @@ mod tests {
     fn clear_aabb_clears_only_inside_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
-        fill_grid(&mut grid, red, &[
-            IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(5, 5, 5),
-        ]);
+        fill_grid(
+            &mut grid,
+            red,
+            &[
+                IVec3::new(1, 1, 1),
+                IVec3::new(2, 1, 1),
+                IVec3::new(5, 5, 5),
+            ],
+        );
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
         clear_aabb(&mut grid, &mut history, &s);
@@ -511,7 +540,11 @@ mod tests {
     fn clear_aabb_undoable_as_single_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
-        let touched = [IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(3, 1, 1)];
+        let touched = [
+            IVec3::new(1, 1, 1),
+            IVec3::new(2, 1, 1),
+            IVec3::new(3, 1, 1),
+        ];
         fill_grid(&mut grid, red, &touched);
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
@@ -552,7 +585,10 @@ mod tests {
             if cell == IVec3::new(1, 1, 1) {
                 continue;
             }
-            assert!(grid.get(cell).is_none(), "cell {cell:?} should remain empty");
+            assert!(
+                grid.get(cell).is_none(),
+                "cell {cell:?} should remain empty"
+            );
         }
     }
 
@@ -573,7 +609,11 @@ mod tests {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
-        let touched = [IVec3::new(1, 1, 1), IVec3::new(2, 2, 2), IVec3::new(3, 1, 1)];
+        let touched = [
+            IVec3::new(1, 1, 1),
+            IVec3::new(2, 2, 2),
+            IVec3::new(3, 1, 1),
+        ];
         fill_grid(&mut grid, red, &touched);
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
@@ -604,7 +644,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(3, 0, 0)));
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(3, 0, 0)
+        ));
         assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
         assert!(grid.get(IVec3::new(2, 1, 1)).is_none());
         assert_eq!(grid.get(IVec3::new(4, 1, 1)), Some(red));
@@ -618,7 +663,15 @@ mod tests {
     fn move_selection_overlapping_translation_preserves_voxels() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
-        fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(3, 1, 1)]);
+        fill_grid(
+            &mut grid,
+            red,
+            &[
+                IVec3::new(1, 1, 1),
+                IVec3::new(2, 1, 1),
+                IVec3::new(3, 1, 1),
+            ],
+        );
         let mut selection = Selection {
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
@@ -627,7 +680,12 @@ mod tests {
         };
         let mut history = History::default();
         // Shift by +1 along X — destination overlaps with source.
-        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(1, 0, 0)
+        ));
         assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
         assert_eq!(grid.get(IVec3::new(2, 1, 1)), Some(red));
         assert_eq!(grid.get(IVec3::new(3, 1, 1)), Some(red));
@@ -649,7 +707,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(!move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(1, 0, 0)
+        ));
         // Both voxels preserved, no stroke recorded.
         assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(red));
         assert_eq!(grid.get(IVec3::new(2, 1, 1)), Some(blue));
@@ -663,7 +726,15 @@ mod tests {
         // selection sliding partly into its old footprint).
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
-        fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(3, 1, 1)]);
+        fill_grid(
+            &mut grid,
+            red,
+            &[
+                IVec3::new(1, 1, 1),
+                IVec3::new(2, 1, 1),
+                IVec3::new(3, 1, 1),
+            ],
+        );
         let mut selection = Selection {
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
@@ -671,7 +742,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(1, 0, 0)
+        ));
     }
 
     #[test]
@@ -686,7 +762,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::new(-1, 0, 0)));
+        assert!(!move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(-1, 0, 0)
+        ));
         assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(red));
         assert_eq!(selection.aabb.unwrap().min, IVec3::new(0, 0, 0));
         assert!(history.undo.is_empty());
@@ -703,7 +784,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(!move_selection(&mut grid, &mut history, &mut selection, IVec3::ZERO));
+        assert!(!move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::ZERO
+        ));
         assert!(history.undo.is_empty());
     }
 
@@ -711,7 +797,11 @@ mod tests {
     fn move_selection_records_single_undoable_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
-        let pts = [IVec3::new(1, 1, 1), IVec3::new(2, 1, 1), IVec3::new(2, 2, 1)];
+        let pts = [
+            IVec3::new(1, 1, 1),
+            IVec3::new(2, 1, 1),
+            IVec3::new(2, 2, 1),
+        ];
         fill_grid(&mut grid, red, &pts);
         let mut selection = Selection {
             aabb: Some(SelectionAabb::from_corners(
@@ -720,14 +810,22 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(0, 0, 1)));
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(0, 0, 1)
+        ));
         assert_eq!(history.undo.len(), 1);
         history.undo(&mut grid);
         for p in &pts {
             assert_eq!(grid.get(*p), Some(red));
         }
         for p in &pts {
-            assert!(grid.get(*p + IVec3::new(0, 0, 1)).is_none() || pts.contains(&(*p + IVec3::new(0, 0, 1))));
+            assert!(
+                grid.get(*p + IVec3::new(0, 0, 1)).is_none()
+                    || pts.contains(&(*p + IVec3::new(0, 0, 1)))
+            );
         }
     }
 
@@ -741,7 +839,12 @@ mod tests {
             )),
         };
         let mut history = History::default();
-        assert!(move_selection(&mut grid, &mut history, &mut selection, IVec3::new(1, 0, 0)));
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(1, 0, 0)
+        ));
         assert!(history.undo.is_empty());
         let aabb = selection.aabb.unwrap();
         assert_eq!(aabb.min, IVec3::new(1, 0, 0));
@@ -753,7 +856,11 @@ mod tests {
         // Face-up pick: normal_sign = +1, target_layer = 5.
         let state = SelectState {
             phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 5,
+            }),
             corner1: Some(IVec3::new(0, 5, 0)),
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
@@ -769,7 +876,11 @@ mod tests {
         // Same pick but user drags the opposite direction.
         let state = SelectState {
             phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 5,
+            }),
             corner1: Some(IVec3::new(0, 5, 0)),
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
@@ -784,7 +895,11 @@ mod tests {
     fn in_progress_aabb_zero_offset_is_single_cell_thick() {
         let state = SelectState {
             phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 5 }),
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 5,
+            }),
             corner1: Some(IVec3::new(0, 5, 0)),
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
@@ -839,7 +954,11 @@ mod tests {
         // thickness=0. AABB must equal the picked voxel exactly.
         let state = SelectState {
             phase: SelectPhase::Footprint,
-            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 4 }),
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 4,
+            }),
             corner1: Some(IVec3::new(3, 4, 5)),
             corner2: Some(IVec3::new(3, 4, 5)),
             normal_sign: 1,
@@ -855,7 +974,11 @@ mod tests {
         // Pick on bottom face: normal_sign = -1, target_layer below the cube.
         let state = SelectState {
             phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor { axis: 1, plane_world: 5.0, target_layer: 4 }),
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 4,
+            }),
             corner1: Some(IVec3::new(0, 4, 0)),
             corner2: Some(IVec3::new(2, 4, 2)),
             normal_sign: -1,

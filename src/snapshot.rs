@@ -44,10 +44,7 @@ pub fn start_snapshot_system(
     mut request: ResMut<SnapshotRequest>,
     mut session: ResMut<SnapshotSession>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    main_cam: Query<
-        (&GlobalTransform, &Projection, Option<&Tonemapping>),
-        With<PanOrbitCamera>,
-    >,
+    main_cam: Query<(&GlobalTransform, &Projection, Option<&Tonemapping>), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
     mut ground: Query<(Entity, &mut Visibility), With<GroundPlane>>,
     mut walls: Query<(Entity, &mut Visibility), (With<WallPlane>, Without<GroundPlane>)>,
@@ -59,7 +56,9 @@ pub fn start_snapshot_system(
     }
 
     let Ok(window) = windows.single() else { return };
-    let Ok((xform, projection, tonemapping)) = main_cam.single() else { return };
+    let Ok((xform, projection, tonemapping)) = main_cam.single() else {
+        return;
+    };
 
     let width = window.physical_width().max(1);
     let height = window.physical_height().max(1);

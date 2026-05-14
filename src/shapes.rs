@@ -154,9 +154,15 @@ mod tests {
     fn rect_filled_3x3_y_axis_emits_9_cells_on_plane() {
         let cells = rect_cells(IVec3::new(0, 5, 0), IVec3::new(2, 5, 2), 1, true);
         assert_eq!(cells.len(), 9);
-        for c in &cells { assert_eq!(c.y, 5); }
+        for c in &cells {
+            assert_eq!(c.y, 5);
+        }
         let s = set(cells);
-        for u in 0..=2 { for v in 0..=2 { assert!(s.contains(&(u, 5, v))); } }
+        for u in 0..=2 {
+            for v in 0..=2 {
+                assert!(s.contains(&(u, 5, v)));
+            }
+        }
     }
 
     #[test]
@@ -169,7 +175,9 @@ mod tests {
     #[test]
     fn rect_axis_orientation_x_axis_constant_x() {
         let cells = rect_cells(IVec3::new(3, 0, 0), IVec3::new(3, 4, 4), 0, true);
-        for c in &cells { assert_eq!(c.x, 3); }
+        for c in &cells {
+            assert_eq!(c.x, 3);
+        }
         assert_eq!(cells.len(), 25);
     }
 
@@ -193,8 +201,18 @@ mod tests {
 
     #[test]
     fn ellipse_outline_subset_of_filled() {
-        let filled = set(ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(6, 0, 6), 1, true));
-        let outline = set(ellipse_cells(IVec3::new(0, 0, 0), IVec3::new(6, 0, 6), 1, false));
+        let filled = set(ellipse_cells(
+            IVec3::new(0, 0, 0),
+            IVec3::new(6, 0, 6),
+            1,
+            true,
+        ));
+        let outline = set(ellipse_cells(
+            IVec3::new(0, 0, 0),
+            IVec3::new(6, 0, 6),
+            1,
+            false,
+        ));
         assert!(outline.is_subset(&filled));
         assert!(outline.len() < filled.len());
     }
@@ -232,27 +250,41 @@ mod tests {
     fn extrude_positive_sign_advances_axis() {
         let base = vec![IVec3::new(0, 0, 0)];
         let out = extrude(&base, 1, 3, 1);
-        assert_eq!(out, vec![IVec3::new(0,0,0), IVec3::new(0,1,0), IVec3::new(0,2,0)]);
+        assert_eq!(
+            out,
+            vec![
+                IVec3::new(0, 0, 0),
+                IVec3::new(0, 1, 0),
+                IVec3::new(0, 2, 0)
+            ]
+        );
     }
 
     #[test]
     fn extrude_negative_sign_retreats_axis() {
         let base = vec![IVec3::new(0, 5, 0)];
         let out = extrude(&base, 1, 3, -1);
-        assert_eq!(out, vec![IVec3::new(0,5,0), IVec3::new(0,4,0), IVec3::new(0,3,0)]);
+        assert_eq!(
+            out,
+            vec![
+                IVec3::new(0, 5, 0),
+                IVec3::new(0, 4, 0),
+                IVec3::new(0, 3, 0)
+            ]
+        );
     }
 
     #[test]
     fn extrude_zero_sign_treated_as_positive() {
         let base = vec![IVec3::new(0, 0, 0)];
         let out = extrude(&base, 1, 2, 0);
-        assert_eq!(out, vec![IVec3::new(0,0,0), IVec3::new(0,1,0)]);
+        assert_eq!(out, vec![IVec3::new(0, 0, 0), IVec3::new(0, 1, 0)]);
     }
 
     #[test]
     fn extrude_thickness_clamped_to_1() {
         let base = vec![IVec3::new(0, 0, 0)];
         let out = extrude(&base, 1, 0, 1);
-        assert_eq!(out, vec![IVec3::new(0,0,0)]);
+        assert_eq!(out, vec![IVec3::new(0, 0, 0)]);
     }
 }

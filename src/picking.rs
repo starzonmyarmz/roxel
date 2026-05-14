@@ -38,9 +38,27 @@ where
     F: Fn(IVec3) -> Option<Color8>,
 {
     let step = IVec3::new(
-        if dir.x > 0.0 { 1 } else if dir.x < 0.0 { -1 } else { 0 },
-        if dir.y > 0.0 { 1 } else if dir.y < 0.0 { -1 } else { 0 },
-        if dir.z > 0.0 { 1 } else if dir.z < 0.0 { -1 } else { 0 },
+        if dir.x > 0.0 {
+            1
+        } else if dir.x < 0.0 {
+            -1
+        } else {
+            0
+        },
+        if dir.y > 0.0 {
+            1
+        } else if dir.y < 0.0 {
+            -1
+        } else {
+            0
+        },
+        if dir.z > 0.0 {
+            1
+        } else if dir.z < 0.0 {
+            -1
+        } else {
+            0
+        },
     );
 
     let mut cell = IVec3::new(
@@ -49,20 +67,42 @@ where
         origin.z.floor() as i32,
     );
 
-    let next_boundary = |c: i32, s: i32| -> f32 {
-        if s > 0 { (c + 1) as f32 } else { c as f32 }
-    };
+    let next_boundary = |c: i32, s: i32| -> f32 { if s > 0 { (c + 1) as f32 } else { c as f32 } };
 
     let inf = f32::INFINITY;
     let mut t_max = Vec3::new(
-        if dir.x != 0.0 { (next_boundary(cell.x, step.x) - origin.x) / dir.x } else { inf },
-        if dir.y != 0.0 { (next_boundary(cell.y, step.y) - origin.y) / dir.y } else { inf },
-        if dir.z != 0.0 { (next_boundary(cell.z, step.z) - origin.z) / dir.z } else { inf },
+        if dir.x != 0.0 {
+            (next_boundary(cell.x, step.x) - origin.x) / dir.x
+        } else {
+            inf
+        },
+        if dir.y != 0.0 {
+            (next_boundary(cell.y, step.y) - origin.y) / dir.y
+        } else {
+            inf
+        },
+        if dir.z != 0.0 {
+            (next_boundary(cell.z, step.z) - origin.z) / dir.z
+        } else {
+            inf
+        },
     );
     let t_delta = Vec3::new(
-        if dir.x != 0.0 { (1.0 / dir.x).abs() } else { inf },
-        if dir.y != 0.0 { (1.0 / dir.y).abs() } else { inf },
-        if dir.z != 0.0 { (1.0 / dir.z).abs() } else { inf },
+        if dir.x != 0.0 {
+            (1.0 / dir.x).abs()
+        } else {
+            inf
+        },
+        if dir.y != 0.0 {
+            (1.0 / dir.y).abs()
+        } else {
+            inf
+        },
+        if dir.z != 0.0 {
+            (1.0 / dir.z).abs()
+        } else {
+            inf
+        },
     );
 
     let mut normal = IVec3::ZERO;
@@ -70,7 +110,11 @@ where
 
     for _ in 0..max_steps {
         if in_box(cell, size_i) && read(cell).is_some() {
-            return Some(Hit { cell, normal, hit_voxel: true });
+            return Some(Hit {
+                cell,
+                normal,
+                hit_voxel: true,
+            });
         }
         if t_max.x < t_max.y && t_max.x < t_max.z {
             cell.x += step.x;
@@ -161,7 +205,11 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(5, 0, 0), Some([1, 1, 1, 255]));
         let read = |p: IVec3| -> Option<Color8> {
-            if p == IVec3::new(5, 0, 0) { None } else { g.get(p) }
+            if p == IVec3::new(5, 0, 0) {
+                None
+            } else {
+                g.get(p)
+            }
         };
         let hit = pick_with(read, g.size_i(), Vec3::new(-1.0, 0.5, 0.5), Vec3::X);
         // No voxel hit; ray is purely +X so no floor fallback either.

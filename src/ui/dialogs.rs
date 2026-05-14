@@ -46,8 +46,12 @@ pub fn poll_dialogs_system(
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let Some(task) = pending.0.as_mut() else { return; };
-    let Some(result) = block_on(future::poll_once(task)) else { return; };
+    let Some(task) = pending.0.as_mut() else {
+        return;
+    };
+    let Some(result) = block_on(future::poll_once(task)) else {
+        return;
+    };
     pending.0 = None;
     match result {
         Some(DialogResult::OpenProject(path)) => {
@@ -96,7 +100,11 @@ pub fn poll_dialogs_system(
                 if colors.is_empty() {
                     eprintln!("Import .ase: no usable colors found");
                 } else {
-                    palettes.0.push(Palette { name, colors, builtin: false });
+                    palettes.0.push(Palette {
+                        name,
+                        colors,
+                        builtin: false,
+                    });
                     palette_choice.0 = palettes.0.len() - 1;
                     io::palettes::save(&palettes.0);
                 }

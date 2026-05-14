@@ -66,12 +66,7 @@ pub fn import(path: &Path) -> Result<(String, Vec<[u8; 4]>)> {
                         let rf = r.read_f32()?;
                         let gf = r.read_f32()?;
                         let bf = r.read_f32()?;
-                        [
-                            to_u8(rf),
-                            to_u8(gf),
-                            to_u8(bf),
-                            255,
-                        ]
+                        [to_u8(rf), to_u8(gf), to_u8(bf), 255]
                     }
                     b"GRAY" | b"Gray" => {
                         let v = to_u8(r.read_f32()?);
@@ -223,18 +218,17 @@ mod tests {
         assert_eq!(u16::from_be_bytes([bytes[4], bytes[5]]), 1);
         assert_eq!(u16::from_be_bytes([bytes[6], bytes[7]]), 0);
         // Block count = colors + group-start + group-end = 4
-        assert_eq!(u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]), 4);
+        assert_eq!(
+            u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+            4
+        );
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
     fn roundtrip_preserves_rgb_and_group_name() {
         let path = tmp_path("roundtrip");
-        let colors = vec![
-            [0, 0, 0, 255],
-            [255, 255, 255, 255],
-            [128, 64, 200, 255],
-        ];
+        let colors = vec![[0, 0, 0, 255], [255, 255, 255, 255], [128, 64, 200, 255]];
         export(&path, "Greys", &colors).expect("export");
         let (name, loaded) = import(&path).expect("import");
         assert_eq!(name, "Greys");
@@ -242,7 +236,10 @@ mod tests {
         // Float roundtrip may drift by 1 LSB due to u8→f32→u8.
         for (a, b) in colors.iter().zip(loaded.iter()) {
             for i in 0..3 {
-                assert!((a[i] as i32 - b[i] as i32).abs() <= 1, "channel {i}: {a:?} vs {b:?}");
+                assert!(
+                    (a[i] as i32 - b[i] as i32).abs() <= 1,
+                    "channel {i}: {a:?} vs {b:?}"
+                );
             }
             assert_eq!(b[3], 255);
         }

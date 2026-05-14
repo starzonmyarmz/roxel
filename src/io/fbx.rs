@@ -442,8 +442,7 @@ impl FbxBuilder {
     fn prop_str(&mut self, s: &str) {
         self.stack.last_mut().unwrap().num_props += 1;
         self.buf.push(b'S');
-        self.buf
-            .extend_from_slice(&(s.len() as u32).to_le_bytes());
+        self.buf.extend_from_slice(&(s.len() as u32).to_le_bytes());
         self.buf.extend_from_slice(s.as_bytes());
     }
     fn prop_raw(&mut self, bytes: &[u8]) {
@@ -574,7 +573,11 @@ mod tests {
         let (_, polys, _, _) = build_mesh(&g);
         // Every 4th index is the run terminator: -(idx + 1) < 0.
         for chunk in polys.chunks_exact(4) {
-            assert!(chunk[3] < 0, "expected negated terminator, got {}", chunk[3]);
+            assert!(
+                chunk[3] < 0,
+                "expected negated terminator, got {}",
+                chunk[3]
+            );
         }
     }
 }

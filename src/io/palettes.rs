@@ -70,7 +70,11 @@ mod tests {
     use std::env::temp_dir;
 
     fn pal(name: &str, colors: Vec<[u8; 4]>, builtin: bool) -> Palette {
-        Palette { name: name.into(), colors, builtin }
+        Palette {
+            name: name.into(),
+            colors,
+            builtin,
+        }
     }
 
     #[test]

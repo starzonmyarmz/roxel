@@ -32,7 +32,9 @@ pub fn spawn_brush_preview(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    let mesh = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(1.0, 1.0, 1.0)));
+    let mesh = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(
+        1.0, 1.0, 1.0,
+    )));
     let mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 1.0, 1.0, 0.45),
         unlit: true,
@@ -68,7 +70,9 @@ pub fn brush_preview_system(
     prefs: Res<Preferences>,
     mut gizmos: Gizmos,
 ) {
-    let Ok((mut tf, mut vis)) = q.single_mut() else { return };
+    let Ok((mut tf, mut vis)) = q.single_mut() else {
+        return;
+    };
 
     let egui_wants_pointer = contexts
         .ctx_mut()
@@ -91,10 +95,11 @@ pub fn brush_preview_system(
     }
     if let (Some(rect), Ok(window)) = (gizmo_view.rect.0, windows.single())
         && let Some(c) = window.cursor_position()
-            && rect.contains(c) {
-                clear(&mut vis, &mut hide);
-                return;
-            }
+        && rect.contains(c)
+    {
+        clear(&mut vis, &mut hide);
+        return;
+    }
 
     let Some((origin, dir)) = cursor_ray(&cameras, &windows) else {
         clear(&mut vis, &mut hide);

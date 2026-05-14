@@ -11,7 +11,10 @@ pub const MAX_GRID_I: i32 = MAX_GRID as i32;
 /// Chunk edge length. Must divide every legal `VoxelGrid.size`.
 pub const CHUNK: usize = 32;
 pub const MAX_CHUNKS_PER_AXIS: usize = MAX_GRID / CHUNK;
-const _: () = assert!(MAX_GRID % CHUNK == 0, "MAX_GRID must be a multiple of CHUNK");
+const _: () = assert!(
+    MAX_GRID % CHUNK == 0,
+    "MAX_GRID must be a multiple of CHUNK"
+);
 
 /// Sizes offered by the New-project dialog. Each must divide CHUNK evenly so
 /// the chunked mesher needs no partial-chunk handling.
@@ -69,8 +72,7 @@ impl Default for VoxelGrid {
     fn default() -> Self {
         let cells: Box<[Option<Color8>]> =
             vec![None; MAX_GRID * MAX_GRID * MAX_GRID].into_boxed_slice();
-        let chunk_dirty: Box<[bool]> =
-            vec![true; MAX_CHUNKS_PER_AXIS.pow(3)].into_boxed_slice();
+        let chunk_dirty: Box<[bool]> = vec![true; MAX_CHUNKS_PER_AXIS.pow(3)].into_boxed_slice();
         Self {
             cells,
             dirty: true,
@@ -249,7 +251,9 @@ mod tests {
     fn set_marks_owning_chunk_dirty() {
         let mut g = VoxelGrid::default();
         g.resize(128);
-        for d in g.chunk_dirty.iter_mut() { *d = false; }
+        for d in g.chunk_dirty.iter_mut() {
+            *d = false;
+        }
         // Cell at (5, 5, 5) → chunk (0, 0, 0).
         g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
         assert!(g.chunk_dirty[chunk_flat_idx(0, 0, 0)]);
@@ -259,7 +263,9 @@ mod tests {
     fn set_marks_neighbor_chunk_dirty_on_boundary() {
         let mut g = VoxelGrid::default();
         g.resize(128);
-        for d in g.chunk_dirty.iter_mut() { *d = false; }
+        for d in g.chunk_dirty.iter_mut() {
+            *d = false;
+        }
         // Cell at x = CHUNK-1: last column of chunk (0,*,*). Neighbour (1,0,0)
         // should also flag — its face-occlusion across the X seam changed.
         let p = IVec3::new((CHUNK - 1) as i32, 5, 5);
@@ -272,7 +278,9 @@ mod tests {
     fn set_does_not_mark_distant_chunks_dirty() {
         let mut g = VoxelGrid::default();
         g.resize(128);
-        for d in g.chunk_dirty.iter_mut() { *d = false; }
+        for d in g.chunk_dirty.iter_mut() {
+            *d = false;
+        }
         // Middle of chunk (0,0,0): no neighbour should flag.
         g.set(IVec3::new(1, 1, 1), Some([1, 1, 1, 255]));
         assert!(g.chunk_dirty[chunk_flat_idx(0, 0, 0)]);

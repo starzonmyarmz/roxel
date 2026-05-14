@@ -133,9 +133,19 @@ pub fn next_palette_name(palettes: &[Palette]) -> String {
 pub fn sanitize_filename(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    if cleaned.is_empty() { "palette".into() } else { cleaned }
+    if cleaned.is_empty() {
+        "palette".into()
+    } else {
+        cleaned
+    }
 }
 
 #[cfg(test)]
@@ -143,7 +153,11 @@ mod tests {
     use super::*;
 
     fn p(name: &str) -> Palette {
-        Palette { name: name.into(), colors: Vec::new(), builtin: false }
+        Palette {
+            name: name.into(),
+            colors: Vec::new(),
+            builtin: false,
+        }
     }
 
     #[test]

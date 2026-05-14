@@ -13,12 +13,19 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     for x in 0..grid.size {
         for y in 0..grid.size {
             for z in 0..grid.size {
-                let Some(c) = grid.cell(x, y, z) else { continue; };
+                let Some(c) = grid.cell(x, y, z) else {
+                    continue;
+                };
                 let idx = if let Some(&i) = palette_map.get(&c) {
                     i
                 } else if palette.len() < 255 {
                     let i = palette.len() as u8;
-                    palette.push(Color { r: c[0], g: c[1], b: c[2], a: 255 });
+                    palette.push(Color {
+                        r: c[0],
+                        g: c[1],
+                        b: c[2],
+                        a: 255,
+                    });
                     palette_map.insert(c, i);
                     i
                 } else {
@@ -37,7 +44,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
 
     // Pad palette to 256 entries.
     while palette.len() < 256 {
-        palette.push(Color { r: 0, g: 0, b: 0, a: 0 });
+        palette.push(Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
+        });
     }
 
     let data = DotVoxData {
@@ -151,9 +163,24 @@ mod tests {
     #[test]
     fn nearest_picks_closest_rgb() {
         let palette = vec![
-            Color { r: 0, g: 0, b: 0, a: 255 },
-            Color { r: 255, g: 0, b: 0, a: 255 },
-            Color { r: 0, g: 255, b: 0, a: 255 },
+            Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            Color {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
         ];
         // Closest to pure red.
         assert_eq!(nearest(&palette, [250, 10, 10, 255]), 1);
