@@ -345,6 +345,37 @@ pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce
     });
 }
 
+/// Compact text button for modal action rows (Create / Cancel). `primary =
+/// true` uses accent fill + white text + no stroke; `primary = false` uses
+/// surface + text + 0.5 border. Matches `chip_button` styling so a row of
+/// dialog buttons reads as the same family as other modal controls.
+pub fn dialog_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    label: &str,
+    primary: bool,
+) -> egui::Response {
+    let (fill, fg, stroke) = if primary {
+        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+    } else {
+        (
+            theme.surface,
+            theme.text,
+            egui::Stroke::new(0.5, theme.border),
+        )
+    };
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = egui::vec2(14.0, 6.0);
+        ui.add(
+            egui::Button::new(egui::RichText::new(label).color(fg).size(13.0))
+                .fill(fill)
+                .stroke(stroke)
+                .corner_radius(egui::CornerRadius::same(6)),
+        )
+    })
+    .inner
+}
+
 /// Full-width icon + text button with the look used by inspector action rows
 /// (the "Add current color" button). `width` is the explicit min width — pass
 /// `ui.available_width()` for a panel-filling button.

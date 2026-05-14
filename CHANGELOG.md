@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- polish: style New-project modal Create / Cancel buttons via new `dialog_button` helper
 - refactor: extract reusable egui widget helpers (`swatch_button`, `swatch_grid`, `modal_window`, `chip_button`, `prefs_row`, `wide_action_button`, `hex_label`) from `ui.rs` into `ui/widgets.rs`
 - ci: run `cargo test` on push and pull request to `main`
 - feat: animated marching-ants selection outline with x-ray per-cell wireframes

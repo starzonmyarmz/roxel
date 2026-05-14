@@ -1022,11 +1022,13 @@ pub fn ui_system(
                     }
                 }
             });
+            ui.add_space(4.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Create").clicked() {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                if widgets::dialog_button(ui, &theme, "Create", true).clicked() {
                     create_clicked = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if widgets::dialog_button(ui, &theme, "Cancel", false).clicked() {
                     cancel_clicked = true;
                 }
             });
