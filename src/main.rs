@@ -23,7 +23,8 @@ use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 
 use crate::camera::{
-    ViewportRect, frame_view_system, spawn_camera, update_viewport_rect, zoom_click_system,
+    RecenterRequest, ViewportRect, apply_recenter_system, default_camera_focus, frame_view_system,
+    spawn_camera, update_viewport_rect, update_zoom_limits_system, zoom_click_system,
     zoom_key_system,
 };
 use crate::gizmo::{
@@ -49,8 +50,8 @@ use crate::tools::{
     undo_redo_system,
 };
 use crate::ui::{
-    CommandPalette, PaletteChoice, Palettes, PendingDialog, PendingImport, Toasts,
-    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
+    CommandPalette, CurrentProjectPath, PaletteChoice, Palettes, PendingDialog, PendingImport,
+    Toasts, command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
     toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -99,6 +100,7 @@ fn main() {
         .init_resource::<crate::select::SelectState>()
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
+        .init_resource::<CurrentProjectPath>()
         .init_resource::<PaletteChoice>()
         .insert_resource(Palettes::with_user_loaded())
         .init_resource::<SnapshotRequest>()
@@ -107,6 +109,9 @@ fn main() {
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
+        .insert_resource(RecenterRequest {
+            base_focus: Some(default_camera_focus(crate::grid::DEFAULT_SIZE)),
+        })
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
         .init_resource::<Toasts>()
@@ -175,6 +180,8 @@ fn main() {
             floor_grid_system,
             command_palette_shortcut_system,
             dispatch_command_palette_system,
+            apply_recenter_system,
+            update_zoom_limits_system,
         ),
     )
     .add_systems(
@@ -297,6 +304,7 @@ fn apply_new_project_system(
     mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
     mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
     mut cameras: Query<&mut PanOrbitCamera>,
+    mut recenter: ResMut<RecenterRequest>,
 ) {
     let Some(new_size) = new_project.apply.take() else {
         return;
@@ -306,7 +314,14 @@ fn apply_new_project_system(
     history.redo.clear();
     history.current = None;
 
-    rebuild_for_size(new_size, &mut meshes, &mut floor, &mut walls, &mut cameras);
+    rebuild_for_size(
+        new_size,
+        &mut meshes,
+        &mut floor,
+        &mut walls,
+        &mut cameras,
+        &mut recenter,
+    );
 }
 
 fn apply_import_system(
@@ -316,12 +331,20 @@ fn apply_import_system(
     mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
     mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
     mut cameras: Query<&mut PanOrbitCamera>,
+    mut recenter: ResMut<RecenterRequest>,
 ) {
     if !pending.0 {
         return;
     }
     pending.0 = false;
-    rebuild_for_size(grid.size, &mut meshes, &mut floor, &mut walls, &mut cameras);
+    rebuild_for_size(
+        grid.size,
+        &mut meshes,
+        &mut floor,
+        &mut walls,
+        &mut cameras,
+        &mut recenter,
+    );
 }
 
 fn rebuild_for_size(
@@ -330,6 +353,7 @@ fn rebuild_for_size(
     floor: &mut Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
     walls: &mut Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
     cameras: &mut Query<&mut PanOrbitCamera>,
+    recenter: &mut RecenterRequest,
 ) {
     let s = size as f32;
     let half = s / 2.0;
@@ -355,6 +379,7 @@ fn rebuild_for_size(
         cam.target_focus = Vec3::new(half, 0.0, half);
         cam.target_radius = s * 1.875;
     }
+    recenter.base_focus = Some(Vec3::new(half, 0.0, half));
 }
 
 fn apply_floor_color_system(

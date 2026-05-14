@@ -69,11 +69,36 @@ pub fn fit_view(grid: &VoxelGrid) -> Option<(Vec3, f32)> {
     Some((centroid, (extent * 1.6).max(4.0)))
 }
 
+/// World-space offset that lands `centroid` at the visible viewport center
+/// when added to `target_focus`. Pure ratio math: both rects must be in the
+/// same units (egui points). Avoids the winit-logical-vs-egui-physical pixel
+/// mismatch that caused the focus to fly off-screen at app launch.
+pub fn panel_compensation_offset(
+    screen_rect: bevy::math::Rect,
+    avail_rect: bevy::math::Rect,
+    radius: f32,
+    fov: f32,
+    view_right: Vec3,
+    view_up: Vec3,
+) -> Vec3 {
+    let size = screen_rect.max - screen_rect.min;
+    if size.y < 1e-4 {
+        return Vec3::ZERO;
+    }
+    let screen_center = (screen_rect.min + screen_rect.max) * 0.5;
+    let avail_center = (avail_rect.min + avail_rect.max) * 0.5;
+    let delta = screen_center - avail_center;
+    if delta.length_squared() < 1e-4 {
+        return Vec3::ZERO;
+    }
+    let world_per_unit = 2.0 * radius * (fov * 0.5).tan() / size.y;
+    view_right * (delta.x * world_per_unit) + view_up * (-delta.y * world_per_unit)
+}
+
 pub fn frame_view_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
     grid: Res<VoxelGrid>,
-    windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
     viewport: Res<ViewportRect>,
 ) {
     if !keys.just_pressed(KeyCode::Digit0) && !keys.just_pressed(KeyCode::Numpad0) {
@@ -92,25 +117,21 @@ pub fn frame_view_system(
         (center, grid.size as f32 * 1.875)
     });
 
-    // Compute world-space offset that lands the centroid at the visible
-    // viewport center (not the window center) once the camera is moved.
     let panel_offset = (|| -> Option<Vec3> {
-        let win = windows.single().ok()?;
-        let rect = viewport.0?;
+        let screen = viewport.screen?;
+        let avail = viewport.avail?;
         let (_, xform, projection) = cameras.iter().next()?;
         let Projection::Perspective(persp) = projection else {
             return None;
         };
-        let win_center = Vec2::new(win.width() * 0.5, win.height() * 0.5);
-        let avail_center = (rect.min + rect.max) * 0.5;
-        let delta = win_center - avail_center;
-        if delta.length_squared() < 1e-4 {
-            return None;
-        }
-        let world_per_pixel = 2.0 * radius * (persp.fov * 0.5).tan() / win.height();
-        let view_right = xform.right().as_vec3();
-        let view_up = xform.up().as_vec3();
-        Some(view_right * (delta.x * world_per_pixel) + view_up * (-delta.y * world_per_pixel))
+        Some(panel_compensation_offset(
+            screen,
+            avail,
+            radius,
+            persp.fov,
+            xform.right().as_vec3(),
+            xform.up().as_vec3(),
+        ))
     })()
     .unwrap_or(Vec3::ZERO);
 
@@ -119,6 +140,46 @@ pub fn frame_view_system(
         cam.target_focus = target_focus;
         cam.target_radius = radius;
     }
+}
+
+/// Pending camera recenter triggered on startup and on every project rebuild.
+/// Consumed once `ViewportRect` is populated so panel widths don't have to be
+/// guessed.
+#[derive(Resource, Default)]
+pub struct RecenterRequest {
+    pub base_focus: Option<Vec3>,
+}
+
+pub fn apply_recenter_system(
+    mut request: ResMut<RecenterRequest>,
+    mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
+    viewport: Res<ViewportRect>,
+) {
+    let Some(base) = request.base_focus else {
+        return;
+    };
+    let Some(screen) = viewport.screen else {
+        return;
+    };
+    let Some(avail) = viewport.avail else {
+        return;
+    };
+    let Some((mut cam, xform, projection)) = cameras.iter_mut().next() else {
+        return;
+    };
+    let Projection::Perspective(persp) = projection else {
+        return;
+    };
+    let offset = panel_compensation_offset(
+        screen,
+        avail,
+        cam.target_radius,
+        persp.fov,
+        xform.right().as_vec3(),
+        xform.up().as_vec3(),
+    );
+    cam.target_focus = base + offset;
+    request.base_focus = None;
 }
 
 #[cfg(test)]
@@ -160,17 +221,42 @@ mod tests {
 
     #[test]
     fn zoom_in_halves_radius() {
-        assert!((apply_zoom(10.0, 0.5, 0.5) - 5.0).abs() < 1e-6);
+        assert!((apply_zoom(10.0, 0.5, 0.5, None) - 5.0).abs() < 1e-6);
     }
 
     #[test]
     fn zoom_out_doubles_radius() {
-        assert!((apply_zoom(10.0, 2.0, 0.5) - 20.0).abs() < 1e-6);
+        assert!((apply_zoom(10.0, 2.0, 0.5, None) - 20.0).abs() < 1e-6);
     }
 
     #[test]
     fn zoom_clamps_to_lower_limit() {
-        assert!((apply_zoom(0.6, 0.5, 0.5) - 0.5).abs() < 1e-6);
+        assert!((apply_zoom(0.6, 0.5, 0.5, None) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zoom_clamps_to_upper_limit() {
+        assert!((apply_zoom(60.0, 2.0, 0.5, Some(100.0)) - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zoom_radius_limits_yield_1000_pct_at_lower_bound() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
+        let (lower, upper) = zoom_radius_limits(&grid);
+        let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
+        // At lower bound, displayed zoom% must equal MAX_ZOOM_PCT.
+        let pct = (fit_radius / lower) * 100.0;
+        assert!((pct - MAX_ZOOM_PCT).abs() < 1e-3, "pct={pct}");
+        assert!(upper > fit_radius * 100.0, "upper={upper} fit={fit_radius}");
+    }
+
+    #[test]
+    fn zoom_radius_limits_empty_grid_uses_fallback() {
+        let grid = VoxelGrid::default();
+        let (lower, upper) = zoom_radius_limits(&grid);
+        assert!(lower > 0.0);
+        assert!(upper > lower);
     }
 
     #[test]
@@ -186,22 +272,30 @@ mod tests {
     }
 }
 
-/// Logical-point rect (egui coordinates) describing the visible 3D viewport
-/// area, i.e. window minus side/top/bottom panels. Populated each frame from
-/// `ctx.available_rect()`; read by `frame_view_system` to compensate Cmd+0's
-/// centering for asymmetric UI panel layout.
+/// Egui-points rects describing the canvas. `avail` is the area not covered
+/// by side/top/bottom panels; `screen` is the full window in the same units.
+/// Both come from the same `egui::Context` call so they share coordinate space
+/// — needed for `panel_compensation_offset` to compute correct ratios.
 #[derive(Resource, Default)]
-pub struct ViewportRect(pub Option<bevy::math::Rect>);
+pub struct ViewportRect {
+    pub avail: Option<bevy::math::Rect>,
+    pub screen: Option<bevy::math::Rect>,
+}
 
 pub fn update_viewport_rect(
     mut contexts: bevy_egui::EguiContexts,
     mut rect_res: ResMut<ViewportRect>,
 ) {
     if let Ok(ctx) = contexts.ctx_mut() {
-        let r = ctx.available_rect();
-        rect_res.0 = Some(bevy::math::Rect {
-            min: Vec2::new(r.min.x, r.min.y),
-            max: Vec2::new(r.max.x, r.max.y),
+        let a = ctx.available_rect();
+        let s = ctx.content_rect();
+        rect_res.avail = Some(bevy::math::Rect {
+            min: Vec2::new(a.min.x, a.min.y),
+            max: Vec2::new(a.max.x, a.max.y),
+        });
+        rect_res.screen = Some(bevy::math::Rect {
+            min: Vec2::new(s.min.x, s.min.y),
+            max: Vec2::new(s.max.x, s.max.y),
         });
     }
 }
@@ -225,14 +319,58 @@ pub fn zoom_click_system(
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     let factor = if alt { 2.0 } else { 0.5 };
     for mut cam in &mut cameras {
-        cam.target_radius = apply_zoom(cam.target_radius, factor, cam.zoom_lower_limit);
+        cam.target_radius = apply_zoom(
+            cam.target_radius,
+            factor,
+            cam.zoom_lower_limit,
+            cam.zoom_upper_limit,
+        );
     }
 }
 
-/// Apply a zoom factor to `radius`, clamped to `lower_limit`. Pure helper so
-/// the key/click systems share identical math and tests don't need a Bevy app.
-pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32) -> f32 {
-    (radius * factor).max(lower_limit)
+/// Apply a zoom factor to `radius`, clamped to `[lower_limit, upper_limit]`.
+/// Pure helper so the key/click systems share identical math and tests don't
+/// need a Bevy app. `upper_limit = None` leaves the upper end unconstrained.
+pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Option<f32>) -> f32 {
+    let r = (radius * factor).max(lower_limit);
+    match upper_limit {
+        Some(u) => r.min(u),
+        None => r,
+    }
+}
+
+/// Dynamic zoom radius limits derived from the current grid. Maps a fixed
+/// percentage range (zoom ∈ [`MIN_ZOOM_PCT`, `MAX_ZOOM_PCT`]) onto a radius
+/// range relative to `fit_view`'s radius. Empty grids fall back to the default
+/// fit estimate so we still produce sensible limits before the user paints.
+pub fn zoom_radius_limits(grid: &VoxelGrid) -> (f32, f32) {
+    let fit = fit_view(grid)
+        .map(|(_, r)| r)
+        .unwrap_or_else(|| grid.size as f32 * 1.875);
+    // 1000% = zoomed in 10×, so radius = fit / 10.
+    // 0% can't be exact (infinity); pick a large multiple that rounds to 0%.
+    let lower = (fit / (MAX_ZOOM_PCT / 100.0)).max(0.01);
+    let upper = fit * 1000.0;
+    (lower, upper)
+}
+
+/// Public min/max for the zoom percentage readout. Both UI and clamp logic
+/// agree on the same range so a value can't be both displayable and unreachable.
+pub const MIN_ZOOM_PCT: f32 = 0.0;
+pub const MAX_ZOOM_PCT: f32 = 1000.0;
+
+pub fn update_zoom_limits_system(grid: Res<VoxelGrid>, mut cameras: Query<&mut PanOrbitCamera>) {
+    let (lower, upper) = zoom_radius_limits(&grid);
+    for mut cam in &mut cameras {
+        cam.zoom_lower_limit = lower;
+        cam.zoom_upper_limit = Some(upper);
+        if cam.target_radius < lower {
+            cam.target_radius = lower;
+        }
+        if cam.target_radius > upper {
+            cam.target_radius = upper;
+        }
+    }
 }
 
 pub fn zoom_key_system(
@@ -261,6 +399,11 @@ pub fn zoom_key_system(
     }
     let factor = if zoom_in { 0.5 } else { 2.0 };
     for mut cam in &mut cameras {
-        cam.target_radius = apply_zoom(cam.target_radius, factor, cam.zoom_lower_limit);
+        cam.target_radius = apply_zoom(
+            cam.target_radius,
+            factor,
+            cam.zoom_lower_limit,
+            cam.zoom_upper_limit,
+        );
     }
 }
