@@ -1,5 +1,7 @@
 # Roxel
 
+[![CI](https://github.com/starzonmyarmz/roxel/actions/workflows/ci.yml/badge.svg)](https://github.com/starzonmyarmz/roxel/actions/workflows/ci.yml)
+
 Minimal voxel editor built with [Bevy](https://bevyengine.org/) and [egui](https://github.com/emilk/egui).
 
 ## Features
