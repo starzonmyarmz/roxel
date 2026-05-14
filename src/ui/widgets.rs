@@ -392,15 +392,25 @@ pub fn wide_action_button(
         .fit_to_exact_size(egui::vec2(13.0, 13.0))
         .tint(tint);
     ui.scope(|ui| {
-        ui.spacing_mut().button_padding = egui::vec2(8.0, 0.0);
+        ui.spacing_mut().button_padding = egui::vec2(10.0, 0.0);
         ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-        ui.add_enabled(
-            enabled,
-            egui::Button::image_and_text(img, egui::RichText::new(label).size(12.0))
-                .min_size(egui::vec2(width, 26.0))
-                .corner_radius(egui::CornerRadius::same(6))
-                .stroke(egui::Stroke::new(0.5, theme.border)),
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, 26.0),
+            egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+            |ui| {
+                ui.add_enabled(
+                    enabled,
+                    egui::Button::image_and_text(
+                        img,
+                        egui::RichText::new(label).size(12.0),
+                    )
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .fill(theme.surface)
+                    .stroke(egui::Stroke::new(0.5, theme.border)),
+                )
+            },
         )
+        .inner
     })
     .inner
 }

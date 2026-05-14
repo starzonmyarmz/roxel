@@ -365,8 +365,9 @@ pub fn ui_system(
     // ---------- Right inspector ----------
     let right_resp = egui::SidePanel::right("right_panel")
         .resizable(true)
-        .default_width(260.0)
-        .min_width(240.0)
+        .default_width(236.0)
+        .min_width(236.0)
+        .max_width(480.0)
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
@@ -450,22 +451,12 @@ pub fn ui_system(
 
                     // Buffer so widget frames don't overflow and auto-grow the SidePanel.
                     let row_w = (ui.available_width() - 2.0).max(80.0);
-                    let selected_label = if active_is_builtin {
-                        format!("🔒 {}", palettes.0[active_idx].name)
-                    } else {
-                        palettes.0[active_idx].name.clone()
-                    };
                     egui::ComboBox::from_id_salt("palette_combo")
-                        .selected_text(selected_label)
+                        .selected_text(palettes.0[active_idx].name.clone())
                         .width(row_w)
                         .show_ui(ui, |ui| {
                             for (i, p) in palettes.0.iter().enumerate() {
-                                let label = if p.builtin {
-                                    format!("🔒 {}", p.name)
-                                } else {
-                                    p.name.clone()
-                                };
-                                ui.selectable_value(&mut palette_choice.0, i, label);
+                                ui.selectable_value(&mut palette_choice.0, i, p.name.clone());
                             }
                         });
 
@@ -651,28 +642,28 @@ pub fn ui_system(
                     palette_choice.0 = active_idx;
                     active_is_builtin = palettes.0[active_idx].builtin;
 
-                    ui.add_space(6.0);
-                    let add_enabled = !active_is_builtin
-                        && !palettes.0[active_idx].colors.contains(&color.0);
-                    if widgets::wide_action_button(
-                        ui,
-                        &theme,
-                        icons::plus(),
-                        "Add current color",
-                        row_w,
-                        add_enabled,
-                    )
-                    .on_hover_text(if active_is_builtin {
-                        "Duplicate this palette first to edit it"
-                    } else if !add_enabled {
-                        "Color already in palette"
-                    } else {
-                        "Add current color as a swatch"
-                    })
-                    .clicked()
-                    {
-                        palettes.0[active_idx].colors.push(color.0);
-                        io::palettes::save(&palettes.0);
+                    if !active_is_builtin {
+                        ui.add_space(6.0);
+                        let add_enabled =
+                            !palettes.0[active_idx].colors.contains(&color.0);
+                        if widgets::wide_action_button(
+                            ui,
+                            &theme,
+                            icons::plus(),
+                            "Add current color",
+                            row_w,
+                            add_enabled,
+                        )
+                        .on_hover_text(if !add_enabled {
+                            "Color already in palette"
+                        } else {
+                            "Add current color as a swatch"
+                        })
+                        .clicked()
+                        {
+                            palettes.0[active_idx].colors.push(color.0);
+                            io::palettes::save(&palettes.0);
+                        }
                     }
 
                     ui.add_space(8.0);
@@ -687,7 +678,7 @@ pub fn ui_system(
                             if editable {
                                 "No swatches yet — add the current color above"
                             } else {
-                                "Empty palette"
+                                "Built-in palette — duplicate to add swatches"
                             },
                         );
                     } else {
@@ -774,6 +765,14 @@ pub fn ui_system(
                             colors.insert(to, c);
                             io::palettes::save(&palettes.0);
                         }
+                    }
+                    if active_is_builtin && !active_palette.is_empty() {
+                        ui.add_space(6.0);
+                        widgets::hint_label(
+                            ui,
+                            &theme,
+                            "Built-in palette — duplicate to add swatches",
+                        );
                     }
                 });
 
