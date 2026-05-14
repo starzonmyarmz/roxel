@@ -100,8 +100,6 @@ pub fn ui_system(
     // rest of this function can stay as it was.
     #[allow(non_snake_case)]
     let PANEL = theme.panel;
-    #[allow(non_snake_case)]
-    let ACCENT = theme.accent;
     #[allow(non_snake_case, unused_variables)]
     let TEXT = theme.text;
     #[allow(non_snake_case)]
@@ -387,13 +385,22 @@ pub fn ui_system(
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(widgets::tool_label(tool.current))
-                            .color(ACCENT)
-                            .size(12.0),
-                    )
-                    .selectable(false),
+                let stats_reserve = 280.0;
+                let hint_w = (ui.available_width() - stats_reserve).max(0.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(hint_w, ui.available_height()),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(widgets::tool_hint(tool.current))
+                                    .color(theme.text_dim)
+                                    .size(12.0),
+                            )
+                            .selectable(false)
+                            .truncate(),
+                        );
+                    },
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     widgets::status_label(ui, &theme, &format!("Grid {g}×{g}×{g}", g = grid.size));
@@ -900,62 +907,38 @@ pub fn ui_system(
                     }
                 });
 
-                // Selection section
-                if tool.current == Tool::Select
-                    || tool.current == Tool::Move
-                    || selection.aabb.is_some()
-                {
+                // Selection section — only when there's an active region.
+                if let Some(aabb) = selection.aabb {
                     widgets::section(ui, &theme, "Selection", |ui| {
-                        if let Some(aabb) = selection.aabb {
-                            let extents = aabb.extents();
-                            widgets::stat_row(
-                                ui,
-                                &theme,
-                                "Bounds",
-                                format!(
-                                    "{} × {} × {}",
-                                    extents.x, extents.y, extents.z
-                                ),
-                            );
-                            widgets::stat_row(
-                                ui,
-                                &theme,
-                                "Voxels",
-                                aabb.voxel_count(&grid).to_string(),
-                            );
-                            ui.add_space(6.0);
-                            ui.horizontal(|ui| {
-                                if ui.button("Delete").clicked() {
-                                    crate::select::clear_aabb(
-                                        &mut grid,
-                                        &mut history,
-                                        &aabb,
-                                    );
-                                }
-                                if ui.button("Clear selection").clicked() {
-                                    selection.aabb = None;
-                                }
-                            });
-                        } else {
-                            widgets::hint_label(
-                                ui,
-                                &theme,
-                                "Drag on a face to select a region.",
-                            );
-                        }
-                    });
-                }
-
-                // Move section (only when Move tool is active)
-                if tool.current == Tool::Move {
-                    widgets::section(ui, &theme, "Move", |ui| {
-                        widgets::hint_label(
+                        let extents = aabb.extents();
+                        widgets::stat_row(
                             ui,
                             &theme,
-                            "Drag a selected voxel to slide the selection along the picked face. \
-                             Hold Shift while dragging to keep it on the same horizontal plane. \
-                             Arrow keys nudge by 1 voxel along X/Z; Shift + ↑/↓ moves along Y.",
+                            "Bounds",
+                            format!(
+                                "{} × {} × {}",
+                                extents.x, extents.y, extents.z
+                            ),
                         );
+                        widgets::stat_row(
+                            ui,
+                            &theme,
+                            "Voxels",
+                            aabb.voxel_count(&grid).to_string(),
+                        );
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Delete").clicked() {
+                                crate::select::clear_aabb(
+                                    &mut grid,
+                                    &mut history,
+                                    &aabb,
+                                );
+                            }
+                            if ui.button("Clear selection").clicked() {
+                                selection.aabb = None;
+                            }
+                        });
                     });
                 }
 
@@ -979,16 +962,10 @@ pub fn ui_system(
                                 "Line",
                             );
                         });
-                        ui.add_space(4.0);
                         if shape_options.primitive != ShapePrimitive::Line {
+                            ui.add_space(4.0);
                             ui.checkbox(&mut shape_options.filled, "Filled");
                         }
-                        ui.add_space(4.0);
-                        widgets::hint_label(
-                            ui,
-                            &theme,
-                            "Click + drag to set the footprint, release, drag perpendicular for depth, click to commit. Esc or right-click cancels.",
-                        );
                     });
                 }
                 });

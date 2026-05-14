@@ -48,15 +48,15 @@ pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
     );
 }
 
-pub fn tool_label(t: Tool) -> &'static str {
+pub fn tool_hint(t: Tool) -> &'static str {
     match t {
-        Tool::Brush => "Brush",
-        Tool::Erase => "Erase",
-        Tool::Paint => "Paint",
-        Tool::Eyedropper => "Pick",
-        Tool::Shape => "Shape",
-        Tool::Select => "Select",
-        Tool::Move => "Move",
+        Tool::Brush => "Click or drag to add voxels. Shift+click for line.",
+        Tool::Erase => "Click or drag to remove voxels. Shift+click for line.",
+        Tool::Paint => "Click or drag to recolor existing voxels.",
+        Tool::Eyedropper => "Click a voxel to pick its color. Hold Alt to stay.",
+        Tool::Shape => "Drag for footprint, drag normal for depth, click commits. Esc cancels.",
+        Tool::Select => "Drag on a face to select a region.",
+        Tool::Move => "Drag selection to slide. Shift locks Y. Arrows nudge by 1.",
     }
 }
 
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_label_covers_every_variant() {
+    fn tool_hint_covers_every_variant() {
         for t in [
             Tool::Brush,
             Tool::Erase,
@@ -435,7 +435,7 @@ mod tests {
             Tool::Select,
             Tool::Move,
         ] {
-            assert!(!tool_label(t).is_empty(), "missing label for {t:?}");
+            assert!(!tool_hint(t).is_empty(), "missing hint for {t:?}");
         }
     }
 }
