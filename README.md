@@ -4,6 +4,8 @@
 
 A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use, and nice to look at.
 
+![Roxel editing a 64³ diorama scene](docs/screenshot.jpg)
+
 ## Features
 
 - Brush, erase, recolor, eyedrop, shape, select, and move tools on a variable-size 3D voxel grid (32 / 64 / 96 / 128 per axis)
