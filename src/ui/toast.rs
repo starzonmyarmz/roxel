@@ -1,4 +1,5 @@
 use crate::theme::Theme;
+use crate::ui::tokens::{font, radius, stroke};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use std::collections::VecDeque;
@@ -90,18 +91,20 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                 let fill = lerp_color(theme.surface, theme.panel, fade);
                 egui::Frame::default()
                     .fill(fill)
-                    .stroke(egui::Stroke::new(0.5, theme.border))
-                    .corner_radius(egui::CornerRadius::same(8))
+                    .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+                    .corner_radius(egui::CornerRadius::same(radius::MD))
                     .inner_margin(egui::Margin::symmetric(12, 8))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let (rect, _) =
                                 ui.allocate_exact_size(egui::vec2(3.0, 18.0), egui::Sense::hover());
                             ui.painter()
-                                .rect_filled(rect, egui::CornerRadius::same(2), accent);
+                                .rect_filled(rect, egui::CornerRadius::same(radius::XS), accent);
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(&t.message).color(theme.text).size(13.0),
+                                    egui::RichText::new(&t.message)
+                                        .color(theme.text)
+                                        .size(font::BODY),
                                 )
                                 .wrap(),
                             );

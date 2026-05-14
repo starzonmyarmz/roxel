@@ -1,6 +1,7 @@
 use crate::theme::{NUNITO_700_FAMILY, PlaneColorPref, Theme, plane_match_color};
 use crate::tools::{Tool, ToolState};
 use crate::ui::icons;
+use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
 use bevy_egui::egui;
 
 pub fn plane_color_row(
@@ -14,7 +15,11 @@ pub fn plane_color_row(
     ui.horizontal(|ui| {
         ui.add_sized(
             [72.0, 20.0],
-            egui::Label::new(egui::RichText::new(label).color(theme.text_dim).size(12.0)),
+            egui::Label::new(
+                egui::RichText::new(label)
+                    .color(theme.text_dim)
+                    .size(font::SMALL),
+            ),
         );
         if ui.radio(!is_custom, "Match theme").clicked() {
             *pref = PlaneColorPref::MatchTheme;
@@ -29,7 +34,7 @@ pub fn plane_color_row(
         }
     });
     if let PlaneColorPref::Custom(ref mut rgb) = *pref {
-        ui.add_space(4.0);
+        ui.add_space(space::XS);
         ui.horizontal(|ui| {
             ui.add_space(76.0);
             ui.color_edit_button_srgb(rgb);
@@ -44,7 +49,7 @@ pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
     ui.painter().vline(
         rect.center().x,
         rect.y_range(),
-        egui::Stroke::new(0.5, theme.border),
+        egui::Stroke::new(stroke::HAIR, theme.border),
     );
 }
 
@@ -78,13 +83,13 @@ pub fn tool_button(
         egui::Color32::TRANSPARENT
     };
     let hovered = if active { theme.surface_hover } else { hover_fill };
-    let icon = egui::Image::new(icons::tool(kind))
-        .fit_to_exact_size(egui::vec2(18.0, 18.0))
+    let icon_img = egui::Image::new(icons::tool(kind))
+        .fit_to_exact_size(icon::lg_square())
         .tint(theme.text);
     let resp = ui
         .scope(|ui| {
-            ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-            ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+            ui.spacing_mut().button_padding = pad::NONE;
+            ui.spacing_mut().interact_size = gap::NONE;
             let w = ui.visuals_mut();
             w.widgets.inactive.bg_fill = resting;
             w.widgets.inactive.weak_bg_fill = resting;
@@ -100,9 +105,9 @@ pub fn tool_button(
             w.widgets.active.expansion = 0.0;
             ui.add_sized(
                 [40.0, 40.0],
-                egui::Button::image(icon)
+                egui::Button::image(icon_img)
                     .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(6)),
+                    .corner_radius(egui::CornerRadius::same(radius::SM)),
             )
         })
         .inner;
@@ -122,31 +127,31 @@ pub fn icon_button(
 ) -> egui::Response {
     ui.add(egui::Button::image_and_text(
         egui::Image::new(icon)
-            .fit_to_exact_size(egui::vec2(14.0, 14.0))
+            .fit_to_exact_size(icon::md_square())
             .tint(theme.text),
-        egui::RichText::new(label).size(13.0),
+        egui::RichText::new(label).size(font::BODY),
     ))
 }
 
 pub fn icon_only_button(
     ui: &mut egui::Ui,
     theme: &Theme,
-    icon: egui::ImageSource<'static>,
+    icon_src: egui::ImageSource<'static>,
     enabled: bool,
 ) -> egui::Response {
     let tint = if enabled { theme.text } else { theme.text_dim };
-    let img = egui::Image::new(icon)
-        .fit_to_exact_size(egui::vec2(14.0, 14.0))
+    let img = egui::Image::new(icon_src)
+        .fit_to_exact_size(icon::md_square())
         .tint(tint);
     ui.scope(|ui| {
-        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().button_padding = pad::NONE;
+        ui.spacing_mut().interact_size = gap::NONE;
         ui.add_enabled(
             enabled,
             egui::Button::image(img)
                 .min_size(egui::vec2(28.0, 26.0))
-                .corner_radius(egui::CornerRadius::same(6))
-                .stroke(egui::Stroke::new(0.5, theme.border))
+                .corner_radius(egui::CornerRadius::same(radius::SM))
+                .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
                 .fill(theme.surface),
         )
     })
@@ -162,34 +167,38 @@ pub fn section<R>(
     ui.label(
         egui::RichText::new(title)
             .color(theme.text)
-            .size(13.0)
+            .size(font::BODY)
             .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
     );
-    ui.add_space(8.0);
+    ui.add_space(space::SM);
     let r = add(ui);
-    ui.add_space(12.0);
+    ui.add_space(space::MD);
     let sep_rect = ui
         .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
         .0;
     ui.painter().hline(
         ui.clip_rect().x_range(),
         sep_rect.center().y,
-        egui::Stroke::new(0.5, theme.border),
+        egui::Stroke::new(stroke::HAIR, theme.border),
     );
-    ui.add_space(12.0);
+    ui.add_space(space::MD);
     r
 }
 
 pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).color(theme.text_dim).size(12.0));
+        ui.label(
+            egui::RichText::new(label)
+                .color(theme.text_dim)
+                .size(font::SMALL),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(value)
                         .monospace()
                         .color(theme.text)
-                        .size(12.0),
+                        .size(font::SMALL),
                 )
                 .selectable(true),
             );
@@ -197,24 +206,28 @@ pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
     });
 }
 
-/// Dim italic 12 pt body text used for inline help under sections. Wraps.
+/// Dim italic small body text used for inline help under sections. Wraps.
 pub fn hint_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     ui.add(
         egui::Label::new(
             egui::RichText::new(text)
                 .color(theme.text_dim)
-                .size(12.0)
+                .size(font::SMALL)
                 .italics(),
         )
         .wrap(),
     );
 }
 
-/// Dim 12 pt readout label, non-selectable. Used in status bar.
+/// Dim readout label, non-selectable. Used in status bar.
 pub fn status_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     ui.add(
-        egui::Label::new(egui::RichText::new(text).color(theme.text_dim).size(12.0))
-            .selectable(false),
+        egui::Label::new(
+            egui::RichText::new(text)
+                .color(theme.text_dim)
+                .size(font::SMALL),
+        )
+        .selectable(false),
     );
 }
 
@@ -225,14 +238,14 @@ pub fn hex_string(rgb: [u8; 3]) -> String {
     format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
 }
 
-/// Selectable monospace hex label. `dim = true` uses `theme.text_dim` + 12 pt
-/// (settings-row style); `dim = false` uses `theme.text` + 13 pt (inspector
-/// readout style).
+/// Selectable monospace hex label. `dim = true` uses `theme.text_dim` +
+/// SMALL (settings-row style); `dim = false` uses `theme.text` + BODY
+/// (inspector readout style).
 pub fn hex_label(ui: &mut egui::Ui, theme: &Theme, rgb: [u8; 3], dim: bool) {
     let (colour, size) = if dim {
-        (theme.text_dim, 12.0)
+        (theme.text_dim, font::SMALL)
     } else {
-        (theme.text, 13.0)
+        (theme.text, font::BODY)
     };
     ui.add(
         egui::Label::new(
@@ -256,30 +269,30 @@ pub fn swatch_button(
     corner_radius: u8,
     selected: bool,
 ) -> egui::Response {
-    let stroke = if selected {
-        egui::Stroke::new(2.0, theme.accent)
+    let outline = if selected {
+        egui::Stroke::new(stroke::ACCENT, theme.accent)
     } else {
-        egui::Stroke::new(0.5, theme.border)
+        egui::Stroke::new(stroke::HAIR, theme.border)
     };
     ui.add_sized(
         [size.x, size.y],
         egui::Button::new("")
             .fill(color)
-            .stroke(stroke)
+            .stroke(outline)
             .corner_radius(egui::CornerRadius::same(corner_radius)),
     )
 }
 
 /// Opens a `horizontal_wrapped` row with the spacing tweaks every swatch grid
-/// in this app shares: zero button padding, zero interact size, 5 px gaps.
+/// in this app shares: zero button padding, zero interact size, tight gaps.
 pub fn swatch_grid<R>(
     ui: &mut egui::Ui,
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
-        ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+        ui.spacing_mut().button_padding = pad::NONE;
+        ui.spacing_mut().interact_size = gap::NONE;
+        ui.spacing_mut().item_spacing = gap::TIGHT;
         add(ui)
     })
 }
@@ -296,7 +309,7 @@ pub fn modal_window<'a>(
     egui::Window::new(
         egui::RichText::new(title)
             .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
-            .size(14.0),
+            .size(font::BODY),
     )
     .collapsible(false)
     .resizable(false)
@@ -306,8 +319,8 @@ pub fn modal_window<'a>(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
             .inner_margin(egui::Margin::symmetric(16, 14))
-            .stroke(egui::Stroke::new(0.5, theme.border))
-            .corner_radius(egui::CornerRadius::same(10)),
+            .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+            .corner_radius(egui::CornerRadius::same(radius::LG)),
     )
 }
 
@@ -323,23 +336,23 @@ pub fn chip_button<T: PartialEq + Copy>(
     label: &str,
 ) -> egui::Response {
     let selected = *current == value;
-    let (fill, fg, stroke) = if selected {
+    let (fill, fg, chip_stroke) = if selected {
         (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
             theme.text,
-            egui::Stroke::new(0.5, theme.border),
+            egui::Stroke::new(stroke::HAIR, theme.border),
         )
     };
     let resp = ui
         .scope(|ui| {
-            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
+            ui.spacing_mut().button_padding = pad::BUTTON;
             ui.add(
-                egui::Button::new(egui::RichText::new(label).color(fg).size(12.0))
+                egui::Button::new(egui::RichText::new(label).color(fg).size(font::SMALL))
                     .fill(fill)
-                    .stroke(stroke)
-                    .corner_radius(egui::CornerRadius::same(6)),
+                    .stroke(chip_stroke)
+                    .corner_radius(egui::CornerRadius::same(radius::SM)),
             )
         })
         .inner;
@@ -355,7 +368,11 @@ pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce
     ui.horizontal(|ui| {
         ui.add_sized(
             [72.0, 20.0],
-            egui::Label::new(egui::RichText::new(label).color(theme.text_dim).size(12.0)),
+            egui::Label::new(
+                egui::RichText::new(label)
+                    .color(theme.text_dim)
+                    .size(font::SMALL),
+            ),
         );
         add(ui);
     });
@@ -371,22 +388,22 @@ pub fn dialog_button(
     label: &str,
     primary: bool,
 ) -> egui::Response {
-    let (fill, fg, stroke) = if primary {
+    let (fill, fg, btn_stroke) = if primary {
         (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
             theme.text,
-            egui::Stroke::new(0.5, theme.border),
+            egui::Stroke::new(stroke::HAIR, theme.border),
         )
     };
     ui.scope(|ui| {
-        ui.spacing_mut().button_padding = egui::vec2(14.0, 6.0);
+        ui.spacing_mut().button_padding = pad::DIALOG;
         ui.add(
-            egui::Button::new(egui::RichText::new(label).color(fg).size(13.0))
+            egui::Button::new(egui::RichText::new(label).color(fg).size(font::BODY))
                 .fill(fill)
-                .stroke(stroke)
-                .corner_radius(egui::CornerRadius::same(6)),
+                .stroke(btn_stroke)
+                .corner_radius(egui::CornerRadius::same(radius::SM)),
         )
     })
     .inner
@@ -405,21 +422,21 @@ pub fn wide_action_button(
 ) -> egui::Response {
     let tint = if enabled { theme.text } else { theme.text_dim };
     let img = egui::Image::new(icon)
-        .fit_to_exact_size(egui::vec2(13.0, 13.0))
+        .fit_to_exact_size(icon::sm_square())
         .tint(tint);
     ui.scope(|ui| {
-        ui.spacing_mut().button_padding = egui::vec2(10.0, 0.0);
-        ui.spacing_mut().interact_size = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().button_padding = pad::ICON;
+        ui.spacing_mut().interact_size = gap::NONE;
         ui.allocate_ui_with_layout(
             egui::vec2(width, 26.0),
             egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
             |ui| {
                 ui.add_enabled(
                     enabled,
-                    egui::Button::image_and_text(img, egui::RichText::new(label).size(12.0))
-                        .corner_radius(egui::CornerRadius::same(6))
+                    egui::Button::image_and_text(img, egui::RichText::new(label).size(font::SMALL))
+                        .corner_radius(egui::CornerRadius::same(radius::SM))
                         .fill(theme.surface)
-                        .stroke(egui::Stroke::new(0.5, theme.border)),
+                        .stroke(egui::Stroke::new(stroke::HAIR, theme.border)),
                 )
             },
         )

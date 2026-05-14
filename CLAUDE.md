@@ -112,6 +112,12 @@ Sections in the inspector are flat: bold title, then content, then a thin full-w
 
 Egui labels disable text selection except on numeric values in the stats panel (so users can copy a count or hex without dragging the whole label).
 
+### Design tokens
+
+Every spacing, padding, corner radius, font size, icon size, swatch size, and stroke width in the UI must resolve to a value in `src/ui/tokens.rs` — not an inline literal. Submodules: `font` (SMALL/BODY/HEADING, no font under 12 pt), `radius` (XS/SM/MD/LG as `u8` for `CornerRadius::same`), `space` (scalar `f32` for `ui.add_space`), `gap` (Vec2 for `item_spacing`), `pad` (Vec2 for `button_padding`), `icon` (square sizes + `*_square()` helpers), `swatch` (recent/palette/hero), `stroke` (HAIR/NORMAL/ACCENT).
+
+All values land on a 4-px grid and are even. The token guard tests in `tokens::tests` enforce this — if you add a new constant, keep it even and ≥ 12 pt for fonts, or extend the guards explicitly. **Never inline a literal radius, padding, gap, or font size in a UI call site.** If no token fits, add one rather than hardcoding. Colors stay in `Theme` (`theme.rs`) — they swap with theme mode, so they don't belong with the static tokens.
+
 ### UI widget helpers
 
 Reusable egui widget helpers live in `src/ui/widgets.rs`:

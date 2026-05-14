@@ -3,6 +3,7 @@ mod dialogs;
 mod icons;
 mod palette;
 pub mod toast;
+pub mod tokens;
 mod widgets;
 
 pub use command_palette::{
@@ -22,6 +23,9 @@ use crate::theme::{
     save_preferences,
 };
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
+#[cfg(not(target_os = "macos"))]
+use crate::ui::tokens::icon;
+use crate::ui::tokens::{font, radius, space, stroke, swatch};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -115,7 +119,7 @@ pub fn ui_system(
             egui::Frame::default()
                 .fill(PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 8))
-                .stroke(egui::Stroke::new(0.5, BORDER)),
+                .stroke(egui::Stroke::new(stroke::HAIR, BORDER)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -132,9 +136,9 @@ pub fn ui_system(
                         !dialog_busy,
                         egui::Button::image_and_text(
                             egui::Image::new(icons::folder_open())
-                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .fit_to_exact_size(icon::md_square())
                                 .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                            egui::RichText::new("Open…").size(13.0),
+                            egui::RichText::new("Open…").size(font::BODY),
                         ),
                     )
                     .clicked()
@@ -152,9 +156,9 @@ pub fn ui_system(
                         !dialog_busy,
                         egui::Button::image_and_text(
                             egui::Image::new(icons::save())
-                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .fit_to_exact_size(icon::md_square())
                                 .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                            egui::RichText::new("Save…").size(13.0),
+                            egui::RichText::new("Save…").size(font::BODY),
                         ),
                     )
                     .clicked()
@@ -170,9 +174,9 @@ pub fn ui_system(
                 }
                 ui.menu_image_text_button(
                     egui::Image::new(icons::folder_open())
-                        .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                        .fit_to_exact_size(icon::md_square())
                         .tint(TEXT),
-                    egui::RichText::new("Import").size(13.0),
+                    egui::RichText::new("Import").size(font::BODY),
                     |ui| {
                         ui.set_min_width(180.0);
                         if ui
@@ -218,9 +222,9 @@ pub fn ui_system(
                 );
                 ui.menu_image_text_button(
                     egui::Image::new(icons::download())
-                        .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                        .fit_to_exact_size(icon::md_square())
                         .tint(TEXT),
-                    egui::RichText::new("Export").size(13.0),
+                    egui::RichText::new("Export").size(font::BODY),
                     |ui| {
                         ui.set_min_width(180.0);
                         if ui
@@ -334,9 +338,9 @@ pub fn ui_system(
                         undo_enabled,
                         egui::Button::image_and_text(
                             egui::Image::new(icons::undo())
-                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .fit_to_exact_size(icon::md_square())
                                 .tint(if undo_enabled { TEXT } else { TEXT_DIM }),
-                            egui::RichText::new("Undo").size(13.0),
+                            egui::RichText::new("Undo").size(font::BODY),
                         ),
                     )
                     .on_hover_text("Cmd+Z / Ctrl+Z")
@@ -350,9 +354,9 @@ pub fn ui_system(
                         redo_enabled,
                         egui::Button::image_and_text(
                             egui::Image::new(icons::redo())
-                                .fit_to_exact_size(egui::vec2(14.0, 14.0))
+                                .fit_to_exact_size(icon::md_square())
                                 .tint(if redo_enabled { TEXT } else { TEXT_DIM }),
-                            egui::RichText::new("Redo").size(13.0),
+                            egui::RichText::new("Redo").size(font::BODY),
                         ),
                     )
                     .on_hover_text("Cmd+Shift+Z / Ctrl+Shift+Z")
@@ -364,7 +368,7 @@ pub fn ui_system(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(egui::Button::new(
-                            egui::RichText::new("Preferences…").size(13.0),
+                            egui::RichText::new("Preferences…").size(font::BODY),
                         ))
                         .on_hover_text("Appearance and other settings")
                         .clicked()
@@ -381,7 +385,7 @@ pub fn ui_system(
             egui::Frame::default()
                 .fill(PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 4))
-                .stroke(egui::Stroke::new(0.5, BORDER)),
+                .stroke(egui::Stroke::new(stroke::HAIR, BORDER)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -395,7 +399,7 @@ pub fn ui_system(
                             egui::Label::new(
                                 egui::RichText::new(widgets::tool_hint(tool.current))
                                     .color(theme.text_dim)
-                                    .size(12.0),
+                                    .size(font::SMALL),
                             )
                             .selectable(false)
                             .truncate(),
@@ -438,17 +442,17 @@ pub fn ui_system(
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Brush, "Brush", "B");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Erase, "Erase", "E");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Paint, "Paint", "P");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Eyedropper, "Pick", "I");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Shape, "Shape", "S");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Select, "Select", "M");
-                ui.add_space(1.0);
+                ui.add_space(2.0);
                 widgets::tool_button(ui, &theme, &mut tool, Tool::Move, "Move", "V");
             });
         });
@@ -460,15 +464,15 @@ pub fn ui_system(
     .vline(
         left_rect.right(),
         left_rect.y_range(),
-        egui::Stroke::new(0.5, BORDER),
+        egui::Stroke::new(stroke::HAIR, BORDER),
     );
 
     // ---------- Right inspector ----------
     let right_resp = egui::SidePanel::right("right_panel")
         .resizable(true)
-        .default_width(236.0)
-        .min_width(236.0)
-        .max_width(480.0)
+        .default_width(244.0)
+        .min_width(244.0)
+        .max_width(468.0)
         .frame(
             egui::Frame::default()
                 .fill(PANEL)
@@ -499,8 +503,8 @@ pub fn ui_system(
                         ui,
                         &theme,
                         srgba,
-                        egui::vec2(swatch_w, 56.0),
-                        8,
+                        egui::vec2(swatch_w, swatch::HERO_HEIGHT),
+                        radius::MD,
                         false,
                     )
                     .on_hover_text("Click to edit color");
@@ -516,7 +520,7 @@ pub fn ui_system(
                                 color.0 = [srgba.r(), srgba.g(), srgba.b(), 255];
                             }
                         });
-                    ui.add_space(6.0);
+                    ui.add_space(space::XS);
                     ui.horizontal(|ui| {
                         widgets::hex_label(
                             ui,
@@ -532,7 +536,7 @@ pub fn ui_system(
                                         color.0[0], color.0[1], color.0[2]
                                     ))
                                     .color(TEXT_DIM)
-                                    .size(11.0),
+                                    .size(font::SMALL),
                                 )
                                 .selectable(true),
                             );
@@ -798,8 +802,8 @@ pub fn ui_system(
                                             ui,
                                             &theme,
                                             col,
-                                            egui::vec2(22.0, 22.0),
-                                            4,
+                                            swatch::PALETTE,
+                                            radius::XS,
                                             is_current,
                                         );
                                         clicked = r.clicked();
@@ -811,8 +815,8 @@ pub fn ui_system(
                                         ui,
                                         &theme,
                                         col,
-                                        egui::vec2(22.0, 22.0),
-                                        4,
+                                        swatch::PALETTE,
+                                        radius::XS,
                                         is_current,
                                     );
                                     clicked = r.clicked();
@@ -892,8 +896,8 @@ pub fn ui_system(
                                     ui,
                                     &theme,
                                     col,
-                                    egui::vec2(26.0, 26.0),
-                                    5,
+                                    swatch::RECENT,
+                                    radius::XS,
                                     is_current,
                                 );
                                 if resp.clicked() {
@@ -979,7 +983,7 @@ pub fn ui_system(
     .vline(
         right_rect.left(),
         right_rect.y_range(),
-        egui::Stroke::new(0.5, BORDER),
+        egui::Stroke::new(stroke::HAIR, BORDER),
     );
 
     // Reflect tool in cursor when pointer is over the viewport.

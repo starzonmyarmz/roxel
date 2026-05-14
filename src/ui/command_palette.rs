@@ -8,6 +8,7 @@ use crate::ui::dialogs::{DialogResult, PendingDialog};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
 };
+use crate::ui::tokens::{font, icon, radius, stroke};
 use crate::ui::{icons, widgets};
 use crate::{io, select};
 use bevy::ecs::system::SystemParam;
@@ -762,7 +763,7 @@ pub fn draw(
     egui::Window::new(
         egui::RichText::new("Command palette")
             .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
-            .size(14.0),
+            .size(font::BODY),
     )
     .collapsible(false)
     .resizable(false)
@@ -774,8 +775,8 @@ pub fn draw(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
             .inner_margin(egui::Margin::symmetric(14, 12))
-            .stroke(egui::Stroke::new(0.5, theme.border))
-            .corner_radius(egui::CornerRadius::same(10)),
+            .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+            .corner_radius(egui::CornerRadius::same(radius::LG)),
     )
     .show(ctx, |ui| {
         ui.set_min_width(492.0);
@@ -797,7 +798,7 @@ pub fn draw(
         ui.painter().hline(
             ui.clip_rect().x_range(),
             ui.cursor().min.y,
-            egui::Stroke::new(0.5, theme.border),
+            egui::Stroke::new(stroke::HAIR, theme.border),
         );
         ui.add_space(6.0);
 
@@ -826,7 +827,7 @@ pub fn draw(
         ui.painter().hline(
             ui.clip_rect().x_range(),
             ui.cursor().min.y,
-            egui::Stroke::new(0.5, theme.border),
+            egui::Stroke::new(stroke::HAIR, theme.border),
         );
         ui.add_space(6.0);
         draw_footer_hint(ui, theme);
@@ -853,22 +854,22 @@ pub fn draw(
 
 fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
     let dim = theme.text_dim;
-    let icon = |src| {
+    let footer_icon = |src| {
         egui::Image::new(src)
-            .fit_to_exact_size(egui::vec2(12.0, 12.0))
+            .fit_to_exact_size(icon::sm_square())
             .tint(dim)
     };
     let text = |s: &str| {
-        egui::Label::new(egui::RichText::new(s).color(dim).size(11.0)).selectable(false)
+        egui::Label::new(egui::RichText::new(s).color(dim).size(font::SMALL)).selectable(false)
     };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.0;
-        ui.add(icon(icons::arrow_up()));
-        ui.add(icon(icons::arrow_down()));
+        ui.add(footer_icon(icons::arrow_up()));
+        ui.add(footer_icon(icons::arrow_down()));
         ui.add_space(2.0);
         ui.add(text("navigate"));
         ui.add_space(10.0);
-        ui.add(icon(icons::corner_down_left()));
+        ui.add(footer_icon(icons::corner_down_left()));
         ui.add_space(2.0);
         ui.add(text("run"));
         ui.add_space(10.0);
@@ -877,7 +878,7 @@ fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
                 egui::RichText::new("Esc")
                     .monospace()
                     .color(dim)
-                    .size(11.0),
+                    .size(font::SMALL),
             )
             .selectable(false),
         );
@@ -918,7 +919,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
         egui::Color32::TRANSPARENT
     };
     ui.painter()
-        .rect_filled(rect, egui::CornerRadius::same(6), bg);
+        .rect_filled(rect, egui::CornerRadius::same(radius::SM), bg);
 
     let text_color = if entry.enabled {
         theme.text
@@ -930,9 +931,11 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     // Category chip (left).
     let chip_x = rect.left() + 10.0;
     let chip_text = entry.category.label();
-    let chip_galley =
-        ui.painter()
-            .layout_no_wrap(chip_text.to_string(), egui::FontId::proportional(11.0), dim);
+    let chip_galley = ui.painter().layout_no_wrap(
+        chip_text.to_string(),
+        egui::FontId::proportional(font::SMALL),
+        dim,
+    );
     let chip_y = rect.center().y - chip_galley.size().y * 0.5;
     ui.painter()
         .galley(egui::pos2(chip_x, chip_y), chip_galley.clone(), dim);
@@ -941,7 +944,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     let label_x = chip_x + 56.0;
     let label_galley = ui.painter().layout_no_wrap(
         entry.label.clone(),
-        egui::FontId::proportional(13.0),
+        egui::FontId::proportional(font::BODY),
         text_color,
     );
     let label_y = rect.center().y - label_galley.size().y * 0.5;
@@ -950,9 +953,11 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
 
     // Shortcut (right).
     if let Some(sc) = entry.shortcut {
-        let sc_galley =
-            ui.painter()
-                .layout_no_wrap(sc.to_string(), egui::FontId::monospace(11.0), dim);
+        let sc_galley = ui.painter().layout_no_wrap(
+            sc.to_string(),
+            egui::FontId::monospace(font::SMALL),
+            dim,
+        );
         let sc_x = rect.right() - 10.0 - sc_galley.size().x;
         let sc_y = rect.center().y - sc_galley.size().y * 0.5;
         ui.painter().galley(egui::pos2(sc_x, sc_y), sc_galley, dim);

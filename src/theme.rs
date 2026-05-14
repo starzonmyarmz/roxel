@@ -430,6 +430,8 @@ pub fn install_fonts(ctx: &egui::Context) {
 }
 
 pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
+    use crate::ui::tokens::{font, gap, pad, radius, stroke};
+
     let mut visuals = match theme.mode {
         ThemeMode::Dark => egui::Visuals::dark(),
         ThemeMode::Light => egui::Visuals::light(),
@@ -441,40 +443,42 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     visuals.extreme_bg_color = theme.bg;
     visuals.faint_bg_color = theme.faint;
 
+    let r_sm = egui::CornerRadius::same(radius::SM);
+
     visuals.widgets.noninteractive.bg_fill = theme.panel;
     visuals.widgets.noninteractive.weak_bg_fill = theme.panel;
-    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme.border);
-    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_dim);
-    visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.border);
+    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.text_dim);
+    visuals.widgets.noninteractive.corner_radius = r_sm;
 
     visuals.widgets.inactive.bg_fill = theme.surface;
     visuals.widgets.inactive.weak_bg_fill = theme.surface;
     visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text);
-    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.text);
+    visuals.widgets.inactive.corner_radius = r_sm;
 
     visuals.widgets.hovered.bg_fill = theme.surface_hover;
     visuals.widgets.hovered.weak_bg_fill = theme.surface_hover;
-    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme.accent_dim);
-    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, theme.text);
-    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.accent_dim);
+    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.text);
+    visuals.widgets.hovered.corner_radius = r_sm;
 
     visuals.widgets.active.bg_fill = theme.accent;
     visuals.widgets.active.weak_bg_fill = theme.accent;
-    visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme.accent);
-    visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.active.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.accent);
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(stroke::NORMAL, egui::Color32::WHITE);
+    visuals.widgets.active.corner_radius = r_sm;
 
     visuals.widgets.open.bg_fill = theme.surface_hover;
     visuals.widgets.open.weak_bg_fill = theme.surface_hover;
-    visuals.widgets.open.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.open.corner_radius = r_sm;
 
     visuals.selection.bg_fill = theme.accent_dim;
-    visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent);
+    visuals.selection.stroke = egui::Stroke::new(stroke::NORMAL, theme.accent);
     visuals.hyperlink_color = theme.accent;
-    visuals.window_corner_radius = egui::CornerRadius::same(10);
-    visuals.menu_corner_radius = egui::CornerRadius::same(8);
-    visuals.window_stroke = egui::Stroke::new(1.0, theme.border);
+    visuals.window_corner_radius = egui::CornerRadius::same(radius::LG);
+    visuals.menu_corner_radius = egui::CornerRadius::same(radius::MD);
+    visuals.window_stroke = egui::Stroke::new(stroke::NORMAL, theme.border);
     visuals.window_shadow = egui::epaint::Shadow {
         offset: [0, 4],
         blur: 12,
@@ -486,8 +490,8 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     ctx.set_visuals(visuals);
 
     let mut style: egui::Style = (*ctx.style()).clone();
-    style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-    style.spacing.button_padding = egui::vec2(12.0, 7.0);
+    style.spacing.item_spacing = gap::DEFAULT;
+    style.spacing.button_padding = pad::DEFAULT;
     style.spacing.menu_margin = egui::Margin::same(8);
     style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.slider_width = 160.0;
@@ -498,21 +502,22 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     let bold = FontFamily::Name(NUNITO_700_FAMILY.into());
     style
         .text_styles
-        .insert(TextStyle::Heading, FontId::new(16.0, bold.clone()));
-    style
-        .text_styles
-        .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
+        .insert(TextStyle::Heading, FontId::new(font::HEADING, bold.clone()));
+    style.text_styles.insert(
+        TextStyle::Body,
+        FontId::new(font::BODY, FontFamily::Proportional),
+    );
     style.text_styles.insert(
         TextStyle::Button,
-        FontId::new(14.0, FontFamily::Proportional),
+        FontId::new(font::BODY, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Small,
-        FontId::new(12.0, FontFamily::Proportional),
+        FontId::new(font::SMALL, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Monospace,
-        FontId::new(13.0, FontFamily::Monospace),
+        FontId::new(font::BODY, FontFamily::Monospace),
     );
     ctx.set_style(style);
 }
