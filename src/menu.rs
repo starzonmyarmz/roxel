@@ -22,7 +22,10 @@ pub enum MenuAction {
     Undo,
     Redo,
     Preferences,
+    Changelog,
 }
+
+const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
 
 #[derive(Resource, Default)]
 pub struct MenuQueue(pub Vec<MenuAction>);
@@ -161,6 +164,13 @@ fn build_menu() -> MenuStore {
         .expect("append window menu");
     menu.append(&window).expect("append window submenu");
 
+    let help = Submenu::new("Help", true);
+    let changelog_item = MenuItem::new("Changelog", true, None);
+    help.append_items(&[&changelog_item])
+        .expect("append help menu");
+    menu.append(&help).expect("append help submenu");
+    actions.insert(changelog_item.id().0.clone(), MenuAction::Changelog);
+
     menu.init_for_nsapp();
 
     MenuStore {
@@ -234,8 +244,15 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::Preferences => {
                 p.prefs_window.open = !p.prefs_window.open;
             }
+            MenuAction::Changelog => open_changelog(),
         }
     }
+}
+
+fn open_changelog() {
+    let _ = std::process::Command::new("open")
+        .arg(CHANGELOG_URL)
+        .spawn();
 }
 
 fn spawn_open(pending: &mut PendingDialog) {

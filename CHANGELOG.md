@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: macOS Help menu with Changelog link
 - feat: Cmd/Ctrl + `=`/`-` zoom and Cmd/Ctrl + `0` frame-view shortcuts
 - ci: tag-driven CHANGELOG finalize (drop prepare-commit-msg hook)
 - chore: add CHANGELOG.md and prepare-commit-msg hook
