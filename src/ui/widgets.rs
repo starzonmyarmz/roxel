@@ -75,8 +75,13 @@ pub fn tool_button(
 ) -> egui::Response {
     let active = tool.current == kind;
     let sh = theme.surface_hover;
-    let lighten = |c: u8| ((c as u16 + 255 * 3) / 4) as u8;
-    let hover_fill = egui::Color32::from_rgb(lighten(sh.r()), lighten(sh.g()), lighten(sh.b()));
+    let bg = theme.bg;
+    let blend = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
+    let hover_fill = egui::Color32::from_rgb(
+        blend(bg.r(), sh.r()),
+        blend(bg.g(), sh.g()),
+        blend(bg.b(), sh.b()),
+    );
     let resting = if active {
         theme.surface_hover
     } else {
@@ -144,8 +149,13 @@ pub fn icon_only_button(
         .fit_to_exact_size(icon::md_square())
         .tint(tint);
     let sh = theme.surface_hover;
-    let lighten = |c: u8| ((c as u16 + 255 * 3) / 4) as u8;
-    let hover_fill = egui::Color32::from_rgb(lighten(sh.r()), lighten(sh.g()), lighten(sh.b()));
+    let bg = theme.bg;
+    let blend = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
+    let hover_fill = egui::Color32::from_rgb(
+        blend(bg.r(), sh.r()),
+        blend(bg.g(), sh.g()),
+        blend(bg.b(), sh.b()),
+    );
     ui.scope(|ui| {
         ui.spacing_mut().button_padding = pad::NONE;
         ui.spacing_mut().interact_size = gap::NONE;
@@ -274,7 +284,8 @@ pub fn hex_label(ui: &mut egui::Ui, theme: &Theme, rgb: [u8; 3], dim: bool) {
 }
 
 /// Single colour-square button. Selected swatches get a 2.0 px accent stroke;
-/// unselected swatches a 0.5 px border. The caller wraps for DnD,
+/// unselected swatches a subtle alpha-blended border that reads on any fill
+/// (white in dark mode, black in light mode). The caller wraps for DnD,
 /// context-menus, and hover-text — keep this focused on rendering.
 pub fn swatch_button(
     ui: &mut egui::Ui,
@@ -287,7 +298,11 @@ pub fn swatch_button(
     let outline = if selected {
         egui::Stroke::new(stroke::ACCENT, theme.accent)
     } else {
-        egui::Stroke::new(stroke::HAIR, theme.border)
+        let border = match theme.mode {
+            crate::theme::ThemeMode::Dark => egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36),
+            crate::theme::ThemeMode::Light => egui::Color32::from_rgba_unmultiplied(0, 0, 0, 36),
+        };
+        egui::Stroke::new(stroke::NORMAL, border)
     };
     ui.add_sized(
         [size.x, size.y],
