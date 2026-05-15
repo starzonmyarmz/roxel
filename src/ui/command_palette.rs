@@ -112,7 +112,6 @@ pub enum CommandAction {
 
     SetThemePref(ThemePref),
     ToggleShowFloor,
-    ToggleShowWalls,
     ToggleShowFloorGrid,
     TogglePreviewOutline,
 }
@@ -579,18 +578,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::ToggleShowFloor,
     ));
     out.push(entry(
-        if state.prefs.show_walls {
-            "Hide wall planes"
-        } else {
-            "Show wall planes"
-        },
-        Category::Preferences,
-        "back left visibility toggle",
-        None,
-        true,
-        CommandAction::ToggleShowWalls,
-    ));
-    out.push(entry(
         if state.prefs.show_floor_grid {
             "Hide floor grid"
         } else {
@@ -991,7 +978,6 @@ pub fn dispatch_command_palette_system(
     };
     match action {
         CommandAction::NewProject => {
-            p.new_project.picker_size = p.grid.size;
             p.new_project.dialog_open = true;
         }
         CommandAction::OpenProject => spawn_open(&mut p.pending),
@@ -1078,10 +1064,8 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::SelectShape(prim) => p.shape.primitive = prim,
         CommandAction::FrameView => {
-            let (centroid, radius) = fit_view(&p.grid).unwrap_or_else(|| {
-                let c = Vec3::splat(p.grid.size as f32 / 2.0);
-                (c, p.grid.size as f32 * 1.875)
-            });
+            let (centroid, radius) = fit_view(&p.grid)
+                .unwrap_or((Vec3::ZERO, crate::camera::EMPTY_WORLD_RADIUS));
             for mut cam in &mut cameras {
                 cam.target_focus = centroid;
                 cam.target_radius = radius;
@@ -1206,10 +1190,6 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ToggleShowFloor => {
             p.prefs.show_floor = !p.prefs.show_floor;
-            crate::theme::save_preferences(&p.prefs);
-        }
-        CommandAction::ToggleShowWalls => {
-            p.prefs.show_walls = !p.prefs.show_walls;
             crate::theme::save_preferences(&p.prefs);
         }
         CommandAction::ToggleShowFloorGrid => {

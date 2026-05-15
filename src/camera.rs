@@ -1,23 +1,30 @@
-use crate::grid::{DEFAULT_SIZE, VoxelGrid};
+use crate::grid::VoxelGrid;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
 
-/// Default camera focus: center of the floor plane, not the cubic-grid centroid.
-/// Centering on the floor makes the ground plane sit in the middle of the
-/// viewport on launch instead of dropping into the lower half.
-pub fn default_camera_focus(size: usize) -> Vec3 {
-    Vec3::new(size as f32 / 2.0, 0.0, size as f32 / 2.0)
+/// Default orbit radius used when the world is empty (no occupied cells to
+/// frame) and as the initial spawn radius. Picked to comfortably show the
+/// origin gizmo plus a few chunks of floor around it.
+pub const EMPTY_WORLD_RADIUS: f32 = 32.0;
+
+/// Default camera focus in the open world: the world origin. The floor
+/// follows the focus, so the floor stays under the camera even before any
+/// voxels are painted.
+pub fn default_camera_focus() -> Vec3 {
+    Vec3::ZERO
 }
 
-/// Iso camera offset from focus: equal contribution per axis gives the
-/// canonical isometric direction (azimuth 45°, elevation arctan(1/√2) ≈ 35.26°).
+/// Iso camera offset from focus. Length matches `EMPTY_WORLD_RADIUS` so the
+/// orbit radius at spawn agrees with the empty-world fallback used by
+/// `frame_view_system` — otherwise pressing Cmd+0 on a fresh scene would
+/// snap to a different distance than the initial view.
 pub fn iso_camera_offset() -> Vec3 {
-    Vec3::splat(80.0)
+    Vec3::splat(EMPTY_WORLD_RADIUS / 3f32.sqrt())
 }
 
 pub fn spawn_camera(commands: &mut Commands) {
-    let focus = default_camera_focus(DEFAULT_SIZE);
+    let focus = default_camera_focus();
     let offset = iso_camera_offset();
     commands.spawn((
         Camera3d::default(),
@@ -40,30 +47,11 @@ pub fn spawn_camera(commands: &mut Commands) {
     ));
 }
 
-fn voxel_bounds(grid: &VoxelGrid) -> Option<(IVec3, IVec3)> {
-    let mut min = IVec3::splat(i32::MAX);
-    let mut max = IVec3::splat(i32::MIN);
-    let mut any = false;
-    for x in 0..grid.size {
-        for y in 0..grid.size {
-            for z in 0..grid.size {
-                if grid.cell(x, y, z).is_some() {
-                    any = true;
-                    let p = IVec3::new(x as i32, y as i32, z as i32);
-                    min = min.min(p);
-                    max = max.max(p);
-                }
-            }
-        }
-    }
-    if any { Some((min, max)) } else { None }
-}
-
 /// Focus + orbit radius that frames every occupied voxel. Returns `None`
-/// when the grid is empty so callers (UI zoom readout, F-fit) can fall
-/// back to a default or hide the value.
+/// when the grid is empty so callers (UI, Cmd+0 frame, zoom limits) can
+/// fall back to the empty-world default.
 pub fn fit_view(grid: &VoxelGrid) -> Option<(Vec3, f32)> {
-    let (min, max) = voxel_bounds(grid)?;
+    let (min, max) = grid.bounding_box()?;
     let centroid = (min.as_vec3() + max.as_vec3() + Vec3::ONE) * 0.5;
     let extent = (max - min).as_vec3().max_element() + 1.0;
     Some((centroid, (extent * 1.6).max(4.0)))
@@ -112,10 +100,8 @@ pub fn frame_view_system(
         return;
     }
 
-    let (centroid, radius) = fit_view(&grid).unwrap_or_else(|| {
-        let center = Vec3::splat(grid.size as f32 / 2.0);
-        (center, grid.size as f32 * 1.875)
-    });
+    let (centroid, radius) =
+        fit_view(&grid).unwrap_or((default_camera_focus(), EMPTY_WORLD_RADIUS));
 
     let panel_offset = (|| -> Option<Vec3> {
         let screen = viewport.screen?;
@@ -196,7 +182,6 @@ mod tests {
 
     #[test]
     fn iso_offset_yields_iso_elevation_and_azimuth() {
-        // azimuth from +X around +Y should be 45°, elevation 35.264°.
         let o = iso_camera_offset();
         let len = o.length();
         let elevation = (o.y / len).asin().to_degrees();
@@ -206,11 +191,13 @@ mod tests {
     }
 
     #[test]
-    fn default_focus_sits_on_floor_centered_in_grid() {
-        let f = default_camera_focus(DEFAULT_SIZE);
-        assert_eq!(f.y, 0.0);
-        assert_eq!(f.x, DEFAULT_SIZE as f32 / 2.0);
-        assert_eq!(f.z, DEFAULT_SIZE as f32 / 2.0);
+    fn iso_offset_length_matches_empty_world_radius() {
+        assert!((iso_camera_offset().length() - EMPTY_WORLD_RADIUS).abs() < 1e-4);
+    }
+
+    #[test]
+    fn default_focus_is_world_origin() {
+        assert_eq!(default_camera_focus(), Vec3::ZERO);
     }
 
     #[test]
@@ -245,18 +232,20 @@ mod tests {
         grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
         let (lower, upper) = zoom_radius_limits(&grid);
         let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
-        // At lower bound, displayed zoom% must equal MAX_ZOOM_PCT.
         let pct = (fit_radius / lower) * 100.0;
         assert!((pct - MAX_ZOOM_PCT).abs() < 1e-3, "pct={pct}");
         assert!(upper > fit_radius * 100.0, "upper={upper} fit={fit_radius}");
     }
 
     #[test]
-    fn zoom_radius_limits_empty_grid_uses_fallback() {
+    fn zoom_radius_limits_empty_grid_uses_empty_world_radius() {
         let grid = VoxelGrid::default();
         let (lower, upper) = zoom_radius_limits(&grid);
         assert!(lower > 0.0);
         assert!(upper > lower);
+        // Upper bound proportional to EMPTY_WORLD_RADIUS rather than a
+        // grid-size-derived constant.
+        assert!((upper - EMPTY_WORLD_RADIUS * 1000.0).abs() < 1e-3);
     }
 
     #[test]
@@ -267,15 +256,24 @@ mod tests {
         assert!((focus.x - 10.5).abs() < 1e-5);
         assert!((focus.y - 10.5).abs() < 1e-5);
         assert!((focus.z - 10.5).abs() < 1e-5);
-        // extent = 1, raw radius = 1.6, clamped to 4.0
         assert!((radius - 4.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn fit_view_handles_negative_coords() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(-10, 0, -5), Some([1, 1, 1, 255]));
+        grid.set(IVec3::new(20, 5, 25), Some([1, 1, 1, 255]));
+        let (focus, _radius) = fit_view(&grid).expect("non-empty grid");
+        // Centroid is the geometric center of the AABB, including the +1
+        // voxel extent.
+        assert!((focus.x - 5.5).abs() < 1e-4, "x={}", focus.x);
+        assert!((focus.z - 10.5).abs() < 1e-4, "z={}", focus.z);
     }
 }
 
 /// Egui-points rects describing the canvas. `avail` is the area not covered
 /// by side/top/bottom panels; `screen` is the full window in the same units.
-/// Both come from the same `egui::Context` call so they share coordinate space
-/// — needed for `panel_compensation_offset` to compute correct ratios.
 #[derive(Resource, Default)]
 pub struct ViewportRect {
     pub avail: Option<bevy::math::Rect>,
@@ -329,8 +327,6 @@ pub fn zoom_click_system(
 }
 
 /// Apply a zoom factor to `radius`, clamped to `[lower_limit, upper_limit]`.
-/// Pure helper so the key/click systems share identical math and tests don't
-/// need a Bevy app. `upper_limit = None` leaves the upper end unconstrained.
 pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Option<f32>) -> f32 {
     let r = (radius * factor).max(lower_limit);
     match upper_limit {
@@ -341,22 +337,21 @@ pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Optio
 
 /// Dynamic zoom radius limits derived from the current grid. Maps a fixed
 /// percentage range (zoom ∈ [`MIN_ZOOM_PCT`, `MAX_ZOOM_PCT`]) onto a radius
-/// range relative to `fit_view`'s radius. Empty grids fall back to the default
-/// fit estimate so we still produce sensible limits before the user paints.
+/// range relative to `fit_view`'s radius. Empty grids use `EMPTY_WORLD_RADIUS`
+/// so the camera still has sensible scroll bounds before the user paints.
 pub fn zoom_radius_limits(grid: &VoxelGrid) -> (f32, f32) {
     let fit = fit_view(grid)
         .map(|(_, r)| r)
-        .unwrap_or_else(|| grid.size as f32 * 1.875);
-    // 1000% = zoomed in 10×, so radius = fit / 10.
-    // 0% can't be exact (infinity); pick a large multiple that rounds to 0%.
+        .unwrap_or(EMPTY_WORLD_RADIUS);
     let lower = (fit / (MAX_ZOOM_PCT / 100.0)).max(0.01);
     let upper = fit * 1000.0;
     (lower, upper)
 }
 
-/// Public min/max for the zoom percentage readout. Both UI and clamp logic
-/// agree on the same range so a value can't be both displayable and unreachable.
-pub const MIN_ZOOM_PCT: f32 = 0.0;
+/// Internal clamp range used to constrain the orbit radius. The percentage
+/// is no longer surfaced to the user (the footer reads `Zoom N voxels`
+/// instead), but the upper-end constant stays as the underlying scroll-zoom
+/// limit divisor for `zoom_radius_limits`.
 pub const MAX_ZOOM_PCT: f32 = 1000.0;
 
 pub fn update_zoom_limits_system(grid: Res<VoxelGrid>, mut cameras: Query<&mut PanOrbitCamera>) {

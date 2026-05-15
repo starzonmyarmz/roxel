@@ -1,193 +1,226 @@
 use bevy::prelude::*;
+use std::collections::{HashMap, HashSet};
 
-/// Storage upper bound. Cell array is always allocated at this size; the
-/// active editable box is `VoxelGrid.size`, which the user can pick when
-/// starting a new project. Keeping storage fixed avoids reallocating the
-/// 10 MB cell array (and re-spawning chunk entities) on resize.
-pub const MAX_GRID: usize = 128;
-#[allow(dead_code)]
-pub const MAX_GRID_I: i32 = MAX_GRID as i32;
-
-/// Chunk edge length. Must divide every legal `VoxelGrid.size`.
+/// Chunk edge length. Each chunk stores `CHUNK³` cells in a flat array. The
+/// world is sparse: chunks allocate on first write and drop when they empty.
 pub const CHUNK: usize = 32;
-pub const MAX_CHUNKS_PER_AXIS: usize = MAX_GRID / CHUNK;
-const _: () = assert!(
-    MAX_GRID % CHUNK == 0,
-    "MAX_GRID must be a multiple of CHUNK"
-);
+pub const CHUNK_I: i32 = CHUNK as i32;
+pub const CHUNK_VOL: usize = CHUNK * CHUNK * CHUNK;
 
-/// Sizes offered by the New-project dialog. Each must divide CHUNK evenly so
-/// the chunked mesher needs no partial-chunk handling.
-pub const ALLOWED_SIZES: [usize; 4] = [32, 64, 96, 128];
-pub const DEFAULT_SIZE: usize = 32;
+/// Soft perf-warning thresholds. Either crossing fires a one-shot toast.
+/// 5 M cells matches the point where greedy meshing starts hurting framerate
+/// on typical hardware; 4 K loaded chunks captures the surface-area case
+/// (long thin walls) where cell count alone underestimates load.
+pub const LARGE_SCENE_CELLS: u32 = 5_000_000;
+pub const LARGE_SCENE_CHUNKS: u32 = 4_000;
 
-/// Smallest `ALLOWED_SIZES` value that fits `needed` cells, capped at
-/// `MAX_GRID`. Used by every importer to pick a grid size from inbound
-/// voxel bounds, and by `io::project::load` for files whose stored size
-/// isn't one of the legal sizes.
-pub fn snap_to_allowed_size(needed: usize) -> usize {
-    ALLOWED_SIZES
-        .iter()
-        .copied()
-        .find(|&s| s >= needed)
-        .unwrap_or(MAX_GRID)
-        .min(MAX_GRID)
-}
+/// Hysteresis: clear the latched warning only after both counters fall below
+/// 80 % of their respective thresholds, so a value oscillating near the line
+/// does not re-toast every frame.
+const HYSTERESIS_NUM: u32 = 4;
+const HYSTERESIS_DEN: u32 = 5;
 
 pub type Color8 = [u8; 4];
 
-/// X-major flat index into the MAX_GRID³ cell array.
-#[inline]
-pub fn flat_idx(x: usize, y: usize, z: usize) -> usize {
-    x * MAX_GRID * MAX_GRID + y * MAX_GRID + z
+/// One 32³ block of voxels. `count` lets us drop the chunk from the map the
+/// moment it empties so the open-world `chunks: HashMap<...>` only holds
+/// chunks that actually carry data.
+pub struct Chunk {
+    pub cells: Box<[Option<Color8>]>,
+    pub count: u32,
 }
 
-/// X-major flat index into a MAX_CHUNKS_PER_AXIS³ chunk-flag array.
-#[inline]
-pub fn chunk_flat_idx(cx: usize, cy: usize, cz: usize) -> usize {
-    cx * MAX_CHUNKS_PER_AXIS * MAX_CHUNKS_PER_AXIS + cy * MAX_CHUNKS_PER_AXIS + cz
+impl Chunk {
+    fn new() -> Self {
+        Self {
+            cells: vec![None; CHUNK_VOL].into_boxed_slice(),
+            count: 0,
+        }
+    }
 }
 
-/// State for the New-project modal. `dialog_open` toggles visibility,
-/// `picker_size` carries the currently-selected radio button, `apply` is set
-/// when the user confirms — picked up by `apply_new_project_system` to
-/// reshape the scene on the next frame.
-#[derive(Resource)]
+/// World-coord → chunk coord (the IVec3 key into `VoxelGrid.chunks`).
+/// `div_euclid` keeps the result correct for negative axes (e.g. y always
+/// >= 0 in practice but x/z can go negative).
+#[inline]
+pub fn chunk_coord(p: IVec3) -> IVec3 {
+    IVec3::new(
+        p.x.div_euclid(CHUNK_I),
+        p.y.div_euclid(CHUNK_I),
+        p.z.div_euclid(CHUNK_I),
+    )
+}
+
+#[inline]
+fn local_idx(p: IVec3) -> usize {
+    let lx = p.x.rem_euclid(CHUNK_I) as usize;
+    let ly = p.y.rem_euclid(CHUNK_I) as usize;
+    let lz = p.z.rem_euclid(CHUNK_I) as usize;
+    lx * CHUNK * CHUNK + ly * CHUNK + lz
+}
+
+/// State for the New-project confirm modal. There is no longer a size to
+/// pick — the open-world grid has no fixed extent — so this collapses to a
+/// dialog-open flag plus an `apply` flag the application reads next frame.
+#[derive(Resource, Default)]
 pub struct NewProject {
     pub dialog_open: bool,
-    pub picker_size: usize,
-    pub apply: Option<usize>,
+    pub apply: bool,
 }
 
-impl Default for NewProject {
-    fn default() -> Self {
-        Self {
-            dialog_open: false,
-            picker_size: DEFAULT_SIZE,
-            apply: None,
-        }
-    }
-}
-
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct VoxelGrid {
-    pub cells: Box<[Option<Color8>]>,
+    /// Sparse storage keyed by chunk coordinate. Allocates on first write,
+    /// drops when the chunk's `count` hits zero.
+    pub chunks: HashMap<IVec3, Chunk>,
+    /// Chunk coords that need a mesh rebuild this frame. Mesher drains.
+    pub dirty_chunks: HashSet<IVec3>,
+    /// Coarse "anything changed" flag — peers may use this as a cheap remesh
+    /// trigger without traversing the dirty set.
     pub dirty: bool,
-    /// Per-chunk dirty flag, indexed by `chunk_flat_idx`. Always sized for
-    /// the max grid; chunks outside `[0, chunks_per_axis())` stay empty.
-    pub chunk_dirty: Box<[bool]>,
-    /// Active edit box edge length. Cells outside `[0, size)` are rejected
-    /// by `set`/`get`. Always a member of `ALLOWED_SIZES`.
-    pub size: usize,
-}
-
-impl Default for VoxelGrid {
-    fn default() -> Self {
-        let cells: Box<[Option<Color8>]> =
-            vec![None; MAX_GRID * MAX_GRID * MAX_GRID].into_boxed_slice();
-        let chunk_dirty: Box<[bool]> = vec![true; MAX_CHUNKS_PER_AXIS.pow(3)].into_boxed_slice();
-        Self {
-            cells,
-            dirty: true,
-            chunk_dirty,
-            size: DEFAULT_SIZE,
-        }
-    }
+    /// Total occupied cells across all loaded chunks, kept incrementally.
+    pub total_count: u32,
+    /// One-shot latch for the large-scene perf warning. Resets when both
+    /// counters fall below 80 % of their thresholds.
+    pub warned_large: bool,
 }
 
 impl VoxelGrid {
-    #[inline]
-    pub fn size_i(&self) -> i32 {
-        self.size as i32
-    }
-
-    #[inline]
-    pub fn chunks_per_axis(&self) -> usize {
-        self.size / CHUNK
-    }
-
+    /// The only hard rule in the open-world grid: no cells below the floor.
+    /// Kept on `VoxelGrid` (rather than as a free fn) so call sites still
+    /// read `grid.in_bounds(p)`.
     #[inline]
     pub fn in_bounds(&self, p: IVec3) -> bool {
-        let s = self.size_i();
-        p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < s && p.y < s && p.z < s
+        p.y >= 0
     }
 
     #[inline]
     pub fn get(&self, p: IVec3) -> Option<Color8> {
-        if !self.in_bounds(p) {
+        if p.y < 0 {
             return None;
         }
-        self.cells[flat_idx(p.x as usize, p.y as usize, p.z as usize)]
+        self.chunks.get(&chunk_coord(p))?.cells[local_idx(p)]
     }
 
-    #[inline]
     pub fn set(&mut self, p: IVec3, c: Option<Color8>) {
-        if !self.in_bounds(p) {
+        if p.y < 0 {
             return;
         }
-        let (x, y, z) = (p.x as usize, p.y as usize, p.z as usize);
-        self.cells[flat_idx(x, y, z)] = c;
+        let coord = chunk_coord(p);
+        let idx = local_idx(p);
+
+        let chunk = self.chunks.entry(coord).or_insert_with(Chunk::new);
+        let prev = chunk.cells[idx];
+        let delta: i32 = match (prev.is_some(), c.is_some()) {
+            (false, true) => {
+                chunk.count += 1;
+                1
+            }
+            (true, false) => {
+                chunk.count -= 1;
+                -1
+            }
+            _ => 0,
+        };
+        chunk.cells[idx] = c;
+        let count_now = chunk.count;
+
         self.dirty = true;
-        self.mark_chunk_dirty(x, y, z);
-    }
+        self.dirty_chunks.insert(coord);
 
-    fn mark_chunk_dirty(&mut self, x: usize, y: usize, z: usize) {
-        let cpa = self.chunks_per_axis();
-        let (cx, cy, cz) = (x / CHUNK, y / CHUNK, z / CHUNK);
-        self.chunk_dirty[chunk_flat_idx(cx, cy, cz)] = true;
-        // Boundary cells affect the neighbour chunk's face-occlusion across
-        // the chunk seam — that chunk's mesh must rebuild too.
-        if x % CHUNK == 0 && cx > 0 {
-            self.chunk_dirty[chunk_flat_idx(cx - 1, cy, cz)] = true;
+        if count_now == 0 {
+            self.chunks.remove(&coord);
         }
-        if x % CHUNK == CHUNK - 1 && cx + 1 < cpa {
-            self.chunk_dirty[chunk_flat_idx(cx + 1, cy, cz)] = true;
-        }
-        if y % CHUNK == 0 && cy > 0 {
-            self.chunk_dirty[chunk_flat_idx(cx, cy - 1, cz)] = true;
-        }
-        if y % CHUNK == CHUNK - 1 && cy + 1 < cpa {
-            self.chunk_dirty[chunk_flat_idx(cx, cy + 1, cz)] = true;
-        }
-        if z % CHUNK == 0 && cz > 0 {
-            self.chunk_dirty[chunk_flat_idx(cx, cy, cz - 1)] = true;
-        }
-        if z % CHUNK == CHUNK - 1 && cz + 1 < cpa {
-            self.chunk_dirty[chunk_flat_idx(cx, cy, cz + 1)] = true;
-        }
-    }
 
-    /// Bounds-check-free read for callers that already iterate over
-    /// `0..self.size`.
-    #[inline]
-    pub fn cell(&self, x: usize, y: usize, z: usize) -> Option<Color8> {
-        self.cells[flat_idx(x, y, z)]
+        if delta > 0 {
+            self.total_count = self.total_count.saturating_add(1);
+        } else if delta < 0 {
+            self.total_count = self.total_count.saturating_sub(1);
+        }
+
+        // Boundary cells change face occlusion in the neighbour chunk across
+        // the seam. Those chunks must rebuild too. We mark every seam
+        // unconditionally; the mesher tolerates dirty coords with no loaded
+        // chunk (it just skips them).
+        let lx = p.x.rem_euclid(CHUNK_I);
+        let ly = p.y.rem_euclid(CHUNK_I);
+        let lz = p.z.rem_euclid(CHUNK_I);
+        if lx == 0 {
+            self.dirty_chunks.insert(coord + IVec3::new(-1, 0, 0));
+        }
+        if lx == CHUNK_I - 1 {
+            self.dirty_chunks.insert(coord + IVec3::new(1, 0, 0));
+        }
+        if ly == 0 {
+            self.dirty_chunks.insert(coord + IVec3::new(0, -1, 0));
+        }
+        if ly == CHUNK_I - 1 {
+            self.dirty_chunks.insert(coord + IVec3::new(0, 1, 0));
+        }
+        if lz == 0 {
+            self.dirty_chunks.insert(coord + IVec3::new(0, 0, -1));
+        }
+        if lz == CHUNK_I - 1 {
+            self.dirty_chunks.insert(coord + IVec3::new(0, 0, 1));
+        }
     }
 
     pub fn clear(&mut self) {
-        for c in self.cells.iter_mut() {
-            *c = None;
+        for coord in self.chunks.keys().copied().collect::<Vec<_>>() {
+            self.dirty_chunks.insert(coord);
         }
+        self.chunks.clear();
         self.dirty = true;
-        for d in self.chunk_dirty.iter_mut() {
-            *d = true;
-        }
+        self.total_count = 0;
+        self.warned_large = false;
     }
 
-    /// Reset to an empty grid at a new size. Caller must redraw the floor /
-    /// walls and recenter the camera after this returns.
-    pub fn resize(&mut self, new_size: usize) {
-        debug_assert!(
-            ALLOWED_SIZES.contains(&new_size),
-            "new_size {new_size} not in ALLOWED_SIZES"
-        );
-        self.clear();
-        self.size = new_size;
-    }
-
+    #[inline]
     pub fn count(&self) -> usize {
-        self.cells.iter().filter(|c| c.is_some()).count()
+        self.total_count as usize
     }
+
+    pub fn iter_occupied(&self) -> impl Iterator<Item = (IVec3, Color8)> + '_ {
+        self.chunks.iter().flat_map(|(coord, chunk)| {
+            let coord = *coord;
+            chunk
+                .cells
+                .iter()
+                .enumerate()
+                .filter_map(move |(idx, cell)| {
+                    let c = (*cell)?;
+                    let lx = (idx / (CHUNK * CHUNK)) as i32;
+                    let ly = ((idx / CHUNK) % CHUNK) as i32;
+                    let lz = (idx % CHUNK) as i32;
+                    Some((coord * CHUNK_I + IVec3::new(lx, ly, lz), c))
+                })
+        })
+    }
+
+    pub fn bounding_box(&self) -> Option<(IVec3, IVec3)> {
+        let mut iter = self.iter_occupied();
+        let (first, _) = iter.next()?;
+        let (mut min, mut max) = (first, first);
+        for (p, _) in iter {
+            min = min.min(p);
+            max = max.max(p);
+        }
+        Some((min, max))
+    }
+}
+
+/// Pure predicate used by the per-stroke perf-warning toast. Free function
+/// so unit tests can poke at the threshold logic without allocating millions
+/// of voxels.
+pub fn large_scene_threshold_crossed(total_count: u32, chunk_count: u32) -> bool {
+    total_count >= LARGE_SCENE_CELLS || chunk_count >= LARGE_SCENE_CHUNKS
+}
+
+/// Counterpart that drops the latch once both counters fall below 80 % of
+/// their thresholds.
+pub fn large_scene_warning_cleared(total_count: u32, chunk_count: u32) -> bool {
+    total_count < LARGE_SCENE_CELLS * HYSTERESIS_NUM / HYSTERESIS_DEN
+        && chunk_count < LARGE_SCENE_CHUNKS * HYSTERESIS_NUM / HYSTERESIS_DEN
 }
 
 #[cfg(test)]
@@ -195,29 +228,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_size_is_32() {
+    fn default_is_empty() {
         let g = VoxelGrid::default();
-        assert_eq!(g.size, 32);
-        assert_eq!(g.size_i(), 32);
-        assert_eq!(g.chunks_per_axis(), 1);
+        assert!(g.chunks.is_empty());
+        assert_eq!(g.count(), 0);
+        assert_eq!(g.total_count, 0);
+        assert!(!g.warned_large);
     }
 
     #[test]
-    fn in_bounds_inclusive_zero_exclusive_size() {
-        let g = VoxelGrid::default();
-        assert!(g.in_bounds(IVec3::ZERO));
-        assert!(g.in_bounds(IVec3::new(g.size_i() - 1, g.size_i() - 1, g.size_i() - 1)));
-        assert!(!g.in_bounds(IVec3::new(-1, 0, 0)));
-        assert!(!g.in_bounds(IVec3::new(0, g.size_i(), 0)));
-        assert!(!g.in_bounds(IVec3::new(0, 0, g.size_i())));
+    fn set_below_floor_is_refused() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, -1, 0), Some([1, 2, 3, 255]));
+        assert_eq!(g.count(), 0);
+        assert!(g.chunks.is_empty());
+        assert_eq!(g.get(IVec3::new(0, -1, 0)), None);
     }
 
     #[test]
-    fn in_bounds_rejects_cells_outside_active_box_even_inside_storage() {
-        // Default size is 32; storage is 128. Cell at (50, 0, 0) is valid in
-        // storage but outside the active box.
-        let g = VoxelGrid::default();
-        assert!(!g.in_bounds(IVec3::new(50, 0, 0)));
+    fn set_at_floor_y_zero_is_allowed() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 2, 3, 255]));
+        assert_eq!(g.get(IVec3::new(0, 0, 0)), Some([1, 2, 3, 255]));
     }
 
     #[test]
@@ -231,83 +263,144 @@ mod tests {
     }
 
     #[test]
-    fn set_out_of_bounds_is_noop() {
+    fn set_at_negative_x_or_z_works() {
         let mut g = VoxelGrid::default();
-        g.dirty = false;
-        g.set(IVec3::new(-1, 0, 0), Some([1, 1, 1, 255]));
-        g.set(IVec3::new(g.size_i(), 0, 0), Some([1, 1, 1, 255]));
-        assert!(!g.dirty);
+        g.set(IVec3::new(-50, 0, 100), Some([5, 6, 7, 255]));
+        assert_eq!(g.get(IVec3::new(-50, 0, 100)), Some([5, 6, 7, 255]));
+    }
+
+    #[test]
+    fn chunk_allocates_on_first_write_and_drops_when_emptied() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
+        assert_eq!(g.chunks.len(), 1);
+        assert!(g.chunks.contains_key(&IVec3::ZERO));
+        g.set(IVec3::new(5, 5, 5), None);
+        assert!(g.chunks.is_empty());
         assert_eq!(g.count(), 0);
     }
 
     #[test]
-    fn get_out_of_bounds_returns_none() {
+    fn iter_occupied_visits_all_set_cells() {
+        let mut g = VoxelGrid::default();
+        let positions = [
+            IVec3::new(0, 0, 0),
+            IVec3::new(35, 17, 9),
+            IVec3::new(-50, 0, 100),
+        ];
+        for p in &positions {
+            g.set(*p, Some([1, 2, 3, 255]));
+        }
+        let mut seen: Vec<IVec3> = g.iter_occupied().map(|(p, _)| p).collect();
+        seen.sort_by_key(|p| (p.x, p.y, p.z));
+        let mut want: Vec<IVec3> = positions.to_vec();
+        want.sort_by_key(|p| (p.x, p.y, p.z));
+        assert_eq!(seen, want);
+    }
+
+    #[test]
+    fn bounding_box_handles_negative_coords() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(-10, 0, 5), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(20, 100, 50), Some([1, 1, 1, 255]));
+        let (min, max) = g.bounding_box().unwrap();
+        assert_eq!(min, IVec3::new(-10, 0, 5));
+        assert_eq!(max, IVec3::new(20, 100, 50));
+    }
+
+    #[test]
+    fn bounding_box_none_when_empty() {
         let g = VoxelGrid::default();
-        assert_eq!(g.get(IVec3::new(-1, 0, 0)), None);
-        assert_eq!(g.get(IVec3::new(0, g.size_i(), 0)), None);
-    }
-
-    #[test]
-    fn resize_clears_and_updates_size() {
-        let mut g = VoxelGrid::default();
-        g.set(IVec3::new(1, 1, 1), Some([1, 1, 1, 255]));
-        assert_eq!(g.count(), 1);
-        g.resize(64);
-        assert_eq!(g.size, 64);
-        assert_eq!(g.count(), 0);
-        // Cells previously out of bounds (e.g. 40, 40, 40) are now reachable.
-        g.set(IVec3::new(40, 40, 40), Some([2, 2, 2, 255]));
-        assert_eq!(g.get(IVec3::new(40, 40, 40)), Some([2, 2, 2, 255]));
+        assert!(g.bounding_box().is_none());
     }
 
     #[test]
     fn set_marks_owning_chunk_dirty() {
         let mut g = VoxelGrid::default();
-        g.resize(128);
-        for d in g.chunk_dirty.iter_mut() {
-            *d = false;
-        }
-        // Cell at (5, 5, 5) → chunk (0, 0, 0).
+        g.dirty_chunks.clear();
         g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
-        assert!(g.chunk_dirty[chunk_flat_idx(0, 0, 0)]);
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
     }
 
     #[test]
-    fn set_marks_neighbor_chunk_dirty_on_boundary() {
+    fn set_marks_seam_neighbour_dirty_positive() {
         let mut g = VoxelGrid::default();
-        g.resize(128);
-        for d in g.chunk_dirty.iter_mut() {
-            *d = false;
-        }
-        // Cell at x = CHUNK-1: last column of chunk (0,*,*). Neighbour (1,0,0)
-        // should also flag — its face-occlusion across the X seam changed.
-        let p = IVec3::new((CHUNK - 1) as i32, 5, 5);
+        g.dirty_chunks.clear();
+        // Last column of chunk (0,0,0); the X-seam neighbour (1,0,0) flags.
+        let p = IVec3::new(CHUNK_I - 1, 5, 5);
         g.set(p, Some([1, 1, 1, 255]));
-        assert!(g.chunk_dirty[chunk_flat_idx(0, 0, 0)]);
-        assert!(g.chunk_dirty[chunk_flat_idx(1, 0, 0)]);
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn chunk_dirty_seam_propagation_with_negative_coords() {
+        let mut g = VoxelGrid::default();
+        g.dirty_chunks.clear();
+        // x=0 in world coords is x=0 inside chunk (0,*,*); seam neighbour
+        // at chunk (-1,0,0) must flag too.
+        let p = IVec3::new(0, 5, 5);
+        g.set(p, Some([1, 1, 1, 255]));
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(g.dirty_chunks.contains(&IVec3::new(-1, 0, 0)));
     }
 
     #[test]
     fn set_does_not_mark_distant_chunks_dirty() {
         let mut g = VoxelGrid::default();
-        g.resize(128);
-        for d in g.chunk_dirty.iter_mut() {
-            *d = false;
-        }
-        // Middle of chunk (0,0,0): no neighbour should flag.
-        g.set(IVec3::new(1, 1, 1), Some([1, 1, 1, 255]));
-        assert!(g.chunk_dirty[chunk_flat_idx(0, 0, 0)]);
-        assert!(!g.chunk_dirty[chunk_flat_idx(1, 0, 0)]);
+        g.dirty_chunks.clear();
+        g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(!g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+        assert!(!g.dirty_chunks.contains(&IVec3::new(-1, 0, 0)));
     }
 
     #[test]
-    fn count_and_clear() {
+    fn clear_drops_all_chunks_and_dirties_them() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
-        g.set(IVec3::new(5, 6, 7), Some([2, 2, 2, 255]));
-        assert_eq!(g.count(), 2);
+        g.set(IVec3::new(50, 60, 70), Some([2, 2, 2, 255]));
+        g.dirty_chunks.clear();
         g.clear();
+        assert!(g.chunks.is_empty());
         assert_eq!(g.count(), 0);
         assert!(g.dirty);
+        // The two former chunk coords are now dirty so the mesher despawns
+        // their entities next frame.
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(g.dirty_chunks.contains(&IVec3::new(1, 1, 2)));
+    }
+
+    #[test]
+    fn count_tracks_set_and_overwrite() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(0, 0, 0), Some([2, 2, 2, 255])); // overwrite, no delta
+        assert_eq!(g.count(), 1);
+        g.set(IVec3::new(0, 0, 0), None);
+        assert_eq!(g.count(), 0);
+    }
+
+    #[test]
+    fn large_scene_threshold_crossed_by_cells() {
+        assert!(!large_scene_threshold_crossed(LARGE_SCENE_CELLS - 1, 0));
+        assert!(large_scene_threshold_crossed(LARGE_SCENE_CELLS, 0));
+    }
+
+    #[test]
+    fn large_scene_threshold_crossed_by_chunks() {
+        assert!(!large_scene_threshold_crossed(0, LARGE_SCENE_CHUNKS - 1));
+        assert!(large_scene_threshold_crossed(0, LARGE_SCENE_CHUNKS));
+    }
+
+    #[test]
+    fn large_scene_warning_clears_only_when_both_below_hysteresis() {
+        let cells_below = LARGE_SCENE_CELLS * HYSTERESIS_NUM / HYSTERESIS_DEN - 1;
+        let chunks_below = LARGE_SCENE_CHUNKS * HYSTERESIS_NUM / HYSTERESIS_DEN - 1;
+        let cells_above = LARGE_SCENE_CELLS * HYSTERESIS_NUM / HYSTERESIS_DEN;
+        let chunks_above = LARGE_SCENE_CHUNKS * HYSTERESIS_NUM / HYSTERESIS_DEN;
+        assert!(large_scene_warning_cleared(cells_below, chunks_below));
+        assert!(!large_scene_warning_cleared(cells_above, chunks_below));
+        assert!(!large_scene_warning_cleared(cells_below, chunks_above));
     }
 }

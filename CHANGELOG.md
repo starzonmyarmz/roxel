@@ -12,6 +12,15 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: open-world voxel grid — no fixed canvas size. Paint anywhere on X / Z, as high as memory allows; y < 0 is the only hard bound. Chunks allocate on first write and drop when empty.
+- feat: camera-following 256×256 floor plane with Minecraft-style chunk-grid lines (light every voxel, heavy every 16); RGB axis triad always visible at world origin.
+- feat: footer reads `Design WxHxD` from the occupied AABB and `Zoom N voxels` from the orbit radius — no more % readout.
+- feat: soft toast warning when a scene crosses 5M voxels or 4K loaded chunks; one-shot, clears with hysteresis.
+- breaking: `.roxel` v1 format dropped. New format stores only `voxels` (no `version`, no `size`). v1 files happen to load when their `voxels` field matches but are not officially supported.
+- breaking: New-project modal is a confirm dialog only — no grid-size picker.
+- breaking: wall planes removed (visibility toggle, color preference, related commands gone). Old `preferences.ron` files with `show_walls` / `wall_color` load silently.
+- breaking: `.vox` and `.qb` exports AABB-shift to origin so negative-coord scenes survive the round-trip; `.vox` refuses extents > 256 per axis (format cap).
+- refactor: VoxelGrid storage is sparse — `HashMap<IVec3, Chunk>` instead of a pre-allocated 128³ flat array. Chunk entities spawn/despawn dynamically.
 - feat: Save remembers the last-used file path; new Save As… entry (⇧⌘S) under File menu and command palette
 - feat: Shape tool — primitive popup on the left rail; rail icon reflects the active primitive (Rectangle / Ellipse / Line); drop the Filled toggle (always filled)
 - feat: Cmd/Ctrl+D clears the current selection

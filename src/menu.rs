@@ -277,7 +277,6 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
     for action in actions {
         match action {
             MenuAction::NewProject => {
-                p.new_project.picker_size = p.grid.size;
                 p.new_project.dialog_open = true;
             }
             MenuAction::OpenProject => spawn_open(&mut p.pending),

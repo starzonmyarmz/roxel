@@ -797,10 +797,7 @@ pub fn tool_input_system(
                 None => grid_ref.get(p),
             }
         };
-        match (
-            tool.current,
-            pick_with(read, grid_ref.size_i(), origin, dir),
-        ) {
+        match (tool.current, pick_with(read, origin, dir)) {
             (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,
@@ -983,18 +980,10 @@ pub fn move_drag_system(
         if new_delta == drag.applied_delta {
             return;
         }
-        // Refuse shifts that would leave the grid; the cursor can roam past
-        // the edge without dragging voxels into oblivion.
-        let s = grid.size_i();
+        // Refuse shifts that would drop voxels below the floor. The open
+        // world has no upper bound on X/Y/Z, but Y < 0 is forbidden.
         let new_min = orig_aabb.min + new_delta;
-        let new_max = orig_aabb.max + new_delta;
-        if new_min.x < 0
-            || new_min.y < 0
-            || new_min.z < 0
-            || new_max.x >= s
-            || new_max.y >= s
-            || new_max.z >= s
-        {
+        if new_min.y < 0 {
             return;
         }
 

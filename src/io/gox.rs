@@ -1,7 +1,8 @@
-use crate::grid::{ALLOWED_SIZES, VoxelGrid, snap_to_allowed_size};
+use crate::grid::VoxelGrid;
 use crate::io::reader::LeReader;
 use anyhow::{Result, anyhow, bail};
 use bevy::math::IVec3;
+use std::collections::HashMap;
 use std::path::Path;
 
 // Goxel .gox reader/writer. Format (version 2):
@@ -14,10 +15,11 @@ use std::path::Path;
 //     data:    `size` bytes
 //     crc:     i32 LE (ignored on read, zero on write)
 //
-// Roxel writes BL16 blocks as raw 16×16×16×4 RGBA bytes and a single LAYR
-// referencing them. Foreign Goxel files that store BL16 as a PNG image are
-// rejected with a clear error — Goxel is Z-up, so positions are remapped to
-// Roxel's Y-up convention on both read and write.
+// Roxel writes BL16 blocks as raw 16×16×16×4 RGBA bytes. Foreign Goxel files
+// that store BL16 as a PNG image are rejected with a clear error. Goxel is
+// Z-up, so positions are remapped to Roxel's Y-up convention on both read
+// and write. .gox supports negative block coordinates natively — no
+// AABB-shift on export.
 //
 // Block-local byte offset for voxel (lx, ly, lz) in Goxel coords:
 //   offset = (lz * 256 + ly * 16 + lx) * 4
@@ -26,6 +28,7 @@ use std::path::Path;
 const BLOCK_SIZE: usize = 16;
 const BLOCK_VOXELS: usize = BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE;
 const BLOCK_BYTES: usize = BLOCK_VOXELS * 4;
+const BLOCK_I: i32 = BLOCK_SIZE as i32;
 const PNG_MAGIC: [u8; 4] = [0x89, 0x50, 0x4E, 0x47];
 
 pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
@@ -33,39 +36,48 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     buf.extend_from_slice(b"GOX ");
     buf.extend_from_slice(&2i32.to_le_bytes());
 
-    // Minimal IMG chunk: empty dict (zero-size terminator).
     let mut img = Vec::new();
     img.extend_from_slice(&0i32.to_le_bytes());
     write_chunk(&mut buf, b"IMG ", &img);
 
-    // Collect non-empty Roxel 16³ chunks. The block at Roxel (cx, cy, cz) is
-    // stored at Goxel position (cx, cz, cy).
-    let chunks_per_axis = grid.size.div_ceil(BLOCK_SIZE);
-    let mut blocks: Vec<(i32, i32, i32, Box<[u8; BLOCK_BYTES]>)> = Vec::new();
-    for cx in 0..chunks_per_axis {
-        for cy in 0..chunks_per_axis {
-            for cz in 0..chunks_per_axis {
-                if let Some(block) = build_block(grid, cx, cy, cz) {
-                    let gx = (cx * BLOCK_SIZE) as i32;
-                    let gy = (cz * BLOCK_SIZE) as i32;
-                    let gz = (cy * BLOCK_SIZE) as i32;
-                    blocks.push((gx, gy, gz, block));
-                }
-            }
-        }
+    // Bucket Roxel voxels into 16³ blocks keyed by 16-block coord. The grid's
+    // own 32³ chunk layout doesn't line up with .gox's 16³ blocks, so we re-
+    // bucket here. Block at Roxel block-coord (bx, by, bz) → Goxel position
+    // (bx*16, bz*16, by*16) after axis remap.
+    let mut blocks: HashMap<(i32, i32, i32), Box<[u8; BLOCK_BYTES]>> = HashMap::new();
+    for (p, c) in grid.iter_occupied() {
+        let bx = p.x.div_euclid(BLOCK_I);
+        let by = p.y.div_euclid(BLOCK_I);
+        let bz = p.z.div_euclid(BLOCK_I);
+        let lx = p.x.rem_euclid(BLOCK_I) as usize;
+        let ly = p.y.rem_euclid(BLOCK_I) as usize;
+        let lz = p.z.rem_euclid(BLOCK_I) as usize;
+        let entry = blocks
+            .entry((bx, by, bz))
+            .or_insert_with(|| Box::new([0u8; BLOCK_BYTES]));
+        // Roxel local (lx, ly, lz) → Goxel block-local (gx=lx, gy=lz, gz=ly).
+        let off = (ly * 256 + lz * 16 + lx) * 4;
+        entry[off] = c[0];
+        entry[off + 1] = c[1];
+        entry[off + 2] = c[2];
+        entry[off + 3] = 255;
     }
 
-    for (_, _, _, data) in &blocks {
+    let mut entries: Vec<((i32, i32, i32), Box<[u8; BLOCK_BYTES]>)> = blocks.into_iter().collect();
+    entries.sort_by_key(|((bx, by, bz), _)| (*bx, *by, *bz));
+
+    for (_, data) in &entries {
         write_chunk(&mut buf, b"BL16", data.as_ref());
     }
 
     let mut layr = Vec::new();
-    layr.extend_from_slice(&(blocks.len() as i32).to_le_bytes());
-    for (i, (gx, gy, gz, _)) in blocks.iter().enumerate() {
+    layr.extend_from_slice(&(entries.len() as i32).to_le_bytes());
+    for (i, ((bx, by, bz), _)) in entries.iter().enumerate() {
         layr.extend_from_slice(&(i as i32).to_le_bytes());
-        layr.extend_from_slice(&gx.to_le_bytes());
-        layr.extend_from_slice(&gy.to_le_bytes());
-        layr.extend_from_slice(&gz.to_le_bytes());
+        // Y-up→Z-up: (gx, gy, gz) = (bx*16, bz*16, by*16).
+        layr.extend_from_slice(&(bx * BLOCK_I).to_le_bytes());
+        layr.extend_from_slice(&(bz * BLOCK_I).to_le_bytes());
+        layr.extend_from_slice(&(by * BLOCK_I).to_le_bytes());
         layr.extend_from_slice(&[0u8; 8]);
     }
     write_dict_entry(&mut layr, "name", b"Layer 0");
@@ -75,39 +87,6 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
 
     std::fs::write(path, &buf)?;
     Ok(())
-}
-
-fn build_block(
-    grid: &VoxelGrid,
-    cx: usize,
-    cy: usize,
-    cz: usize,
-) -> Option<Box<[u8; BLOCK_BYTES]>> {
-    let mut data: Box<[u8; BLOCK_BYTES]> = Box::new([0u8; BLOCK_BYTES]);
-    let mut any = false;
-    for lx in 0..BLOCK_SIZE {
-        for ly in 0..BLOCK_SIZE {
-            for lz in 0..BLOCK_SIZE {
-                let rx = cx * BLOCK_SIZE + lx;
-                let ry = cy * BLOCK_SIZE + ly;
-                let rz = cz * BLOCK_SIZE + lz;
-                if rx >= grid.size || ry >= grid.size || rz >= grid.size {
-                    continue;
-                }
-                let Some(c) = grid.cell(rx, ry, rz) else {
-                    continue;
-                };
-                // Roxel (lx, ly, lz) → Goxel block-local (gx=lx, gy=lz, gz=ly).
-                let off = (ly * 256 + lz * 16 + lx) * 4;
-                data[off] = c[0];
-                data[off + 1] = c[1];
-                data[off + 2] = c[2];
-                data[off + 3] = 255;
-                any = true;
-            }
-        }
-    }
-    if any { Some(data) } else { None }
 }
 
 fn write_chunk(out: &mut Vec<u8>, typ: &[u8; 4], data: &[u8]) {
@@ -160,7 +139,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
             }
             b"LAYR" => {
                 if refs.is_some() {
-                    continue; // first layer only
+                    continue;
                 }
                 let mut lr = LeReader::new(&data);
                 let n = lr.i32()? as usize;
@@ -175,44 +154,24 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
                 }
                 refs = Some(collected);
             }
-            _ => {} // IMG/PREV/CAMR/MATE/etc. ignored
+            _ => {}
         }
     }
 
     let refs = refs.ok_or_else(|| anyhow!("no LAYR chunk in file"))?;
-
-    // Goxel positions can be negative. Find min/max in Roxel coords so we can
-    // shift everything to start at (0, 0, 0) before snapping to a grid size.
-    let mut min = IVec3::new(i32::MAX, i32::MAX, i32::MAX);
-    let mut max = IVec3::new(i32::MIN, i32::MIN, i32::MIN);
-    for (_, gx, gy, gz) in &refs {
-        let rx = *gx;
-        let ry = *gz;
-        let rz = *gy;
-        min = min.min(IVec3::new(rx, ry, rz));
-        max = max.max(IVec3::new(rx + 16, ry + 16, rz + 16));
-    }
     if refs.is_empty() {
-        grid.resize(ALLOWED_SIZES[0]);
         return Ok(());
     }
-    let shift = -min;
-    let extent = (max - min).max_element() as usize;
-    grid.resize(snap_to_allowed_size(extent));
 
     let mut dropped = 0usize;
-    let limit = grid.size as i32;
     for (idx, gx, gy, gz) in refs {
         let Some(block) = blocks.get(idx as usize) else {
             continue;
         };
-        let base_rx = gx + shift.x;
-        let base_ry = gz + shift.y;
-        let base_rz = gy + shift.z;
-        // Loop variables track Goxel block-local axes (gzl outer, gyl mid,
-        // gxl inner) so the byte offset matches `(gzl*256 + gyl*16 + gxl)*4`.
-        // The Z↔Y remap then maps Goxel (gxl, gyl, gzl) → Roxel local
-        // (lx=gxl, ly=gzl, lz=gyl).
+        // Goxel block min in Roxel coords: (rx, ry, rz) = (gx, gz, gy).
+        let base_rx = gx;
+        let base_ry = gz;
+        let base_rz = gy;
         for gzl in 0..BLOCK_SIZE {
             for gyl in 0..BLOCK_SIZE {
                 for gxl in 0..BLOCK_SIZE {
@@ -224,7 +183,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
                     let rx = base_rx + gxl as i32;
                     let ry = base_ry + gzl as i32;
                     let rz = base_rz + gyl as i32;
-                    if rx < 0 || ry < 0 || rz < 0 || rx >= limit || ry >= limit || rz >= limit {
+                    if ry < 0 {
                         dropped += 1;
                         continue;
                     }
@@ -237,10 +196,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
         }
     }
     if dropped > 0 {
-        eprintln!(
-            "Import .gox: dropped {dropped} voxels outside {sz}³",
-            sz = grid.size
-        );
+        eprintln!("Import .gox: dropped {dropped} voxels below the floor");
     }
     Ok(())
 }
@@ -270,16 +226,21 @@ mod tests {
         export(&path, &g).unwrap();
         let mut g2 = VoxelGrid::default();
         g2.set(IVec3::new(0, 0, 0), Some([9, 9, 9, 255]));
-        import(&path, &mut g2).unwrap();
-        assert_eq!(g2.count(), 0);
+        // Loading an empty file should leave g2 alone (no LAYR refs to apply).
+        // The previous bounded version cleared via resize; the open-world
+        // loader does not — we instead test that no new cells get added.
+        let count_before = g2.count();
+        // An empty grid export still writes a LAYR with 0 refs; import is a
+        // no-op on the grid.
+        let result = import(&path, &mut g2);
+        assert!(result.is_ok());
+        assert_eq!(g2.count(), count_before);
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
     fn roundtrip_preserves_voxels_across_block_boundary() {
-        // Voxels in three different 16³ blocks at the corners of a 64³ grid.
         let mut g = VoxelGrid::default();
-        g.resize(64);
         let pts: [(IVec3, [u8; 4]); 4] = [
             (IVec3::new(0, 0, 0), [255, 0, 0, 255]),
             (IVec3::new(15, 5, 7), [0, 255, 0, 255]),
@@ -300,10 +261,27 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_handles_negative_coords() {
+        let mut g = VoxelGrid::default();
+        let pts: [(IVec3, [u8; 4]); 2] = [
+            (IVec3::new(-30, 5, -10), [10, 20, 30, 255]),
+            (IVec3::new(15, 0, 7), [40, 50, 60, 255]),
+        ];
+        for (p, c) in pts {
+            g.set(p, Some(c));
+        }
+        let path = tmp_path("negative", "gox");
+        export(&path, &g).unwrap();
+        let mut g2 = VoxelGrid::default();
+        import(&path, &mut g2).unwrap();
+        for (p, c) in pts {
+            assert_eq!(g2.get(p), Some(c), "voxel at {p:?} mismatch");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn export_remaps_y_up_to_z_up() {
-        // A voxel at Roxel (0, 5, 0) lives in block (cx=0, cy=0, cz=0). Inside
-        // the BL16 it should land at Goxel local (gx=0, gy=0, gz=5), i.e. byte
-        // offset (5*256 + 0*16 + 0)*4 = 5120.
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 5, 0), Some([10, 20, 30, 255]));
         let path = tmp_path("axis-export", "gox");
@@ -311,7 +289,6 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);
 
-        // Walk chunks to find BL16.
         let mut pos = 8;
         let mut found = None;
         while pos + 8 <= bytes.len() {
@@ -326,23 +303,17 @@ mod tests {
         }
         let block = found.expect("BL16 present");
         assert_eq!(block.len(), BLOCK_BYTES);
-        // ly=0, lz=5, lx=0 → off = (0*256 + 5*16 + 0)*4 = 320 -- WAIT.
-        // The mapping above (Roxel→Goxel block-local) is gx=lx=0, gy=lz=0,
-        // gz=ly=5 in this voxel's case? Re-derive:
-        //   Roxel voxel at world (0,5,0) → block-local (lx=0, ly=5, lz=0).
-        //   Goxel block-local (gx=lx=0, gy=lz=0, gz=ly=5).
-        //   Byte offset = (gz*256 + gy*16 + gx) * 4 = (5*256)*4 = 5120.
+        // Roxel (0, 5, 0) → block-local (lx=0, ly=5, lz=0) → Goxel byte offset
+        // (ly*256 + lz*16 + lx)*4 = 5120.
         let off = 5120;
         assert_eq!(&block[off..off + 4], &[10, 20, 30, 255]);
     }
 
     #[test]
     fn import_rejects_png_encoded_block() {
-        // Forge a .gox with a PNG-magic'd BL16 payload (8 bytes total).
         let mut buf = Vec::new();
         buf.extend_from_slice(b"GOX ");
         buf.extend_from_slice(&2i32.to_le_bytes());
-        // BL16 chunk with 8-byte fake PNG payload.
         let payload = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         buf.extend_from_slice(b"BL16");
         buf.extend_from_slice(&(payload.len() as i32).to_le_bytes());

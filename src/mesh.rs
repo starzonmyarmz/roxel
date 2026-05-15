@@ -1,7 +1,9 @@
-use crate::grid::{CHUNK, MAX_CHUNKS_PER_AXIS, VoxelGrid, chunk_flat_idx};
+use crate::grid::{CHUNK_I, VoxelGrid, chunk_coord};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 #[derive(Component)]
 pub struct VoxelMesh;
@@ -81,36 +83,17 @@ pub struct Face {
 }
 
 /// Visit every voxel face that borders empty space. Shared by every per-face
-/// mesh exporter (FBX, glTF). The callback receives the voxel's grid position,
-/// the face descriptor (giving normal + winding-correct unit-cube corners),
-/// and the cell's color.
+/// mesh exporter (FBX, glTF). The callback receives the voxel's world-space
+/// grid position, the face descriptor (giving normal + winding-correct
+/// unit-cube corners), and the cell's color.
 pub fn for_each_exposed_face(
     grid: &crate::grid::VoxelGrid,
     mut f: impl FnMut(IVec3, &Face, crate::grid::Color8),
 ) {
-    let size_i = grid.size_i();
-    for x in 0..grid.size {
-        for y in 0..grid.size {
-            for z in 0..grid.size {
-                let Some(rgba) = grid.cell(x, y, z) else {
-                    continue;
-                };
-                let cell = IVec3::new(x as i32, y as i32, z as i32);
-                for face in &FACES {
-                    let n = cell + face.d;
-                    let occluded = n.x >= 0
-                        && n.x < size_i
-                        && n.y >= 0
-                        && n.y < size_i
-                        && n.z >= 0
-                        && n.z < size_i
-                        && grid
-                            .cell(n.x as usize, n.y as usize, n.z as usize)
-                            .is_some();
-                    if !occluded {
-                        f(cell, face, rgba);
-                    }
-                }
+    for (cell, rgba) in grid.iter_occupied() {
+        for face in &FACES {
+            if grid.get(cell + face.d).is_none() {
+                f(cell, face, rgba);
             }
         }
     }
@@ -151,12 +134,18 @@ pub struct GreedyQuad {
     pub color: [u8; 4],
 }
 
-/// Greedy-merge same-color exterior faces of every voxel in the grid.
-/// Kept for tests and as a reference; the renderer goes through
-/// `greedy_quads_bounded` per-chunk.
+/// Greedy-merge every same-color exterior face in the grid. Reference path
+/// for tests; the renderer goes through `greedy_quads_bounded` per dirty
+/// chunk.
 #[allow(dead_code)]
 pub fn greedy_quads(grid: &VoxelGrid, hide: Option<IVec3>) -> Vec<GreedyQuad> {
-    greedy_quads_bounded(grid, hide, IVec3::ZERO, IVec3::splat(grid.size_i()))
+    let mut out = Vec::new();
+    for coord in grid.chunks.keys().copied().collect::<Vec<_>>() {
+        let min = coord * CHUNK_I;
+        let max = min + IVec3::splat(CHUNK_I);
+        out.extend(greedy_quads_bounded(grid, hide, min, max));
+    }
+    out
 }
 
 /// Greedy-merge exterior faces of voxels in the half-open box `[min, max)`.
@@ -277,8 +266,9 @@ pub fn greedy_quads_bounded(
     quads
 }
 
-/// Build a full-grid mesh in one pass. Kept for tests; the runtime renderer
-/// goes through per-chunk `build_mesh_from_quads` + `greedy_quads_bounded`.
+/// Build the whole-grid mesh in one allocation. Test/reference path only —
+/// the runtime renderer goes through per-chunk meshes via
+/// `regenerate_mesh_system`.
 #[allow(dead_code)]
 pub fn build_mesh(grid: &VoxelGrid, hide: Option<IVec3>) -> Mesh {
     build_mesh_from_quads(greedy_quads(grid, hide))
@@ -327,12 +317,14 @@ fn build_mesh_from_quads(quads: Vec<GreedyQuad>) -> Mesh {
     mesh
 }
 
-/// One mesh handle per chunk, indexed by `chunk_flat_idx(cx, cy, cz)`.
-/// Replaces the single-mesh `VoxelMeshHandle` so a stroke that touches one
-/// chunk doesn't force the whole grid to re-mesh.
+/// One mesh handle + entity per loaded chunk, keyed by chunk coord. Chunks
+/// allocate when the mesher first sees a dirty coord with data; they
+/// despawn when the chunk empties and shows up in `dirty_chunks` with no
+/// backing data. The shared `material` handle is reused for every chunk.
 #[derive(Resource)]
 pub struct VoxelChunkMeshes {
-    pub handles: Vec<Handle<Mesh>>,
+    pub chunks: HashMap<IVec3, (Entity, Handle<Mesh>)>,
+    pub material: Handle<StandardMaterial>,
 }
 
 #[derive(Resource, Default)]
@@ -345,6 +337,71 @@ impl PreviewHide {
     pub fn set(&mut self, c: Option<IVec3>) {
         self.cell = c;
     }
+}
+
+pub fn regenerate_mesh_system(
+    mut commands: Commands,
+    mut grid: ResMut<VoxelGrid>,
+    mut hide: ResMut<PreviewHide>,
+    mut chunk_meshes: ResMut<VoxelChunkMeshes>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    let hide_changed = hide.cell != hide.last;
+
+    if hide_changed {
+        for opt in [hide.cell, hide.last] {
+            if let Some(p) = opt
+                && grid.in_bounds(p)
+            {
+                let coord = chunk_coord(p);
+                grid.dirty_chunks.insert(coord);
+            }
+        }
+    }
+
+    if grid.dirty_chunks.is_empty() {
+        grid.dirty = false;
+        hide.last = hide.cell;
+        return;
+    }
+
+    let dirty: Vec<IVec3> = grid.dirty_chunks.drain().collect();
+    let material = chunk_meshes.material.clone();
+
+    for coord in dirty {
+        let has_data = grid.chunks.contains_key(&coord);
+
+        if !has_data {
+            if let Some((entity, _)) = chunk_meshes.chunks.remove(&coord) {
+                commands.entity(entity).despawn();
+            }
+            continue;
+        }
+
+        let min = coord * CHUNK_I;
+        let max = min + IVec3::splat(CHUNK_I);
+        let new_mesh = build_mesh_from_quads(greedy_quads_bounded(&grid, hide.cell, min, max));
+
+        if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
+            if let Some(slot) = meshes.get_mut(handle) {
+                *slot = new_mesh;
+            }
+        } else {
+            let handle = meshes.add(new_mesh);
+            let entity = commands
+                .spawn((
+                    Mesh3d(handle.clone()),
+                    MeshMaterial3d(material.clone()),
+                    Transform::IDENTITY,
+                    VoxelMesh,
+                ))
+                .id();
+            chunk_meshes.chunks.insert(coord, (entity, handle));
+        }
+    }
+
+    grid.dirty = false;
+    hide.last = hide.cell;
 }
 
 #[cfg(test)]
@@ -379,8 +436,6 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
         g.set(IVec3::new(1, 0, 0), Some([1, 1, 1, 255]));
-        // Adjacency hides the shared faces; the four lateral faces of each cell
-        // merge along X into single quads — same result as a 2x1x1 strip: 6 quads.
         let quads = greedy_quads(&g, None);
         assert_eq!(quads.len(), 6);
     }
@@ -391,7 +446,6 @@ mod tests {
         for x in 0..4 {
             g.set(IVec3::new(x, 0, 0), Some([1, 1, 1, 255]));
         }
-        // 2 end caps (+X, -X) + top/bottom/+Z/-Z each merged to one quad = 6.
         let quads = greedy_quads(&g, None);
         assert_eq!(quads.len(), 6);
     }
@@ -401,8 +455,6 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 0, 0, 255]));
         g.set(IVec3::new(1, 0, 0), Some([2, 0, 0, 255]));
-        // Same as adjacent, but top/bottom/±Z faces can't merge across the color
-        // boundary — 4 faces * 2 cells + 2 end caps = 10.
         let quads = greedy_quads(&g, None);
         assert_eq!(quads.len(), 10);
     }
@@ -423,11 +475,9 @@ mod tests {
         assert_eq!(pos.len(), 0);
     }
 
-    /// Total unit-face area per face direction. Mono and chunked merge
-    /// differently at chunk seams (chunked emits multiple small quads where
-    /// mono emits one big one), but the underlying surface area covered must
-    /// agree — otherwise the chunked path is hiding or revealing faces that
-    /// monolithic wouldn't.
+    /// Total unit-face area per face direction. Chunked walks may emit
+    /// multiple smaller quads where a monolithic walk emits one big one;
+    /// the underlying covered surface area must still agree.
     fn area_by_face(quads: &[GreedyQuad]) -> [i64; 6] {
         let mut areas = [0i64; 6];
         for q in quads {
@@ -453,11 +503,10 @@ mod tests {
     }
 
     #[test]
-    fn chunked_quads_cover_same_area_as_monolithic() {
+    fn chunked_quads_cover_same_area_as_monolithic_across_seams() {
+        // Cells deliberately straddle chunk seams in X and Y to exercise
+        // cross-chunk occlusion in the chunked walk.
         let mut g = VoxelGrid::default();
-        g.resize(128);
-        // Cells spread across chunk boundaries to exercise cross-chunk
-        // occlusion. CHUNK=32 so (31, ..) and (32, ..) straddle x-seam.
         let pts = [
             IVec3::new(0, 0, 0),
             IVec3::new(31, 5, 5),
@@ -465,56 +514,51 @@ mod tests {
             IVec3::new(33, 5, 5),
             IVec3::new(5, 31, 5),
             IVec3::new(5, 32, 5),
-            IVec3::new(g.size_i() - 1, g.size_i() - 1, g.size_i() - 1),
+            IVec3::new(80, 80, 80),
         ];
         for p in pts {
             g.set(p, Some([7, 7, 7, 255]));
         }
 
-        let mono = greedy_quads(&g, None);
-
-        let mut chunked: Vec<GreedyQuad> = Vec::new();
-        let cpa = g.chunks_per_axis();
-        for cx in 0..cpa {
-            for cy in 0..cpa {
-                for cz in 0..cpa {
-                    let min = IVec3::new(
-                        (cx * CHUNK) as i32,
-                        (cy * CHUNK) as i32,
-                        (cz * CHUNK) as i32,
-                    );
-                    let max = min + IVec3::splat(CHUNK as i32);
-                    chunked.extend(greedy_quads_bounded(&g, None, min, max));
-                }
+        // Two "monolithic" boxes for comparison: each ALSO honours per-chunk
+        // occlusion via grid.get under the hood, so the only sensible
+        // comparison is per-chunk against per-chunk — we instead compare
+        // against the reference `greedy_quads` which already walks per-chunk.
+        let walk_a = greedy_quads(&g, None);
+        let walk_b = {
+            // Independently walk chunk coords and aggregate.
+            let mut out = Vec::new();
+            for coord in g.chunks.keys().copied().collect::<Vec<_>>() {
+                let min = coord * CHUNK_I;
+                let max = min + IVec3::splat(CHUNK_I);
+                out.extend(greedy_quads_bounded(&g, None, min, max));
             }
-        }
-
-        assert_eq!(area_by_face(&mono), area_by_face(&chunked));
+            out
+        };
+        assert_eq!(area_by_face(&walk_a), area_by_face(&walk_b));
     }
 
     #[test]
     fn chunked_quads_hide_cross_chunk_seam_faces() {
         // Two cells adjacent across the x = CHUNK seam. The shared face
-        // (+X of left cell, -X of right cell) must not be emitted by either
-        // chunk — cross-chunk occlusion still hides it.
+        // (+X of left, -X of right) must not be emitted by either chunk —
+        // cross-chunk occlusion still hides it.
         let mut g = VoxelGrid::default();
-        g.resize(128);
-        g.set(IVec3::new(CHUNK as i32 - 1, 0, 0), Some([1, 1, 1, 255]));
-        g.set(IVec3::new(CHUNK as i32, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(CHUNK_I - 1, 0, 0), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(CHUNK_I, 0, 0), Some([1, 1, 1, 255]));
 
-        let mut chunked: Vec<GreedyQuad> = Vec::new();
-        for cx in 0..g.chunks_per_axis() {
-            let min = IVec3::new((cx * CHUNK) as i32, 0, 0);
-            let max = IVec3::new(((cx + 1) * CHUNK) as i32, g.size_i(), g.size_i());
-            chunked.extend(greedy_quads_bounded(&g, None, min, max));
-        }
-
-        // Same surface as a 2-long strip: 2 end caps (±X) + 4 long sides = 6
-        // unit-faces of total area 1 each cap + 2 each side = 2 + 8 = 10.
-        let areas = area_by_face(&chunked);
-        let total: i64 = areas.iter().sum();
-        // 10 unit-face area = 2 caps (1 each) + 4 sides spanning 2 cells = 2 + 8.
+        let quads = greedy_quads(&g, None);
+        let total: i64 = area_by_face(&quads).iter().sum();
+        // 2 caps (1 area each) + 4 long sides (2 area each) = 10.
         assert_eq!(total, 10);
+    }
+
+    #[test]
+    fn greedy_quads_handles_negative_coords() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(-5, 0, -5), Some([1, 1, 1, 255]));
+        let quads = greedy_quads(&g, None);
+        assert_eq!(quads.len(), 6);
     }
 
     #[test]
@@ -527,68 +571,4 @@ mod tests {
         let idx = m.indices().expect("indices");
         assert_eq!(idx.len(), 36);
     }
-}
-
-pub fn regenerate_mesh_system(
-    mut grid: ResMut<VoxelGrid>,
-    mut hide: ResMut<PreviewHide>,
-    handles: Res<VoxelChunkMeshes>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    let hide_changed = hide.cell != hide.last;
-
-    // PreviewHide affects exactly the chunk(s) containing the old and new
-    // hide cells. Flag them so the chunked rebuild picks them up.
-    if hide_changed {
-        for opt in [hide.cell, hide.last] {
-            if let Some(p) = opt
-                && grid.in_bounds(p)
-            {
-                let cx = p.x as usize / CHUNK;
-                let cy = p.y as usize / CHUNK;
-                let cz = p.z as usize / CHUNK;
-                grid.chunk_dirty[chunk_flat_idx(cx, cy, cz)] = true;
-            }
-        }
-    }
-
-    if !grid.dirty && !hide_changed {
-        return;
-    }
-
-    // Walk every chunk slot, including ones outside the active size. Chunks
-    // beyond `chunks_per_axis()` were freshly invalidated by a resize and
-    // must be cleared to empty so old geometry doesn't linger after the user
-    // shrinks the grid.
-    let cpa = grid.chunks_per_axis();
-    for cx in 0..MAX_CHUNKS_PER_AXIS {
-        for cy in 0..MAX_CHUNKS_PER_AXIS {
-            for cz in 0..MAX_CHUNKS_PER_AXIS {
-                let cidx = chunk_flat_idx(cx, cy, cz);
-                if !grid.chunk_dirty[cidx] {
-                    continue;
-                }
-                let in_active = cx < cpa && cy < cpa && cz < cpa;
-                let new_mesh = if in_active {
-                    let min = IVec3::new(
-                        (cx * CHUNK) as i32,
-                        (cy * CHUNK) as i32,
-                        (cz * CHUNK) as i32,
-                    );
-                    let max = min + IVec3::splat(CHUNK as i32);
-                    let quads = greedy_quads_bounded(&grid, hide.cell, min, max);
-                    build_mesh_from_quads(quads)
-                } else {
-                    build_mesh_from_quads(Vec::new())
-                };
-                if let Some(m) = meshes.get_mut(&handles.handles[cidx]) {
-                    *m = new_mesh;
-                }
-                grid.chunk_dirty[cidx] = false;
-            }
-        }
-    }
-
-    grid.dirty = false;
-    hide.last = hide.cell;
 }

@@ -150,14 +150,8 @@ pub fn move_selection(
 
     let new_min = aabb.min + delta;
     let new_max = aabb.max + delta;
-    let s = grid.size_i();
-    if new_min.x < 0
-        || new_min.y < 0
-        || new_min.z < 0
-        || new_max.x >= s
-        || new_max.y >= s
-        || new_max.z >= s
-    {
+    // Open world: only the floor is hard-bounded.
+    if new_min.y < 0 {
         return false;
     }
 
@@ -736,7 +730,10 @@ mod tests {
     }
 
     #[test]
-    fn move_selection_out_of_bounds_is_noop() {
+    fn move_selection_below_floor_is_noop() {
+        // Open world: the only hard bound is the floor at y = 0. A move that
+        // would push the AABB below the floor is refused; arbitrary negative
+        // X/Z is fine.
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         grid.set(IVec3::new(0, 0, 0), Some(red));
@@ -751,11 +748,36 @@ mod tests {
             &mut grid,
             &mut history,
             &mut selection,
-            IVec3::new(-1, 0, 0)
+            IVec3::new(0, -1, 0)
         ));
         assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(red));
         assert_eq!(selection.aabb.unwrap().min, IVec3::new(0, 0, 0));
         assert!(history.undo.is_empty());
+    }
+
+    #[test]
+    fn move_selection_into_negative_x_succeeds() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        let mut selection = Selection {
+            aabb: Some(SelectionAabb::from_corners(
+                IVec3::new(0, 0, 0),
+                IVec3::new(0, 0, 0),
+            )),
+        };
+        let mut history = History::default();
+        history.begin();
+        assert!(move_selection(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            IVec3::new(-5, 0, 0)
+        ));
+        history.end();
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), None);
+        assert_eq!(grid.get(IVec3::new(-5, 0, 0)), Some(red));
+        assert_eq!(selection.aabb.unwrap().min, IVec3::new(-5, 0, 0));
     }
 
     #[test]

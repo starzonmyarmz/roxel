@@ -1,4 +1,4 @@
-use crate::grid::{VoxelGrid, snap_to_allowed_size};
+use crate::grid::VoxelGrid;
 use crate::io::reader::LeReader;
 use anyhow::{Result, bail};
 use bevy::math::IVec3;
@@ -38,14 +38,8 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let py = r.i32()?;
     let pz = r.i32()?;
 
-    // Max world-space index reached by this matrix.
-    let max_extent = ((px + sx as i32).max(py + sy as i32).max(pz + sz as i32) as usize).max(1);
-    grid.resize(snap_to_allowed_size(max_extent));
-
     let mut dropped = 0usize;
-    let limit = grid.size as i32;
     let mut place = |x: i32, y: i32, z: i32, raw: u32, dropped: &mut usize| {
-        // Alpha byte == 0 means empty voxel.
         let bytes = raw.to_le_bytes();
         let alpha = bytes[3];
         if alpha == 0 {
@@ -57,7 +51,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
             [bytes[2], bytes[1], bytes[0], 255]
         };
         let p = IVec3::new(px + x, py + y, pz + z);
-        if p.x < 0 || p.y < 0 || p.z < 0 || p.x >= limit || p.y >= limit || p.z >= limit {
+        if p.y < 0 {
             *dropped += 1;
             return;
         }
@@ -101,10 +95,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     }
 
     if dropped > 0 {
-        eprintln!(
-            "Import .qb: dropped {dropped} voxels outside {sz}³",
-            sz = grid.size
-        );
+        eprintln!("Import .qb: dropped {dropped} voxels below the floor");
     }
     Ok(())
 }
@@ -112,7 +103,6 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid::MAX_GRID;
     use crate::io::test_util::tmp_path;
 
     fn push_u32(buf: &mut Vec<u8>, v: u32) {
@@ -122,9 +112,6 @@ mod tests {
         buf.extend_from_slice(&v.to_le_bytes());
     }
 
-    /// rgba_to_u32 packs bytes as little-endian u32: byte[0]=R, byte[1]=G,
-    /// byte[2]=B, byte[3]=A. Reader reads via to_le_bytes() which yields the
-    /// same byte order, so for RGBA format the first byte is R.
     fn rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
         u32::from_le_bytes([r, g, b, a])
     }
@@ -154,7 +141,6 @@ mod tests {
         let mut buf = Vec::new();
         header(&mut buf, false, 0, 1);
         matrix_header(&mut buf, "m", (2, 1, 1), (0, 0, 0));
-        // (x=0,y=0,z=0) empty, (x=1,y=0,z=0) red.
         push_u32(&mut buf, 0);
         push_u32(&mut buf, rgba(200, 50, 25, 255));
         let path = tmp_path("uncompressed", "qb");
@@ -171,7 +157,6 @@ mod tests {
         let mut buf = Vec::new();
         header(&mut buf, true, 0, 1);
         matrix_header(&mut buf, "m", (4, 1, 1), (0, 0, 0));
-        // One slice: CODEFLAG, count=4, color=green; then NEXTSLICE.
         push_u32(&mut buf, CODEFLAG);
         push_u32(&mut buf, 4);
         push_u32(&mut buf, rgba(0, 200, 0, 255));
@@ -188,8 +173,6 @@ mod tests {
 
     #[test]
     fn import_bgra_color_format_swizzles() {
-        // raw bytes are [R=10, G=20, B=30, A=255] in RGBA, so under BGRA
-        // interpretation byte[0]=B=10, byte[2]=R=30 → grid stores [30, 20, 10, 255].
         let mut buf = Vec::new();
         header(&mut buf, false, 1, 1);
         matrix_header(&mut buf, "m", (1, 1, 1), (0, 0, 0));
@@ -208,8 +191,6 @@ mod tests {
         header(&mut buf, false, 0, 2);
         matrix_header(&mut buf, "a", (1, 1, 1), (0, 0, 0));
         push_u32(&mut buf, rgba(1, 2, 3, 255));
-        // Second matrix is never read. Pad with junk so .qb file has bytes
-        // beyond the first matrix end (the reader stops at the first matrix).
         matrix_header(&mut buf, "b", (1, 1, 1), (20, 0, 0));
         push_u32(&mut buf, rgba(99, 99, 99, 255));
         let path = tmp_path("first-only", "qb");
@@ -217,42 +198,37 @@ mod tests {
         let mut g = VoxelGrid::default();
         import(&path, &mut g).unwrap();
         assert_eq!(g.get(IVec3::new(0, 0, 0)), Some([1, 2, 3, 255]));
-        // The second matrix's voxel at (20, 0, 0) must NOT be placed.
         assert_eq!(g.get(IVec3::new(20, 0, 0)), None);
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn import_snaps_to_smallest_fitting_size() {
+    fn import_accepts_voxels_far_from_origin() {
+        // Open-world: a matrix offset 200 voxels from origin must land at
+        // (200, 0, 0); no resizing, no clipping.
         let mut buf = Vec::new();
         header(&mut buf, false, 0, 1);
-        matrix_header(&mut buf, "m", (40, 1, 1), (0, 0, 0));
-        for x in 0..40 {
-            let _ = x;
-            push_u32(&mut buf, rgba(1, 1, 1, 255));
-        }
-        let path = tmp_path("snap", "qb");
+        matrix_header(&mut buf, "m", (1, 1, 1), (200, 0, 0));
+        push_u32(&mut buf, rgba(50, 60, 70, 255));
+        let path = tmp_path("far", "qb");
         std::fs::write(&path, &buf).unwrap();
         let mut g = VoxelGrid::default();
         import(&path, &mut g).unwrap();
-        assert_eq!(g.size, 64);
+        assert_eq!(g.get(IVec3::new(200, 0, 0)), Some([50, 60, 70, 255]));
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn import_crops_voxels_outside_max_grid() {
-        // pos offset = 130 pushes the single voxel past MAX_GRID=128. The
-        // matrix declares its own max extent though, so grid.size resolves to
-        // 128 and the voxel gets dropped.
+    fn import_drops_voxels_below_floor() {
+        // Negative-Y pos must refuse.
         let mut buf = Vec::new();
         header(&mut buf, false, 0, 1);
-        matrix_header(&mut buf, "m", (1, 1, 1), (130, 0, 0));
-        push_u32(&mut buf, rgba(50, 50, 50, 255));
-        let path = tmp_path("crop", "qb");
+        matrix_header(&mut buf, "m", (1, 1, 1), (0, -3, 0));
+        push_u32(&mut buf, rgba(5, 5, 5, 255));
+        let path = tmp_path("below-floor", "qb");
         std::fs::write(&path, &buf).unwrap();
         let mut g = VoxelGrid::default();
         import(&path, &mut g).unwrap();
-        assert_eq!(g.size, MAX_GRID);
         assert_eq!(g.count(), 0);
         let _ = std::fs::remove_file(&path);
     }

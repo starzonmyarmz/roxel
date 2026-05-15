@@ -23,12 +23,6 @@ use crate::ui::Toasts;
 #[derive(Component)]
 pub struct GroundPlane;
 
-/// 0 = back wall (constant Z), 1 = left wall (constant X). Used by
-/// `apply_new_project_system` to rebuild the right plane mesh + position on
-/// grid resize.
-#[derive(Component, Clone, Copy)]
-pub struct WallPlane(pub u8);
-
 #[derive(Component)]
 pub struct SnapshotCamera;
 
@@ -50,7 +44,6 @@ pub fn start_snapshot_system(
     main_cam: Query<(&GlobalTransform, &Projection, Option<&Tonemapping>), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
     mut ground: Query<(Entity, &mut Visibility), With<GroundPlane>>,
-    mut walls: Query<(Entity, &mut Visibility), (With<WallPlane>, Without<GroundPlane>)>,
 ) {
     let Some(path) = request.0.take() else { return };
     if session.camera.is_some() {
@@ -90,12 +83,6 @@ pub fn start_snapshot_system(
     for (e, mut vis) in ground.iter_mut() {
         *vis = Visibility::Hidden;
         session.hidden.push(e);
-    }
-    for (e, mut vis) in walls.iter_mut() {
-        if *vis != Visibility::Hidden {
-            *vis = Visibility::Hidden;
-            session.hidden.push(e);
-        }
     }
 
     let path_for_observer = path.clone();

@@ -8,7 +8,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 ## Features
 
-- Brush, erase, recolor, eyedrop, shape, select, and move tools on a variable-size 3D voxel grid (32 / 64 / 96 / 128 per axis)
+- Brush, erase, recolor, eyedrop, shape, select, and move tools on an open-world 3D voxel grid — paint anywhere on X / Z and as high as memory allows; the floor at y = 0 is the only hard boundary
 - Shape tool: rectangle, ellipse, line — 2D on the active build plane or extruded into a 3D box / cylinder / line
 - Select tool: drag a 3D AABB on a face plane, then bulk delete / recolor inside it
 - Move tool: drag a selected voxel along the picked face plane or arrow-key nudge; click a bare voxel with no selection to move just that voxel
@@ -20,7 +20,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, Autodesk `.fbx` (binary 7.4), glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
 - In-app toast notifications for save / load / import / export results
-- Light / Dark / System themes with separate canvas, floor, and wall color preferences
+- Light / Dark / System themes with separate canvas and floor color preferences, plus optional Minecraft-style floor grid lines and a permanent RGB axis triad at world origin
 
 ## Run
 
@@ -87,12 +87,12 @@ Windows builds are unsigned; SmartScreen will warn on first run.
 
 ## File format
 
-`.roxel` projects are RON-serialized:
+`.roxel` projects are RON-serialized. Open-world: only occupied cells are
+stored, no fixed grid size, coordinates are signed so models can sit at any
+position relative to the origin.
 
 ```rust
 struct ProjectFile {
-    version: u32,
-    size: [u32; 3],
     voxels: Vec<([i32; 3], Color8)>,
 }
 ```

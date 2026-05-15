@@ -90,7 +90,6 @@ mod tests {
         assert_eq!(p.theme, ThemePref::System);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor);
-        assert!(!p.show_walls);
         assert!(!p.show_floor_grid);
     }
 
@@ -145,7 +144,6 @@ mod tests {
     fn resolve_plane_match_theme_uses_plane_match_color() {
         let prefs = Preferences {
             floor_color: PlaneColorPref::MatchTheme,
-            wall_color: PlaneColorPref::MatchTheme,
             ..Default::default()
         };
         assert_eq!(
@@ -153,7 +151,7 @@ mod tests {
             plane_match_color(ThemeMode::Dark)
         );
         assert_eq!(
-            resolve_wall_color(&prefs, &Theme::light()),
+            resolve_floor_color(&prefs, &Theme::light()),
             plane_match_color(ThemeMode::Light)
         );
     }
@@ -162,11 +160,9 @@ mod tests {
     fn resolve_plane_custom_returns_custom() {
         let prefs = Preferences {
             floor_color: PlaneColorPref::Custom([99, 88, 77]),
-            wall_color: PlaneColorPref::Custom([11, 22, 33]),
             ..Default::default()
         };
         assert_eq!(resolve_floor_color(&prefs, &Theme::dark()), [99, 88, 77]);
-        assert_eq!(resolve_wall_color(&prefs, &Theme::dark()), [11, 22, 33]);
     }
 
     #[test]
@@ -187,9 +183,18 @@ mod tests {
         assert_eq!(p.theme, ThemePref::Dark);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor);
-        assert!(!p.show_walls);
         assert!(!p.show_floor_grid);
         assert!(p.preview_outline);
+    }
+
+    #[test]
+    fn preferences_round_trip_after_walls_removed() {
+        // An older preferences.ron carrying now-removed fields (`show_walls`,
+        // `wall_color`) must still load. Serde silently drops unknown fields.
+        let ron = "(theme: Dark, show_walls: true, wall_color: MatchTheme)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.theme, ThemePref::Dark);
+        assert!(p.show_floor);
     }
 }
 
@@ -200,12 +205,8 @@ pub struct Preferences {
     pub canvas_bg: CanvasBgPref,
     #[serde(default = "default_plane_color", alias = "plane_color")]
     pub floor_color: PlaneColorPref,
-    #[serde(default = "default_plane_color")]
-    pub wall_color: PlaneColorPref,
     #[serde(default = "default_show_floor")]
     pub show_floor: bool,
-    #[serde(default = "default_show_walls")]
-    pub show_walls: bool,
     #[serde(default = "default_show_floor_grid")]
     pub show_floor_grid: bool,
     #[serde(default = "default_preview_outline")]
@@ -221,9 +222,6 @@ fn default_plane_color() -> PlaneColorPref {
 fn default_show_floor() -> bool {
     true
 }
-fn default_show_walls() -> bool {
-    false
-}
 fn default_show_floor_grid() -> bool {
     false
 }
@@ -237,9 +235,7 @@ impl Default for Preferences {
             theme: ThemePref::default(),
             canvas_bg: default_canvas_bg(),
             floor_color: default_plane_color(),
-            wall_color: default_plane_color(),
             show_floor: default_show_floor(),
-            show_walls: default_show_walls(),
             show_floor_grid: default_show_floor_grid(),
             preview_outline: default_preview_outline(),
         }
@@ -286,10 +282,6 @@ fn resolve(pref: PlaneColorPref, mode: ThemeMode) -> [u8; 3] {
 
 pub fn resolve_floor_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
     resolve(prefs.floor_color, theme.mode)
-}
-
-pub fn resolve_wall_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
-    resolve(prefs.wall_color, theme.mode)
 }
 
 /// Per-mode default canvas color used when `CanvasBgPref::MatchTheme` is set.

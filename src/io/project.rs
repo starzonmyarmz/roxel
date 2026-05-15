@@ -1,33 +1,22 @@
-use crate::grid::{Color8, VoxelGrid, snap_to_allowed_size};
+use crate::grid::{Color8, VoxelGrid};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Open-world project file. Sparse — only occupied cells are written. The
+/// previous schema carried `version` and `size: [u32; 3]` fields; both are
+/// gone. Old files fail to deserialize and surface as a generic load error.
 #[derive(Serialize, Deserialize)]
 pub struct ProjectFile {
-    pub version: u32,
-    pub size: [u32; 3],
     pub voxels: Vec<([i32; 3], Color8)>,
 }
 
-const VERSION: u32 = 1;
-
 pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
-    let mut voxels = Vec::new();
-    for x in 0..grid.size {
-        for y in 0..grid.size {
-            for z in 0..grid.size {
-                if let Some(c) = grid.cell(x, y, z) {
-                    voxels.push(([x as i32, y as i32, z as i32], c));
-                }
-            }
-        }
-    }
-    let pf = ProjectFile {
-        version: VERSION,
-        size: [grid.size as u32; 3],
-        voxels,
-    };
+    let voxels: Vec<([i32; 3], Color8)> = grid
+        .iter_occupied()
+        .map(|(p, c)| ([p.x, p.y, p.z], c))
+        .collect();
+    let pf = ProjectFile { voxels };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
     std::fs::write(path, s)?;
     Ok(())
@@ -36,14 +25,9 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
 pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let s = std::fs::read_to_string(path)?;
     let pf: ProjectFile = ron::from_str(&s)?;
-    // Resize first so voxels falling inside the saved size land within bounds.
-    // Non-legal stored sizes (old project, hand edit) snap up to the smallest
-    // fitting `ALLOWED_SIZES` value, capped at `MAX_GRID`.
-    let stored = pf.size[0] as usize;
-    grid.resize(snap_to_allowed_size(stored));
+    grid.clear();
     for ([x, y, z], c) in pf.voxels {
-        let p = bevy::math::IVec3::new(x, y, z);
-        grid.set(p, Some(c));
+        grid.set(bevy::math::IVec3::new(x, y, z), Some(c));
     }
     Ok(())
 }
@@ -60,9 +44,8 @@ mod tests {
     }
 
     #[test]
-    fn save_load_roundtrip_preserves_voxels_and_size() {
+    fn roundtrip_preserves_voxels() {
         let mut g = VoxelGrid::default();
-        g.resize(64);
         let pts: [(IVec3, [u8; 4]); 3] = [
             (IVec3::new(0, 0, 0), [10, 20, 30, 255]),
             (IVec3::new(5, 6, 7), [200, 100, 50, 255]),
@@ -78,11 +61,31 @@ mod tests {
         loaded.set(IVec3::new(1, 1, 1), Some([9, 9, 9, 255])); // pre-existing data must be cleared
         load(&path, &mut loaded).expect("load");
 
-        assert_eq!(loaded.size, 64);
         for (p, c) in pts {
             assert_eq!(loaded.get(p), Some(c));
         }
         assert_eq!(loaded.count(), 3);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn roundtrip_with_negative_and_far_voxels() {
+        let mut g = VoxelGrid::default();
+        let pts: [(IVec3, [u8; 4]); 3] = [
+            (IVec3::new(-50, 0, -25), [10, 20, 30, 255]),
+            (IVec3::new(500, 100, -300), [200, 100, 50, 255]),
+            (IVec3::new(0, 0, 0), [1, 2, 3, 255]),
+        ];
+        for (p, c) in pts {
+            g.set(p, Some(c));
+        }
+        let path = tmp_path("openworld_roundtrip");
+        save(&path, &g).expect("save");
+        let mut loaded = VoxelGrid::default();
+        load(&path, &mut loaded).expect("load");
+        for (p, c) in pts {
+            assert_eq!(loaded.get(p), Some(c), "{p:?}");
+        }
         let _ = std::fs::remove_file(&path);
     }
 
@@ -95,7 +98,22 @@ mod tests {
         let s = std::fs::read_to_string(&path).expect("read");
         let pf: ProjectFile = ron::from_str(&s).expect("parse");
         assert_eq!(pf.voxels.len(), 1);
-        assert_eq!(pf.version, VERSION);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn v1_extra_fields_are_silently_ignored() {
+        // The previous (`version`, `size`, `voxels`) layout no longer round-
+        // trips, but the loader is intentionally lax: ron drops unknown
+        // fields, so a v1 file whose voxel coords already live in the open
+        // world's coordinate space happens to load. Documenting the behaviour
+        // so a future strict-mode change is a conscious decision.
+        let v1 = "(version: 1, size: [32, 32, 32], voxels: [((1, 2, 3), (10, 20, 30, 255))])";
+        let mut g = VoxelGrid::default();
+        let path = tmp_path("v1_lax");
+        std::fs::write(&path, v1).expect("write");
+        load(&path, &mut g).expect("load");
+        assert_eq!(g.get(IVec3::new(1, 2, 3)), Some([10, 20, 30, 255]));
         let _ = std::fs::remove_file(&path);
     }
 }

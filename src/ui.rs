@@ -17,7 +17,7 @@ pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};
 
 use crate::gizmo::{GizmoDrag, GizmoRect};
-use crate::grid::{ALLOWED_SIZES, NewProject, VoxelGrid};
+use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io;
 use crate::shapes::ShapePrimitive;
@@ -133,7 +133,6 @@ pub fn ui_system(
                     .on_hover_text("Start a new project")
                     .clicked()
                 {
-                    new_project.picker_size = grid.size;
                     new_project.dialog_open = true;
                 }
                 let dialog_busy = pending.is_active();
@@ -420,7 +419,14 @@ pub fn ui_system(
                     },
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    widgets::status_label(ui, &theme, &format!("Grid {g}×{g}×{g}", g = grid.size));
+                    let design_label = match grid.bounding_box() {
+                        Some((min, max)) => {
+                            let extent = max - min + bevy::math::IVec3::ONE;
+                            format!("Design {}×{}×{}", extent.x, extent.y, extent.z)
+                        }
+                        None => "Design —".to_string(),
+                    };
+                    widgets::status_label(ui, &theme, &design_label);
                     ui.add_space(12.0);
                     widgets::status_label(
                         ui,
@@ -431,15 +437,14 @@ pub fn ui_system(
                             s = if grid.count() == 1 { "" } else { "s" }
                         ),
                     );
-                    if let Some((_, fit_radius)) = crate::camera::fit_view(&grid)
-                        && let Some(cam) = zoom.cameras.iter().next()
-                    {
-                        let raw = fit_radius / cam.target_radius.max(0.0001) * 100.0;
-                        let zoom_pct = raw
-                            .clamp(crate::camera::MIN_ZOOM_PCT, crate::camera::MAX_ZOOM_PCT)
-                            .round() as i32;
+                    if let Some(cam) = zoom.cameras.iter().next() {
+                        let r = cam.target_radius.round().max(0.0) as i32;
                         ui.add_space(12.0);
-                        widgets::status_label(ui, &theme, &format!("Zoom {zoom_pct}%"));
+                        widgets::status_label(
+                            ui,
+                            &theme,
+                            &format!("Zoom {r} voxel{}", if r == 1 { "" } else { "s" }),
+                        );
                     }
                 });
             });
@@ -1077,13 +1082,10 @@ pub fn ui_system(
                     });
                 }
                 widgets::plane_color_row(ui, &theme, theme.mode, "Floor", &mut prefs.floor_color);
-                widgets::plane_color_row(ui, &theme, theme.mode, "Walls", &mut prefs.wall_color);
             });
 
             widgets::section(ui, &theme, "Visibility", |ui| {
                 ui.checkbox(&mut prefs.show_floor, "Show floor plane");
-                ui.add_space(2.0);
-                ui.checkbox(&mut prefs.show_walls, "Show wall planes");
                 ui.add_space(2.0);
                 ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
                 ui.add_space(2.0);
@@ -1098,23 +1100,20 @@ pub fn ui_system(
         }
     }
 
-    // New-project modal. Reborrow `dialog_open` separately so the body can
-    // mutate `picker_size` / `apply` on the same resource.
+    // New-project confirm modal. Open-world has no grid size to pick — this
+    // is just "do you want to throw away unsaved work?".
     if new_project.dialog_open {
         let mut open = true;
         let mut create_clicked = false;
         let mut cancel_clicked = false;
         widgets::modal_window(ctx, &theme, "New project", &mut open).show(ctx, |ui| {
             ui.set_min_width(260.0);
-            widgets::section(ui, &theme, "Grid size", |ui| {
-                for &s in &ALLOWED_SIZES {
-                    let label = format!("{s} × {s} × {s}");
-                    if ui.radio(new_project.picker_size == s, label).clicked() {
-                        new_project.picker_size = s;
-                    }
-                }
-            });
-            ui.add_space(4.0);
+            widgets::hint_label(
+                ui,
+                &theme,
+                "Start over? This discards any unsaved work.",
+            );
+            ui.add_space(8.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 if widgets::dialog_button(ui, &theme, "Create", true).clicked() {
@@ -1126,7 +1125,7 @@ pub fn ui_system(
             });
         });
         if create_clicked {
-            new_project.apply = Some(new_project.picker_size);
+            new_project.apply = true;
             new_project.dialog_open = false;
         } else if cancel_clicked || !open {
             new_project.dialog_open = false;

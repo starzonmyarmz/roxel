@@ -14,7 +14,7 @@
 use crate::grid::VoxelGrid;
 use crate::mesh::{FACES, face_shade, linear_to_srgb, srgb_to_linear};
 use anyhow::Result;
-use bevy::math::{IVec3, Mat4, Vec2, Vec3, Vec4};
+use bevy::math::{Mat4, Vec2, Vec3, Vec4};
 use bevy::prelude::{GlobalTransform, Projection};
 use std::cmp::Ordering;
 use std::fmt::Write as FmtWrite;
@@ -69,40 +69,33 @@ pub fn export(
 
 fn collect_cell_quads(grid: &VoxelGrid, camera_pos: Vec3) -> Vec<CellQuad> {
     let mut out = Vec::new();
-    for x in 0..grid.size {
-        for y in 0..grid.size {
-            for z in 0..grid.size {
-                let p = IVec3::new(x as i32, y as i32, z as i32);
-                let Some(rgba) = grid.get(p) else { continue };
-                let cell_center = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
-
-                for (face_idx, face) in FACES.iter().enumerate() {
-                    let neighbor = p + face.d;
-                    if grid.get(neighbor).is_some() {
-                        continue;
-                    }
-                    let normal = Vec3::new(face.normal[0], face.normal[1], face.normal[2]);
-                    let face_center = cell_center + 0.5 * normal;
-                    if (face_center - camera_pos).dot(normal) > 0.0 {
-                        continue;
-                    }
-
-                    let mut corners = [Vec3::ZERO; 4];
-                    for (idx, c) in face.corners.iter().enumerate() {
-                        corners[idx] = Vec3::new(
-                            (p.x + c[0]) as f32,
-                            (p.y + c[1]) as f32,
-                            (p.z + c[2]) as f32,
-                        );
-                    }
-                    out.push(CellQuad {
-                        corners,
-                        color: rgba,
-                        face_idx,
-                        cell_center,
-                    });
-                }
+    for (p, rgba) in grid.iter_occupied() {
+        let cell_center = Vec3::new(p.x as f32 + 0.5, p.y as f32 + 0.5, p.z as f32 + 0.5);
+        for (face_idx, face) in FACES.iter().enumerate() {
+            let neighbor = p + face.d;
+            if grid.get(neighbor).is_some() {
+                continue;
             }
+            let normal = Vec3::new(face.normal[0], face.normal[1], face.normal[2]);
+            let face_center = cell_center + 0.5 * normal;
+            if (face_center - camera_pos).dot(normal) > 0.0 {
+                continue;
+            }
+
+            let mut corners = [Vec3::ZERO; 4];
+            for (idx, c) in face.corners.iter().enumerate() {
+                corners[idx] = Vec3::new(
+                    (p.x + c[0]) as f32,
+                    (p.y + c[1]) as f32,
+                    (p.z + c[2]) as f32,
+                );
+            }
+            out.push(CellQuad {
+                corners,
+                color: rgba,
+                face_idx,
+                cell_center,
+            });
         }
     }
     out

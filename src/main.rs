@@ -21,28 +21,27 @@ mod ui;
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
+use std::collections::HashMap;
 
 use crate::camera::{
-    RecenterRequest, ViewportRect, apply_recenter_system, default_camera_focus, frame_view_system,
-    spawn_camera, update_viewport_rect, update_zoom_limits_system, zoom_click_system,
-    zoom_key_system,
+    EMPTY_WORLD_RADIUS, RecenterRequest, ViewportRect, apply_recenter_system,
+    default_camera_focus, frame_view_system, spawn_camera, update_viewport_rect,
+    update_zoom_limits_system, zoom_click_system, zoom_key_system,
 };
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
 };
-use crate::grid::{MAX_CHUNKS_PER_AXIS, NewProject, VoxelGrid};
+use crate::grid::{NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared};
 use crate::history::History;
 use crate::lighting::spawn_lights;
-use crate::mesh::{PreviewHide, VoxelChunkMeshes, VoxelMesh, regenerate_mesh_system};
+use crate::mesh::{PreviewHide, VoxelChunkMeshes, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
-use crate::snapshot::{
-    GroundPlane, SnapshotRequest, SnapshotSession, WallPlane, start_snapshot_system,
-};
+use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
-    resolve_canvas_color, resolve_floor_color, resolve_theme, resolve_wall_color,
+    resolve_canvas_color, resolve_floor_color, resolve_theme,
 };
 use crate::tools::{
     CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState,
@@ -55,6 +54,11 @@ use crate::ui::{
     toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
+
+/// Visual extent of the camera-following floor plane. Large enough that the
+/// user can't see the plane's edge at typical orbit radii; recentered every
+/// frame so it stays under the camera focus regardless of pan distance.
+const FLOOR_PLANE_SIZE: f32 = 256.0;
 
 fn main() {
     let prefs = load_preferences();
@@ -110,7 +114,7 @@ fn main() {
         .init_resource::<GizmoHover>()
         .init_resource::<ViewportRect>()
         .insert_resource(RecenterRequest {
-            base_focus: Some(default_camera_focus(crate::grid::DEFAULT_SIZE)),
+            base_focus: Some(default_camera_focus()),
         })
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
@@ -161,7 +165,7 @@ fn main() {
             crate::select::move_selection_keys_system,
             start_snapshot_system,
             apply_new_project_system.before(regenerate_mesh_system),
-            apply_import_system.before(regenerate_mesh_system),
+            apply_import_system,
             toast_lifetime_system,
         ),
     )
@@ -174,10 +178,11 @@ fn main() {
             zoom_key_system,
             apply_canvas_bg_system,
             apply_floor_color_system,
-            apply_wall_color_system,
             apply_floor_visibility_system,
-            apply_walls_visibility_system,
+            floor_follow_camera_system,
             floor_grid_system,
+            draw_origin_system,
+            perf_warn_system,
             command_palette_shortcut_system,
             dispatch_command_palette_system,
             apply_recenter_system,
@@ -213,72 +218,34 @@ fn setup_scene(
     spawn_brush_preview(&mut commands, &mut meshes, &mut materials);
     spawn_shape_preview(&mut commands, &mut meshes, &mut materials);
 
-    // One mesh entity per chunk. Mesher rebuilds only flagged chunks each
-    // frame so a single-cell edit doesn't touch the whole grid.
+    // Shared chunk material — every chunk entity references this handle so we
+    // don't allocate a material per chunk. The mesher spawns entities lazily
+    // (as `dirty_chunks` produces new coords) and despawns when they empty.
     let mat = materials.add(StandardMaterial {
         base_color: Color::WHITE,
         unlit: true,
         ..default()
     });
-    let chunk_count = MAX_CHUNKS_PER_AXIS.pow(3);
-    let mut chunk_handles = Vec::with_capacity(chunk_count);
-    for _ in 0..chunk_count {
-        let h = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(
-            0.0, 0.0, 0.0,
-        )));
-        commands.spawn((
-            Mesh3d(h.clone()),
-            MeshMaterial3d(mat.clone()),
-            Transform::default(),
-            VoxelMesh,
-        ));
-        chunk_handles.push(h);
-    }
     commands.insert_resource(VoxelChunkMeshes {
-        handles: chunk_handles,
+        chunks: HashMap::new(),
+        material: mat,
     });
 
-    // Separate materials for floor vs walls so each can have its own color.
-    let size = crate::grid::DEFAULT_SIZE as f32;
-    let half = size / 2.0;
+    // One large floor plane recentered under the camera focus each frame. The
+    // open-world grid has no fixed extent, so the floor visually "follows" the
+    // user as they pan, with chunk-grid lines drawn by `floor_grid_system`.
     let floor_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.13, 0.14, 0.17),
         perceptual_roughness: 1.0,
         reflectance: 0.0,
         ..default()
     });
-    let wall_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.13, 0.14, 0.17),
-        perceptual_roughness: 1.0,
-        reflectance: 0.0,
-        ..default()
-    });
-
-    let plane = meshes.add(floor_mesh(size));
+    let plane = meshes.add(floor_mesh(FLOOR_PLANE_SIZE));
     commands.spawn((
         Mesh3d(plane),
         MeshMaterial3d(floor_mat),
-        Transform::from_xyz(half, -0.01, half),
+        Transform::from_xyz(0.0, -0.01, 0.0),
         GroundPlane,
-    ));
-
-    // Wall planes: back wall (z=0, normal +Z) and left wall (x=0, normal +X).
-    // Slightly outside the grid so they don't z-fight with edge voxels.
-    let back_wall = meshes.add(wall_mesh(0, size));
-    commands.spawn((
-        Mesh3d(back_wall),
-        MeshMaterial3d(wall_mat.clone()),
-        Transform::from_xyz(half, half, -0.01),
-        Visibility::Hidden,
-        WallPlane(0),
-    ));
-    let left_wall = meshes.add(wall_mesh(1, size));
-    commands.spawn((
-        Mesh3d(left_wall),
-        MeshMaterial3d(wall_mat),
-        Transform::from_xyz(-0.01, half, half),
-        Visibility::Hidden,
-        WallPlane(1),
     ));
 }
 
@@ -290,96 +257,58 @@ pub fn floor_mesh(size: f32) -> Mesh {
     )
 }
 
-pub fn wall_mesh(axis: u8, size: f32) -> Mesh {
-    let half = size / 2.0;
-    let normal = if axis == 0 { Vec3::Z } else { Vec3::X };
-    Mesh::from(bevy::math::primitives::Plane3d::new(normal, Vec2::splat(half)).mesh())
-}
-
 fn apply_new_project_system(
+    mut commands: Commands,
     mut new_project: ResMut<NewProject>,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
-    mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
+    mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut cameras: Query<&mut PanOrbitCamera>,
     mut recenter: ResMut<RecenterRequest>,
 ) {
-    let Some(new_size) = new_project.apply.take() else {
+    if !std::mem::take(&mut new_project.apply) {
         return;
-    };
-    grid.resize(new_size);
+    }
+    grid.clear();
     history.undo.clear();
     history.redo.clear();
     history.current = None;
 
-    rebuild_for_size(
-        new_size,
-        &mut meshes,
-        &mut floor,
-        &mut walls,
-        &mut cameras,
-        &mut recenter,
-    );
-}
-
-fn apply_import_system(
-    mut pending: ResMut<PendingImport>,
-    grid: Res<VoxelGrid>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut floor: Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
-    mut walls: Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
-    mut cameras: Query<&mut PanOrbitCamera>,
-    mut recenter: ResMut<RecenterRequest>,
-) {
-    if !pending.0 {
-        return;
-    }
-    pending.0 = false;
-    rebuild_for_size(
-        grid.size,
-        &mut meshes,
-        &mut floor,
-        &mut walls,
-        &mut cameras,
-        &mut recenter,
-    );
-}
-
-fn rebuild_for_size(
-    size: usize,
-    meshes: &mut Assets<Mesh>,
-    floor: &mut Query<(&Mesh3d, &mut Transform), (With<GroundPlane>, Without<WallPlane>)>,
-    walls: &mut Query<(&Mesh3d, &mut Transform, &WallPlane), Without<GroundPlane>>,
-    cameras: &mut Query<&mut PanOrbitCamera>,
-    recenter: &mut RecenterRequest,
-) {
-    let s = size as f32;
-    let half = s / 2.0;
-
-    for (mesh3d, mut tf) in floor.iter_mut() {
-        if let Some(m) = meshes.get_mut(&mesh3d.0) {
-            *m = floor_mesh(s);
-        }
-        *tf = Transform::from_xyz(half, -0.01, half);
-    }
-
-    for (mesh3d, mut tf, plane) in walls.iter_mut() {
-        if let Some(m) = meshes.get_mut(&mesh3d.0) {
-            *m = wall_mesh(plane.0, s);
-        }
-        *tf = match plane.0 {
-            0 => Transform::from_xyz(half, half, -0.01),
-            _ => Transform::from_xyz(-0.01, half, half),
-        };
+    // Despawn every chunk entity that was spawned for this scene; the mesher
+    // will recreate them as the user paints fresh voxels.
+    for (_, (entity, _)) in chunk_meshes.chunks.drain() {
+        commands.entity(entity).despawn();
     }
 
     for mut cam in cameras.iter_mut() {
-        cam.target_focus = Vec3::new(half, 0.0, half);
-        cam.target_radius = s * 1.875;
+        cam.target_focus = Vec3::ZERO;
+        cam.target_radius = EMPTY_WORLD_RADIUS;
     }
-    recenter.base_focus = Some(Vec3::new(half, 0.0, half));
+    recenter.base_focus = Some(Vec3::ZERO);
+}
+
+fn apply_import_system(mut pending: ResMut<PendingImport>) {
+    // Open-world: imports just `grid.set` cells at their source coordinates.
+    // No floor/wall rebuild, no camera reframe — the user can press Cmd+0 to
+    // frame the imported model if they want. Consume the flag to signal we
+    // saw it.
+    if pending.0 {
+        pending.0 = false;
+    }
+}
+
+fn floor_follow_camera_system(
+    cameras: Query<&PanOrbitCamera>,
+    mut floor: Query<&mut Transform, With<GroundPlane>>,
+) {
+    let Ok(cam) = cameras.single() else { return };
+    for mut tf in &mut floor {
+        // Floor stays at y = -0.01 (just below the y = 0 voxel layer to avoid
+        // z-fighting). XZ tracks the camera focus.
+        tf.translation.x = cam.focus.x;
+        tf.translation.z = cam.focus.z;
+        tf.translation.y = -0.01;
+    }
 }
 
 fn apply_floor_color_system(
@@ -389,23 +318,6 @@ fn apply_floor_color_system(
     planes: Query<&MeshMaterial3d<StandardMaterial>, With<GroundPlane>>,
 ) {
     let [r, g, b] = resolve_floor_color(&prefs, &theme);
-    let next = Color::srgb_u8(r, g, b);
-    for handle in &planes {
-        if let Some(mat) = mats.get_mut(&handle.0)
-            && mat.base_color != next
-        {
-            mat.base_color = next;
-        }
-    }
-}
-
-fn apply_wall_color_system(
-    prefs: Res<Preferences>,
-    theme: Res<Theme>,
-    mut mats: ResMut<Assets<StandardMaterial>>,
-    planes: Query<&MeshMaterial3d<StandardMaterial>, With<WallPlane>>,
-) {
-    let [r, g, b] = resolve_wall_color(&prefs, &theme);
     let next = Color::srgb_u8(r, g, b);
     for handle in &planes {
         if let Some(mat) = mats.get_mut(&handle.0)
@@ -444,45 +356,89 @@ fn apply_floor_visibility_system(
     }
 }
 
-fn apply_walls_visibility_system(
-    prefs: Res<Preferences>,
-    mut walls: Query<&mut Visibility, With<WallPlane>>,
-) {
-    let want = if prefs.show_walls {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    for mut v in &mut walls {
-        if *v != want {
-            *v = want;
-        }
-    }
-}
-
+/// Draws the procedural-feel chunk-grid lines on the floor. Minecraft-style:
+/// thin lines every voxel, heavier lines every 16 voxels. Centered on the
+/// camera focus so the grid pattern follows the user as they pan.
 fn floor_grid_system(
     prefs: Res<Preferences>,
     theme: Res<crate::theme::Theme>,
-    grid: Res<VoxelGrid>,
+    cameras: Query<&PanOrbitCamera>,
     mut gizmos: Gizmos,
 ) {
     if !prefs.show_floor_grid || !prefs.show_floor {
         return;
     }
-    let n = grid.size as i32;
+    let Ok(cam) = cameras.single() else { return };
     let lift = 0.001;
-    let alpha = match theme.mode {
-        crate::theme::ThemeMode::Dark => 0.10,
-        crate::theme::ThemeMode::Light => 0.16,
+    let alpha_minor = match theme.mode {
+        crate::theme::ThemeMode::Dark => 0.06,
+        crate::theme::ThemeMode::Light => 0.10,
     };
-    let color = match theme.mode {
-        crate::theme::ThemeMode::Dark => Color::srgba(1.0, 1.0, 1.0, alpha),
-        crate::theme::ThemeMode::Light => Color::srgba(0.0, 0.0, 0.0, alpha),
+    let alpha_major = match theme.mode {
+        crate::theme::ThemeMode::Dark => 0.14,
+        crate::theme::ThemeMode::Light => 0.22,
     };
-    for i in 0..=n {
-        let a = i as f32;
-        gizmos.line(Vec3::new(a, lift, 0.0), Vec3::new(a, lift, n as f32), color);
-        gizmos.line(Vec3::new(0.0, lift, a), Vec3::new(n as f32, lift, a), color);
+    let make = |a: f32| match theme.mode {
+        crate::theme::ThemeMode::Dark => Color::srgba(1.0, 1.0, 1.0, a),
+        crate::theme::ThemeMode::Light => Color::srgba(0.0, 0.0, 0.0, a),
+    };
+
+    // Grid spans a 64-voxel-wide window centered on the camera focus rounded
+    // to the nearest voxel. Far enough to fill the visible floor at typical
+    // zoom levels without spending gizmos on cells the user can't see.
+    let half: i32 = 32;
+    let cx = cam.focus.x.round() as i32;
+    let cz = cam.focus.z.round() as i32;
+    let lo_x = cx - half;
+    let hi_x = cx + half;
+    let lo_z = cz - half;
+    let hi_z = cz + half;
+    for i in lo_x..=hi_x {
+        let major = i.rem_euclid(16) == 0;
+        let c = make(if major { alpha_major } else { alpha_minor });
+        gizmos.line(
+            Vec3::new(i as f32, lift, lo_z as f32),
+            Vec3::new(i as f32, lift, hi_z as f32),
+            c,
+        );
+    }
+    for i in lo_z..=hi_z {
+        let major = i.rem_euclid(16) == 0;
+        let c = make(if major { alpha_major } else { alpha_minor });
+        gizmos.line(
+            Vec3::new(lo_x as f32, lift, i as f32),
+            Vec3::new(hi_x as f32, lift, i as f32),
+            c,
+        );
+    }
+}
+
+/// Draws a small RGB axis triad at world origin so the user can always see
+/// where (0, 0, 0) sits even with no voxels painted.
+fn draw_origin_system(mut gizmos: Gizmos) {
+    let len = 1.0;
+    gizmos.line(Vec3::ZERO, Vec3::X * len, Color::srgb(1.0, 0.3, 0.3));
+    gizmos.line(Vec3::ZERO, Vec3::Y * len, Color::srgb(0.3, 1.0, 0.3));
+    gizmos.line(Vec3::ZERO, Vec3::Z * len, Color::srgb(0.3, 0.3, 1.0));
+}
+
+/// Per-frame perf-warning latch. Fires a one-shot toast the first time the
+/// scene crosses either the cell-count or chunk-count threshold; clears the
+/// latch once both counters fall below 80 % of their thresholds. Cheap to
+/// run every frame — it's a couple of integer compares.
+fn perf_warn_system(mut grid: ResMut<VoxelGrid>, mut toasts: ResMut<Toasts>) {
+    if !grid.is_changed() {
+        return;
+    }
+    let cells = grid.total_count;
+    let chunks = grid.chunks.len() as u32;
+    if grid.warned_large {
+        if large_scene_warning_cleared(cells, chunks) {
+            grid.warned_large = false;
+        }
+    } else if large_scene_threshold_crossed(cells, chunks) {
+        toasts.info("Large scene — performance may degrade.");
+        grid.warned_large = true;
     }
 }
 

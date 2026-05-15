@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tests
 
-Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (bounds/get/set/clear/resize/chunk-dirty propagation), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + floor fallback), `mesh` (sRGB roundtrip, greedy quad counts, chunked vs monolithic equivalence), `theme` (canvas/plane resolution + serde back-compat for older `preferences.ron`), `io::project` (save/load roundtrip), `io::palettes` (user palette roundtrip, builtins not persisted). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
+Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (sparse chunk allocate/drop, y<0 refusal, iter_occupied, bounding_box across negative coords, dirty-chunk seam propagation, perf-threshold latch math), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + floor fallback + step-cap termination in empty world), `mesh` (sRGB roundtrip, greedy quad counts, chunked vs monolithic equivalence across seams, negative coords), `theme` (canvas/plane resolution + serde back-compat for older `preferences.ron` including legacy `show_walls` / `wall_color` fields), `io::project` (sparse roundtrip, negative + far-coord roundtrip, v1 lax-deserialize), `io::vox` (AABB-shift on export, refusal beyond 256³, axis remap), `io::palettes` (user palette roundtrip, builtins not persisted). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
 
 **Always add or update tests when adding or modifying a feature** — `cargo test` runs as a pre-commit gate (see below), so untested feature work is incomplete.
 
@@ -32,13 +32,15 @@ Roxel is a single-window Bevy 0.18 app with a `bevy_egui` UI overlay and a `bevy
 
 ### Data flow
 
-`VoxelGrid` (`grid.rs`) is the single source of truth. Storage is always allocated at `MAX_GRID = 128` (a flat `Box<[Option<Color8>]>` of 128³ cells, ~8 MB) so resize never reallocates. The active edit box is `VoxelGrid.size` (one of `ALLOWED_SIZES = [32, 64, 96, 128]`, default 32); `in_bounds`/`get`/`set` reject cells outside `[0, size)` even though the underlying storage extends to 128. `set` flips a global `dirty: bool` *and* marks the owning chunk's flag in `chunk_dirty` (a `Box<[bool]>` indexed by `chunk_flat_idx`). Cells on a chunk boundary also flag the neighbour across the seam — face occlusion changes there too.
+`VoxelGrid` (`grid.rs`) is the single source of truth. Storage is **sparse**: a `HashMap<IVec3, Chunk>` keyed by chunk coordinate. Each `Chunk` holds a flat `Box<[Option<Color8>]>` of `CHUNK_VOL = 32³` cells plus an occupancy `count`. Chunks allocate on first write to any of their cells and **drop** the moment the count hits zero. The only hard rule is `p.y >= 0`; writes below the floor are silently refused. There is no upper bound on X, Y, or Z — the open world is sized by the user's memory.
 
-`CHUNK = 32`, `MAX_CHUNKS_PER_AXIS = 4`. Every `ALLOWED_SIZES` value divides `CHUNK` evenly so the chunked mesher needs no partial-chunk handling. If you add a new allowed size, keep that invariant or the mesher will under-cover the grid.
+`CHUNK = 32`, `CHUNK_I = 32`, `CHUNK_VOL = 32_768`. `chunk_coord(p)` returns the chunk key (`div_euclid` per axis so negative coords work); `local_idx(p)` is the flat index into a chunk's cell array (`rem_euclid`).
 
-Mutations flow through `History::record` (`history.rs`), **not** `grid.set` directly. Recording wraps each `grid.set` in a `CellDelta`, dedupes per stroke via a `HashSet<(i32,i32,i32)>`, and appends to `History.current`. `History::begin` / `History::end` bracket a stroke; the LMB-release path in `tool_input_system` is responsible for calling `end`. The undo stack is capped at `MAX_UNDO = 200`; pushing a new stroke clears the redo stack.
+Every `set` flips a global `dirty: bool`, inserts the owning chunk coord into `dirty_chunks: HashSet<IVec3>`, and inserts seam-neighbour chunk coords for cells on a chunk boundary — face occlusion changes there too. `dirty_chunks` is drained by `regenerate_mesh_system`. `total_count` and `warned_large` track the soft perf-warning latch (`large_scene_threshold_crossed` / `large_scene_warning_cleared` are the pure predicates; `perf_warn_system` in `main.rs` ticks them and fires a one-shot toast).
 
-`regenerate_mesh_system` (`mesh.rs`) rebuilds only chunks whose `chunk_dirty` flag is set, into the per-chunk `Mesh` handles held in `VoxelChunkMeshes`. Each chunk owns its own `VoxelMesh` entity (spawned once in `setup_scene` for all `MAX_CHUNKS_PER_AXIS³ = 64` slots). The mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces inside a half-open `[min, max)` box while still querying the full grid for cross-bounds occlusion so emitted quads agree at chunk seams with the monolithic `greedy_quads` reference path. Touching `grid` outside `History::record` still works but bypasses undo, so prefer the history path. Base colors are run through `srgb_to_linear` before upload — Bevy's pipeline expects linear vertex colors.
+Mutations flow through `History::record` (`history.rs`), **not** `grid.set` directly. Recording wraps each `grid.set` in a `CellDelta`, dedupes per stroke via a `HashSet<(i32,i32,i32)>`, and appends to `History.current`. `History::begin` / `History::end` bracket a stroke; the LMB-release path in `tool_input_system` is responsible for calling `end`. The undo stack is capped at `MAX_UNDO = 200`; pushing a new stroke clears the redo stack. The picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow), so voxels placed earlier in the same stroke are invisible to the next pick — this is what kills runaway stacking, and replaces the old full-grid-clone snapshot.
+
+`regenerate_mesh_system` (`mesh.rs`) drains `grid.dirty_chunks` each frame. For each dirty coord: if the chunk has data, spawn an entity on first sight (or update the existing mesh handle); if the chunk has emptied, despawn its entity. Chunk meshes live in `VoxelChunkMeshes { chunks: HashMap<IVec3, (Entity, Handle<Mesh>)>, material: Handle<StandardMaterial> }` — entities are created lazily and despawned on empty. The mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces inside a half-open `[min, max)` chunk-coord-aligned box while still querying the full grid for cross-bounds occlusion so emitted quads agree at chunk seams with the monolithic `greedy_quads` reference (which itself walks loaded chunks). Touching `grid` outside `History::record` still works but bypasses undo, so prefer the history path. Base colors are run through `srgb_to_linear` before upload — Bevy's pipeline expects linear vertex colors.
 
 The mesher also consults `PreviewHide` (`mesh.rs`): when the erase preview is active, the targeted cell is filtered out of `build_mesh` so the voxel-to-be-removed visually disappears under the cursor. A change to `PreviewHide.cell` re-triggers a mesh rebuild for that chunk even when `grid.dirty` is false. `brush_preview_system` (`preview.rs`) drives the ghost cuboid for `Tool::Brush` and the `PreviewHide` cell for `Tool::Erase`; `shape_preview_system` (`shape_preview.rs`) drives the ghost mesh for `Tool::Shape`. Both are scheduled `before(regenerate_mesh_system)` so the mesher sees the current frame's hide state.
 
@@ -54,16 +56,17 @@ Both previews hide while the user is orbiting (RMB), dragging the gizmo, or alre
 
 `Tool::Move` (`select.rs` + `move_drag_system` in `tools.rs`) translates the contents of the active selection by integer cell offsets. Two input paths, both share `MoveDragState` (mouse) and the pure `select::move_selection` helper:
 - **Mouse drag** — `move_drag_system` runs as its own `Update` system. LMB-press on a voxel inside the selection anchors a face plane (same `StrokeAnchor` machinery as Shape/Select); cursor motion projects to that plane and snaps to integer cells via `constrain_move_delta`. The drag locks the face-normal axis; Shift also locks Y so the move stays on the same horizontal plane. A move that would overlap a non-source occupied cell is refused, leaving the selection at the last valid delta. `history.abort` rolls partial writes back when the user RMB / Esc / switches tool mid-drag. Click on a bare voxel with no active selection creates an ad-hoc 1×1×1 selection that is cleared on release.
-- **Arrow keys** — `move_selection_keys_system` calls `move_selection` once per `just_pressed`. ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. Collisions and out-of-bounds shifts are rejected.
+- **Arrow keys** — `move_selection_keys_system` calls `move_selection` once per `just_pressed`. ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. Collisions and below-floor shifts are rejected; X / Z are unbounded.
 
 Both paths record exactly one history stroke per commit. Mid-drag, frames re-record the same touched cells repeatedly; `History::record` dedupes by overwriting the existing delta's `after` value so the final stroke contains one entry per cell regardless of how many frames the drag spanned.
 
-Three pieces of stroke state in `PointerState` matter for non-shape tools:
+Two pieces of stroke state in `PointerState` matter for non-shape tools:
 - `anchor` (`StrokeAnchor`) — locks the build plane axis for the duration of a drag so the picker can't slide onto a perpendicular face mid-stroke.
-- `snapshot: Option<VoxelGrid>` — pre-stroke clone of the grid. Ray-picks during a stroke run against this snapshot, not the live grid. Voxels placed earlier in the same stroke are invisible to the picker, which is what kills runaway stacking. Pattern lifted from goxel; `VoxelGrid` derives `Clone` specifically for this. Note: cloning 8 MB per stroke is acceptable at current scale; if `MAX_GRID` grows, revisit.
 - `last_placed: Option<IVec3>` — endpoint for `line3d` (3D Bresenham). Fills gaps when the cursor jumps between frames, and `Shift+click` runs a one-shot `line3d` stroke from `last_placed` to the new target without entering drag mode.
 
-`picking.rs` is a DDA-style voxel raycaster fed by `cursor_ray`. `pick` returns the hit cell and surface normal so `Tool::Brush` can place into `hit.cell + hit.normal`. When the ray misses every voxel it falls back to the floor plane at y=0 so brushing on empty space still works.
+Pre-stroke values for the picker come from `history.pre_stroke_value(p)` — a per-cell shadow built up as cells are recorded during the stroke. This replaced an earlier full-grid `VoxelGrid` clone that paid 8 MB per stroke; in the open world a clone would be unbounded, so the per-cell path is the only viable approach.
+
+`picking.rs` is a DDA-style voxel raycaster fed by `cursor_ray`. `pick` returns the hit cell and surface normal so `Tool::Brush` can place into `hit.cell + hit.normal`. The DDA caps at `MAX_DDA_STEPS = 1024` so an open-air ray terminates in an empty world; it also exits early when the cell drops below the floor going further down. When the ray misses every voxel it falls back to the floor plane at y=0 (unbounded on X/Z) so brushing on empty space still works.
 
 ### File I/O — async dialogs are mandatory
 
@@ -77,14 +80,17 @@ Synchronous `rfd::FileDialog` calls **block winit's event loop on macOS** (spinn
 
 `io::gltf::export` writes glTF 2.0 binary (`.glb`): 12-byte header + JSON chunk + BIN chunk, all 4-byte aligned. Indexed triangle mesh, per-vertex `COLOR_0` as u8-normalized RGBA, Y-up (glTF spec default — Unity and Godot import upright with no extra transform). Per-face quads share the iteration path with FBX through `mesh::for_each_exposed_face`; do not reintroduce a separate grid-walk loop.
 
-Foreign-tool axis handling: MagicaVoxel `.vox` and Goxel `.gox` are Z-up; both importer + exporter remap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` so foreign files load upright and Roxel-exported files open upright in the target tool. Qubicle `.qb` is Y-up natively — no remap. Every importer auto-resizes the grid to the smallest `ALLOWED_SIZES` value that fits inbound voxel bounds (capped at `MAX_GRID`) via `crate::grid::snap_to_allowed_size`; voxels outside the resulting box are dropped with a stderr count. `.gox` BL16 blocks are written as raw 16³ RGBA bytes; PNG-encoded BL16 (used by current Goxel versions) is rejected with a clear error rather than silently misparsing — the limitation is intentional until someone needs it.
+Foreign-tool axis handling: MagicaVoxel `.vox` and Goxel `.gox` are Z-up; both importer + exporter remap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` so foreign files load upright and Roxel-exported files open upright in the target tool. Qubicle `.qb` is Y-up natively — no remap. `.gox` BL16 blocks are written as raw 16³ RGBA bytes; PNG-encoded BL16 (used by current Goxel versions) is rejected with a clear error rather than silently misparsing.
 
-Imports that change `grid.size` set `PendingImport(true)`; `apply_import_system` (`main.rs`) consumes it next frame to rebuild floor/wall planes and reframe the camera via the shared `rebuild_for_size` helper. This is the same plane/camera reset path as `apply_new_project_system`. New imports must take this path so the planes stay in sync — don't call `grid.resize` from a one-shot system without setting the flag.
+**AABB-shift on export for unsigned-coord formats.** `.vox` and `.qb` use unsigned coordinates starting at origin; the open-world grid can carry negative coords. On export, compute `grid.bounding_box()` and translate every emitted voxel by `-min` so the model's min corner lands at (0, 0, 0) in the target format. The axis remap (Z-up for `.vox`) applies after the shift. `.vox` additionally refuses export when any axis extent exceeds 256 (format cap — coords are stored in `u8`); user gets a toast. `.gox` and the mesh-based formats (`.obj`, `.fbx`, `.gltf`, `.svg`) handle negative coords natively and write them as-is.
+
+Imports just `grid.set` each voxel at its source coordinate. There is no grid-resize step, no `snap_to_allowed_size` — the open-world grid will accept any IVec3 with `y >= 0`. `apply_import_system` (`main.rs`) only consumes the `PendingImport` flag now; it does not rebuild floor/walls (there's no walls, and the floor follows the camera). If the user wants to re-frame after import, they press Cmd+0.
 
 Shared io helpers (use them; don't reroll):
 
-- `crate::grid::snap_to_allowed_size(needed)` — pick smallest legal grid size that fits.
-- `crate::mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by `fbx::build_mesh` + `gltf::build_mesh`.
+- `crate::grid::iter_occupied()` — yields `(IVec3, Color8)` for every occupied cell across all loaded chunks. Use this in every exporter instead of nested loops.
+- `crate::grid::bounding_box()` — `Option<(min, max)>` (inclusive) over occupied cells. Used by camera fit, AABB-shift exports, and the design-size footer readout.
+- `crate::mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling, walks `iter_occupied`. Shared by `fbx::build_mesh` + `gltf::build_mesh`.
 - `crate::io::reader::LeReader` — bounds-checked little-endian binary reader. Shared by `qb::import` + `gox::import`.
 - `crate::io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` helper that produces a unique temp-file path for io tests.
 
@@ -100,11 +106,11 @@ The menu mirrors `ui.rs`'s File/Edit buttons — when adding a new dialog-driven
 
 ### New-project flow
 
-The user picks a size in the egui modal driven by `NewProject { dialog_open, picker_size, apply }` (`grid.rs`). On confirm, `apply` is set to `Some(size)`; `apply_new_project_system` (`main.rs`) consumes it the next frame to call `grid.resize`, clear history, replace the floor + wall meshes with new sizes, and recenter the `PanOrbitCamera`. Don't poke `VoxelGrid.size` directly from UI code — go through `NewProject.apply` so the camera + planes stay consistent.
+`NewProject { dialog_open, apply: bool }` (`grid.rs`) drives a confirm-only modal — there is no grid size to pick. On confirm, `apply` is set to `true`; `apply_new_project_system` (`main.rs`) consumes it the next frame to `grid.clear()` (drains every chunk into `dirty_chunks` so the mesher despawns their entities), clear history, drain `VoxelChunkMeshes.chunks` (despawning any leftover entities the mesher hasn't reached yet), and reset the camera to origin / `EMPTY_WORLD_RADIUS`. Don't poke `VoxelGrid` directly from UI code — go through `NewProject.apply` so the camera + history stay consistent.
 
 ### UI structure
 
-`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out four panels: top bar (file/edit + Preferences button on the right), bottom status bar (right-aligned voxel/grid/zoom stats), left tool rail, right inspector (color swatch + popup picker, palette selector with built-ins + user palettes + add/new/dup/rename/delete + drag-reorder, `.ase` import/export, recent colors, shape options, scene stats). The active palette lives in `Palettes` (resource) indexed by `PaletteChoice`; both are `init_resource`'d / `insert_resource`'d (`Palettes::with_user_loaded`) in `main.rs`.
+`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out four panels: top bar (file/edit + Preferences button on the right), bottom status bar (right-aligned: `Design WxHxD` from `grid.bounding_box()` — em-dash when empty — plus voxel count and `Zoom N voxels` from the orbit radius), left tool rail, right inspector (color swatch + popup picker, palette selector with built-ins + user palettes + add/new/dup/rename/delete + drag-reorder, `.ase` import/export, recent colors, shape options, scene stats). The active palette lives in `Palettes` (resource) indexed by `PaletteChoice`; both are `init_resource`'d / `insert_resource`'d (`Palettes::with_user_loaded`) in `main.rs`.
 
 Sections in the inspector are flat: bold title, then content, then a thin full-width divider — no card frames. The divider spans the full panel width by painting at `ui.clip_rect().x_range()` rather than `ui.available_width()`. Side-panel left/right edges are drawn as a single 0.5-px vline via `ctx.layer_painter(LayerId::new(Order::Middle, …))` so popups (Foreground) draw over them; the panel `egui::Frame` itself has no stroke.
 
@@ -143,13 +149,20 @@ User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a
 `Preferences` (`theme.rs`) carries:
 - `theme: ThemePref { Light, Dark, System }`
 - `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly.
-- `floor_color`, `wall_color: PlaneColorPref` — same shape as canvas. `MatchTheme` resolves to a luminance-shifted neutral (`plane_match_color`) so floor/walls read as distinct surfaces against the canvas without tinting voxels.
-- `show_floor: bool` (default true), `show_walls: bool` (default false) — toggle the floor + back/left wall planes.
+- `floor_color: PlaneColorPref` — same shape as canvas. `MatchTheme` resolves to a luminance-shifted neutral (`plane_match_color`) so the floor reads as a distinct surface against the canvas without tinting voxels.
+- `show_floor: bool` (default true) — toggle the floor plane.
+- `show_floor_grid: bool` (default false) — overlay the Minecraft-style chunk-grid lines on the floor.
 - `preview_outline: bool` (default true) — draws a 1.01-scale contrast-aware gizmo cube around the brush/shape preview.
 
-Every field after `theme` is `#[serde(default = "...")]` so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. The `floor_color` field also aliases the older `plane_color` name for the same reason. `theme::tests::preferences_loads_with_missing_new_fields` guards this.
+Every field after `theme` is `#[serde(default = "...")]` so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. The `floor_color` field also aliases the older `plane_color` name. Removed fields (`show_walls`, `wall_color`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_with_missing_new_fields` and `theme::tests::preferences_round_trip_after_walls_removed` guard both directions.
 
-`Preferences` is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`. Theme + pref changes propagate through `refresh_theme_system` (every frame, `NonSendMarker` for main-thread `WINIT_WINDOWS` access — resolves `ThemePref::System` against `winit::Window::theme()`) and the `apply_canvas_bg_system` / `apply_floor_color_system` / `apply_wall_color_system` / `apply_floor_visibility_system` / `apply_walls_visibility_system` systems in `main.rs`, which diff before writing so we don't dirty assets every frame.
+`Preferences` is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`. Theme + pref changes propagate through `refresh_theme_system` (every frame, `NonSendMarker` for main-thread `WINIT_WINDOWS` access — resolves `ThemePref::System` against `winit::Window::theme()`) and the `apply_canvas_bg_system` / `apply_floor_color_system` / `apply_floor_visibility_system` systems in `main.rs`, which diff before writing so we don't dirty assets every frame.
+
+### Floor + origin
+
+There are no walls. The floor is a single 256×256 plane (`FLOOR_PLANE_SIZE` in `main.rs`) recentered every frame on the camera focus XZ via `floor_follow_camera_system`, so it always sits under the user no matter how far they pan. Chunk-grid lines are drawn by `floor_grid_system` as immediate-mode `Gizmos` in a 64-voxel window around the focus, with thin lines every voxel and heavier lines every 16 voxels (Minecraft-style; toggle via `show_floor_grid` preference).
+
+`draw_origin_system` always draws a 1-voxel RGB axis triad at (0, 0, 0) using the Bevy `Gizmos` API. This is the user's anchor in the open world — there's no other landmark.
 
 ### Fonts
 
@@ -176,9 +189,13 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 ### Camera
 
-`spawn_camera` (`camera.rs`) places the orbit camera at an isometric angle so a fresh project doesn't open looking down a single axis. `frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. The bottom-bar zoom % readout is derived from the same `target_radius` that `zoom_click_system` mutates.
+`spawn_camera` (`camera.rs`) places the orbit camera at the isometric direction `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` so a fresh project doesn't open looking down a single axis. `EMPTY_WORLD_RADIUS = 32.0` is the spawn radius and the empty-world fallback used everywhere a fit-view-style answer is required (frame-view on empty, zoom-limits on empty, new-project reset).
+
+`frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels via `grid.bounding_box()` and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. On an empty scene it falls back to focus=origin, radius=`EMPTY_WORLD_RADIUS`. The bottom-bar zoom readout is the literal `cam.target_radius` rounded to a voxel count (`Zoom N voxels`) — no more percentage.
 
 `zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: halves (zoom in) or doubles (zoom out, when Alt is also held) `PanOrbitCamera.target_radius`, clamped to `zoom_lower_limit`. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
+
+`MAX_ZOOM_PCT = 1000.0` is the only zoom-percentage constant that survives — used internally as the divisor in `zoom_radius_limits` to derive the lower clamp from `fit_view`'s radius. It is never rendered to the user.
 
 ### Cursor hints
 
@@ -206,4 +223,6 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 ## File format
 
-`.roxel` projects are `ron`-serialized `ProjectFile { version: u32, size: [u32; 3], voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. `version` is currently `1` and unchecked on load — bump and gate if the schema changes. The `size` field is written as the current `VoxelGrid.size`; load resets `VoxelGrid.size` accordingly so saving a 32³ project and loading it back doesn't blow it up to 128³.
+`.roxel` projects are `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. No `version`, no `size` — the open-world grid has neither. Coordinates are signed; a model can sit anywhere relative to the origin and round-trip exactly.
+
+The previous (`version`, `size`, `voxels`) layout was dropped wholesale. ron's struct deserializer silently ignores unknown fields, so an older v1 file happens to load if its `voxels` field matches — the extra `version`/`size` are dropped on the floor. This is not a compat code path; it's a side effect of lax deserialization. Do not add explicit v1 handling.

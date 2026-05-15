@@ -1,12 +1,10 @@
-use crate::grid::DEFAULT_SIZE;
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 
 pub fn spawn_lights(commands: &mut Commands) {
-    // Initial position from default size; light isn't recentered on resize
-    // since shadow-less directional lighting is location-insensitive at the
-    // scales we care about.
-    let center = Vec3::splat(DEFAULT_SIZE as f32 / 2.0);
+    // Directional light is location-insensitive at the scales we care about,
+    // so anchor it at origin. The open-world grid has no centroid to track.
+    let center = Vec3::ZERO;
     let cascade = CascadeShadowConfigBuilder {
         num_cascades: 2,
         maximum_distance: 400.0,
