@@ -161,7 +161,7 @@ Every field after `theme` is `#[serde(default = "...")]` so older `preferences.r
 
 There is no floor plane. `floor_grid_system` (`main.rs`) draws the y=0 grid as immediate-mode `Gizmos` in a 3×-orbit-radius window centered on the camera focus. Two LOD bands: per-voxel lines (with every-16 major) up to `GRID_VOXEL_RADIUS = 128`, every-16 chunk lines only up to `GRID_CHUNK_RADIUS = 512`, hidden beyond. Gated on `show_floor_grid`.
 
-`draw_origin_system` always draws an RGB axis triad at (0, 0, 0). The green Y leg extends 10,000 units up into the sky when `show_y_axis` is set so the user never loses the origin column.
+`draw_origin_system` draws an RGB axis triad at (0, 0, 0) through a dedicated `OriginAxesGizmos` gizmo group (configured in `configure_origin_axes_gizmos` with `depth_bias = -1.0` so the triad reads cleanly on top of the floor grid where both sit at y≈0). Gated on `show_origin_axes`. The green Y leg extends 10,000 units up into the sky when `show_y_axis` is also set so the user never loses the origin column.
 
 ### Fonts
 
