@@ -134,3 +134,32 @@ jobs:
         with:
           files: dist/*.zip
           body_path: dist/release-notes.md
+
+  publish-itch:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: Roxel-macos.zip
+            channel: macos
+          - artifact: Roxel-windows.zip
+            channel: windows
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          ./butler -V
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./butler push "dist/${{ matrix.artifact }}" "starzonmyarmz/roxel:${{ matrix.channel }}" --userversion "$VERSION"
