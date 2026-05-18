@@ -19,17 +19,27 @@ jobs:
           - os: windows-latest
             artifact: Roxel-windows.zip
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.6
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}
 
+      - name: Install cargo-bundle
+        if: matrix.os == 'macos-latest'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-bundle
+
       - name: Build macOS .app
         if: matrix.os == 'macos-latest'
         run: |
-          cargo install cargo-bundle --locked
           cargo bundle --release
           codesign --force --deep --sign - target/release/bundle/osx/Roxel.app
           ditto -c -k --keepParent target/release/bundle/osx/Roxel.app Roxel-macos.zip
@@ -47,7 +57,6 @@ jobs:
           path: ${{ matrix.artifact }}
 
   changelog:
-    needs: build
     runs-on: ubuntu-latest
     outputs:
       notes_path: release-notes.md
