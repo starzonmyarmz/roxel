@@ -64,6 +64,7 @@ pub struct UiState<'w> {
     pub selection: ResMut<'w, crate::select::Selection>,
     pub toasts: Res<'w, Toasts>,
     pub current_path: Res<'w, CurrentProjectPath>,
+    pub flyby: Res<'w, crate::camera::FlybyState>,
 }
 
 pub fn ui_system(
@@ -91,6 +92,7 @@ pub fn ui_system(
         selection,
         toasts,
         current_path,
+        flyby,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -1197,6 +1199,7 @@ pub fn ui_system(
             palette_choice: palette_choice.0,
             current_color: color.0,
             prefs: &prefs,
+            flyby_active: flyby.active,
         };
         let catalog = command_palette::build_catalog(&state);
         command_palette::draw(ctx, &theme, &mut cmd_palette, &catalog);

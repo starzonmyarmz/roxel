@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: flyby camera mode — cinematic auto-orbit with bobbing pitch and breathing radius, toggled from the command palette, Esc to exit
 - feat: preference to hide origin RGB axis triad
 - fix: PNG export now writes a true transparent background instead of black
 - fix: PNG export no longer captures floor grid, origin axes, or selection overlay

@@ -73,6 +73,7 @@ pub fn brush_preview_system(
     mut hide: ResMut<PreviewHide>,
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
     gizmo_view: crate::ui::GizmoView,
+    flyby: Res<crate::camera::FlybyState>,
     mut gizmos: Gizmos,
 ) {
     let Ok((mut tf, mut vis)) = q.single_mut() else {
@@ -90,7 +91,8 @@ pub fn brush_preview_system(
         hide.set_recolor(None);
     };
 
-    if egui_wants_pointer
+    if flyby.active
+        || egui_wants_pointer
         || gizmo_view.drag.active
         || keys.pressed(KeyCode::Space)
         || mouse.pressed(MouseButton::Right)

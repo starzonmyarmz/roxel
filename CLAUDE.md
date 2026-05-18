@@ -194,6 +194,8 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 `zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: multiplies `target_radius` by `ZOOM_STEP_IN = 1/√2` (zoom in) or `ZOOM_STEP_OUT = √2` (zoom out, when Alt is also held), clamped to `[zoom_lower_limit, zoom_upper_limit]`. The click also recenters `target_focus` to whatever's under the cursor (picked voxel, or floor plane) so the zoom converges on the user's point of interest. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
 
+`FlybyState { active, t }` drives the auto-orbit "drone" view. `flyby_system` (`camera.rs`) overwrites `target_yaw` / `target_pitch` / `target_radius` (and pins `target_focus` to `fit_view`'s centroid) every frame from pure parametric path fns (`flyby_yaw`, `flyby_pitch`, `flyby_radius`). PanOrbitCamera has no public `enabled: bool`, so clobbering the targets each tick is what lets the cinematic win over user RMB-drag without modifying the crate. Painting is gated separately (`tool_input_system` early-returns and aborts any in-flight stroke when `flyby.active`); brush + shape previews hide. Esc or a second palette toggle ends the flyby; mouse input does NOT cancel (so screen recordings aren't ruined by accidental clicks). Tunables `FLYBY_*` live in `camera.rs`.
+
 `zoom_radius_limits` derives the camera's allowed radius range from the current scene. Lower bound is fixed at `ZOOM_LOWER_LIMIT = 8.0` (independent of cluster size, so big scenes still allow close inspection); upper bound is `max(fit_radius * ZOOM_OUT_MULTIPLIER, ZOOM_OUT_FLOOR)` = `max(fit * 2, 64)` so empty scenes stay orbit-able and big scenes don't fly off into void.
 
 ### Cursor hints

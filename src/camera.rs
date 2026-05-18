@@ -2,6 +2,7 @@ use crate::grid::VoxelGrid;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
+use std::f32::consts::{FRAC_PI_2, TAU};
 
 /// Default orbit radius used when the world is empty (no occupied cells to
 /// frame) and as the initial spawn radius. Picked to comfortably show the
@@ -168,6 +169,78 @@ pub fn apply_recenter_system(
     request.base_focus = None;
 }
 
+/// Auto-orbit "drone" camera. While `active`, `flyby_system` rewrites the
+/// PanOrbitCamera target_* fields every frame from a parametric path, so user
+/// RMB-drag is silently absorbed — only Esc or another palette toggle stops
+/// it. Painting and ghost previews are gated separately (see `tools.rs` and
+/// `preview.rs`).
+#[derive(Resource, Default)]
+pub struct FlybyState {
+    pub active: bool,
+    pub t: f32,
+}
+
+pub const FLYBY_YAW_SPEED: f32 = 0.30;
+pub const FLYBY_PITCH_MID: f32 = 0.52;
+pub const FLYBY_PITCH_AMP: f32 = 0.26;
+pub const FLYBY_PITCH_FREQ: f32 = 0.07;
+pub const FLYBY_RADIUS_AMP: f32 = 0.25;
+pub const FLYBY_RADIUS_FREQ: f32 = 0.10;
+const FLYBY_PITCH_MIN: f32 = 0.05;
+const FLYBY_PITCH_MAX: f32 = FRAC_PI_2 - 0.05;
+
+pub fn flyby_yaw(t: f32, start_yaw: f32) -> f32 {
+    start_yaw + t * FLYBY_YAW_SPEED
+}
+
+pub fn flyby_pitch(t: f32) -> f32 {
+    let raw = FLYBY_PITCH_MID + FLYBY_PITCH_AMP * (t * FLYBY_PITCH_FREQ * TAU).sin();
+    raw.clamp(FLYBY_PITCH_MIN, FLYBY_PITCH_MAX)
+}
+
+pub fn flyby_radius(t: f32, base: f32) -> f32 {
+    // +π/2 phase so sin starts at 1 → at t=0 the breath sits at +amp above
+    // base. We use that engagement frame to anchor base_radius from
+    // `fit_view`, then the curve sweeps base*0.75 .. base*1.25 from there.
+    base * (1.0 + FLYBY_RADIUS_AMP * (t * FLYBY_RADIUS_FREQ * TAU + FRAC_PI_2).sin())
+}
+
+pub fn flyby_system(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    grid: Res<VoxelGrid>,
+    mut state: ResMut<FlybyState>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+    mut start_yaw: Local<f32>,
+    mut base_radius: Local<f32>,
+) {
+    if state.active && keys.just_pressed(KeyCode::Escape) {
+        state.active = false;
+    }
+    if !state.active {
+        state.t = 0.0;
+        return;
+    }
+
+    let Some(mut cam) = cameras.iter_mut().next() else {
+        return;
+    };
+
+    if state.t == 0.0 {
+        *start_yaw = cam.target_yaw;
+        let (focus, fit) = fit_view(&grid).unwrap_or((default_camera_focus(), EMPTY_WORLD_RADIUS));
+        *base_radius = fit;
+        cam.target_focus = focus;
+    }
+
+    state.t += time.delta_secs();
+
+    let upper = cam.zoom_upper_limit.unwrap_or(f32::MAX);
+    cam.target_yaw = flyby_yaw(state.t, *start_yaw);
+    cam.target_pitch = flyby_pitch(state.t);
+    cam.target_radius = flyby_radius(state.t, *base_radius).clamp(cam.zoom_lower_limit, upper);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,6 +358,76 @@ mod tests {
         assert!((focus.y - 10.5).abs() < 1e-5);
         assert!((focus.z - 10.5).abs() < 1e-5);
         assert!((radius - 4.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn flyby_yaw_advances_linearly_with_t() {
+        let a = flyby_yaw(0.0, 0.0);
+        let b = flyby_yaw(1.0, 0.0);
+        let c = flyby_yaw(2.0, 0.0);
+        assert!(b > a);
+        assert!((b - a) > 0.0);
+        assert!(((c - b) - (b - a)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn flyby_yaw_preserves_start_offset() {
+        assert!((flyby_yaw(0.0, 1.234) - 1.234).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flyby_pitch_within_safe_bounds() {
+        for i in 0..400 {
+            let t = i as f32 * 0.25;
+            let p = flyby_pitch(t);
+            assert!(p >= FLYBY_PITCH_MIN && p <= FLYBY_PITCH_MAX, "t={t} p={p}");
+        }
+    }
+
+    #[test]
+    fn flyby_pitch_average_near_mid() {
+        // Sample one full period and confirm the mean lands near the midpoint.
+        let period = 1.0 / FLYBY_PITCH_FREQ;
+        let n = 1024usize;
+        let mut sum = 0.0_f64;
+        for i in 0..n {
+            let t = (i as f32 / n as f32) * period;
+            sum += flyby_pitch(t) as f64;
+        }
+        let mean = (sum / n as f64) as f32;
+        assert!((mean - FLYBY_PITCH_MID).abs() < 0.01, "mean={mean}");
+    }
+
+    #[test]
+    fn flyby_radius_breath_bounded() {
+        let base = 32.0;
+        for i in 0..400 {
+            let t = i as f32 * 0.25;
+            let r = flyby_radius(t, base);
+            assert!(
+                r >= base * (1.0 - FLYBY_RADIUS_AMP) - 1e-4
+                    && r <= base * (1.0 + FLYBY_RADIUS_AMP) + 1e-4,
+                "t={t} r={r}"
+            );
+        }
+    }
+
+    #[test]
+    fn flyby_radius_starts_at_peak() {
+        // Phase chosen so sin = 1 at t=0 → radius starts at base*(1+amp).
+        // This means engagement reads base from fit_view and then immediately
+        // pulls slightly outward, never inward past the lower zoom limit.
+        let base = 32.0;
+        let r = flyby_radius(0.0, base);
+        let expected = base * (1.0 + FLYBY_RADIUS_AMP);
+        assert!((r - expected).abs() < 1e-4, "r={r} expected={expected}");
+    }
+
+    #[test]
+    fn flyby_state_default_inactive() {
+        let s = FlybyState::default();
+        assert!(!s.active);
+        assert_eq!(s.t, 0.0);
     }
 
     #[test]

@@ -15,6 +15,13 @@ pub struct SelectParams<'w> {
     pub selection: ResMut<'w, Selection>,
 }
 
+#[derive(SystemParam)]
+pub struct InputGates<'w> {
+    pub gizmo_drag: Res<'w, crate::gizmo::GizmoDrag>,
+    pub gizmo_rect: Res<'w, crate::gizmo::GizmoRect>,
+    pub flyby: Res<'w, crate::camera::FlybyState>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Brush,
@@ -530,9 +537,21 @@ pub fn tool_input_system(
     shape_options: Res<ShapeOptions>,
     mut shape_state: ResMut<ShapeState>,
     select_params: SelectParams,
-    gizmo_drag: Res<crate::gizmo::GizmoDrag>,
-    gizmo_rect: Res<crate::gizmo::GizmoRect>,
+    gates: InputGates,
 ) {
+    let InputGates {
+        gizmo_drag,
+        gizmo_rect,
+        flyby,
+    } = gates;
+    if flyby.active {
+        if state.stroking {
+            history.abort(&mut grid);
+            state.stroking = false;
+            state.anchor = None;
+        }
+        return;
+    }
     let SelectParams {
         state: mut select_state,
         mut selection,

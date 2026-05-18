@@ -24,9 +24,9 @@ use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use std::collections::HashMap;
 
 use crate::camera::{
-    EMPTY_WORLD_RADIUS, RecenterRequest, ViewportRect, apply_recenter_system, default_camera_focus,
-    frame_view_system, spawn_camera, update_viewport_rect, update_zoom_limits_system,
-    zoom_click_system, zoom_key_system,
+    EMPTY_WORLD_RADIUS, FlybyState, RecenterRequest, ViewportRect, apply_recenter_system,
+    default_camera_focus, flyby_system, frame_view_system, spawn_camera, update_viewport_rect,
+    update_zoom_limits_system, zoom_click_system, zoom_key_system,
 };
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
@@ -109,6 +109,7 @@ fn main() {
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<SnapshotInProgress>()
+        .init_resource::<FlybyState>()
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
@@ -189,6 +190,7 @@ fn main() {
             dispatch_command_palette_system,
             apply_recenter_system,
             update_zoom_limits_system,
+            flyby_system,
         ),
     )
     .add_systems(

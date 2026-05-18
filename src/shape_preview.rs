@@ -59,6 +59,7 @@ pub fn shape_preview_system(
     state: Res<ShapeState>,
     color: Res<CurrentColor>,
     handles: Res<ShapePreviewHandles>,
+    flyby: Res<crate::camera::FlybyState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
@@ -66,7 +67,7 @@ pub fn shape_preview_system(
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
-    if tool.current != Tool::Shape || state.phase.is_none() {
+    if flyby.active || tool.current != Tool::Shape || state.phase.is_none() {
         *vis = Visibility::Hidden;
         return;
     }

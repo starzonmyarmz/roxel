@@ -97,6 +97,7 @@ pub enum CommandAction {
     FrameView,
     ZoomIn,
     ZoomOut,
+    ToggleFlyby,
     OpenPreferences,
     OpenChangelog,
 
@@ -208,6 +209,7 @@ pub struct CatalogState<'a> {
     pub palette_choice: usize,
     pub current_color: Color8,
     pub prefs: &'a Preferences,
+    pub flyby_active: bool,
 }
 
 pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
@@ -449,6 +451,22 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         Some("⌘-"),
         true,
         CommandAction::ZoomOut,
+    ));
+    out.push(entry(
+        if state.flyby_active {
+            "Stop flyby camera"
+        } else {
+            "Start flyby camera"
+        },
+        Category::View,
+        "drone tour cinematic auto orbit preview",
+        if state.flyby_active {
+            Some("Esc")
+        } else {
+            None
+        },
+        true,
+        CommandAction::ToggleFlyby,
     ));
     out.push(entry(
         "Open Preferences…",
@@ -965,6 +983,8 @@ pub struct DispatchParams<'w> {
     color: ResMut<'w, CurrentColor>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
+    flyby: ResMut<'w, crate::camera::FlybyState>,
+    toasts: ResMut<'w, super::Toasts>,
 }
 
 pub fn dispatch_command_palette_system(
@@ -1085,6 +1105,12 @@ pub fn dispatch_command_palette_system(
                     cam.zoom_lower_limit,
                     cam.zoom_upper_limit,
                 );
+            }
+        }
+        CommandAction::ToggleFlyby => {
+            p.flyby.active = !p.flyby.active;
+            if p.flyby.active {
+                p.toasts.info("Flyby active — Esc to exit");
             }
         }
         CommandAction::OpenPreferences => p.prefs_window.open = true,
@@ -1286,6 +1312,7 @@ mod tests {
             palette_choice: 0,
             current_color: [10, 20, 30, 255],
             prefs: Box::leak(Box::new(Preferences::default())),
+            flyby_active: false,
         }
     }
 
@@ -1352,6 +1379,7 @@ mod tests {
             palette_choice: 0,
             current_color: [10, 20, 30, 255],
             prefs: &prefs,
+            flyby_active: false,
         };
         let cat = build_catalog(&state);
         let undo = cat
@@ -1377,6 +1405,7 @@ mod tests {
             palette_choice: 0,
             current_color: [10, 20, 30, 255],
             prefs: &prefs,
+            flyby_active: false,
         };
         let cat = build_catalog(&state);
         let switches: Vec<_> = cat
@@ -1406,6 +1435,7 @@ mod tests {
             palette_choice: 0,
             current_color: [10, 20, 30, 255],
             prefs: &prefs,
+            flyby_active: false,
         };
         let cat = build_catalog(&state);
         let order = rank(&cat, "frame");
@@ -1429,6 +1459,7 @@ mod tests {
             palette_choice: 0,
             current_color: [10, 20, 30, 255],
             prefs: &prefs,
+            flyby_active: false,
         };
         let cat = build_catalog(&state);
         let order = rank(&cat, "undo");
