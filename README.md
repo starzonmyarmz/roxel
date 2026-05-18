@@ -22,6 +22,22 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - In-app toast notifications for save / load / import / export results
 - Light / Dark / System themes with separate canvas and floor color preferences, plus optional Minecraft-style floor grid lines and a permanent RGB axis triad at world origin
 
+## Install
+
+Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases).
+
+> [!WARNING]
+> **macOS builds are self-signed and not notarized.** Gatekeeper will block first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files). To bypass:
+>
+> 1. Right-click `Roxel.app` → **Open** → confirm in the dialog.
+> 2. If macOS still refuses with the "damaged" message, strip the quarantine attribute:
+>
+>    ```sh
+>    xattr -dr com.apple.quarantine /Applications/Roxel.app
+>    ```
+>
+> Windows builds are unsigned; SmartScreen will warn on first run — click **More info** → **Run anyway**.
+
 ## Run
 
 ```sh
@@ -81,9 +97,7 @@ git tag v0.3.1
 git push origin v0.3.1
 ```
 
-The workflow lives at `.github/workflows/release.yml`. macOS builds are
-**not notarized**, so Gatekeeper will block first-run; right-click → Open.
-Windows builds are unsigned; SmartScreen will warn on first run.
+The workflow lives at `.github/workflows/release.yml`. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds.
 
 ## File format
 
