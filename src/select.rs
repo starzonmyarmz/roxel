@@ -358,6 +358,12 @@ pub fn selection_key_action_system(
         selection.aabb = None;
         return;
     }
+    if cmd && keys.just_pressed(KeyCode::KeyA)
+        && let Some((min, max)) = grid.bounding_box()
+    {
+        selection.aabb = Some(SelectionAabb { min, max });
+        return;
+    }
     if (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete))
         && let Some(aabb) = selection.aabb
         && select_state.phase == SelectPhase::Idle
@@ -427,6 +433,26 @@ mod tests {
         for p in points {
             grid.set(*p, Some(color));
         }
+    }
+
+    #[test]
+    fn select_all_uses_grid_bounding_box() {
+        let mut grid = VoxelGrid::default();
+        let c = [10, 20, 30, 255];
+        grid.set(IVec3::new(-2, 0, 3), Some(c));
+        grid.set(IVec3::new(5, 4, -1), Some(c));
+        let (min, max) = grid.bounding_box().expect("bb");
+        let sel = SelectionAabb { min, max };
+        assert!(sel.contains(IVec3::new(-2, 0, 3)));
+        assert!(sel.contains(IVec3::new(5, 4, -1)));
+        assert_eq!(sel.min, IVec3::new(-2, 0, -1));
+        assert_eq!(sel.max, IVec3::new(5, 4, 3));
+    }
+
+    #[test]
+    fn select_all_on_empty_grid_returns_none() {
+        let grid = VoxelGrid::default();
+        assert!(grid.bounding_box().is_none());
     }
 
     #[test]
