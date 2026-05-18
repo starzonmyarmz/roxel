@@ -1,4 +1,4 @@
-use crate::grid::{CHUNK_I, VoxelGrid, chunk_coord};
+use crate::grid::{CHUNK_I, Color8, VoxelGrid, chunk_coord};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::MeshMaterial3d;
@@ -138,22 +138,29 @@ pub struct GreedyQuad {
 /// for tests; the renderer goes through `greedy_quads_bounded` per dirty
 /// chunk.
 #[allow(dead_code)]
-pub fn greedy_quads(grid: &VoxelGrid, hide: Option<IVec3>) -> Vec<GreedyQuad> {
+pub fn greedy_quads(
+    grid: &VoxelGrid,
+    hide: Option<IVec3>,
+    recolor: Option<(IVec3, Color8)>,
+) -> Vec<GreedyQuad> {
     let mut out = Vec::new();
     for coord in grid.chunks.keys().copied().collect::<Vec<_>>() {
         let min = coord * CHUNK_I;
         let max = min + IVec3::splat(CHUNK_I);
-        out.extend(greedy_quads_bounded(grid, hide, min, max));
+        out.extend(greedy_quads_bounded(grid, hide, recolor, min, max));
     }
     out
 }
 
 /// Greedy-merge exterior faces of voxels in the half-open box `[min, max)`.
 /// Cross-bounds occlusion still queries the full grid so emitted quads agree
-/// at chunk seams with the equivalent monolithic call.
+/// at chunk seams with the equivalent monolithic call. `recolor` swaps the
+/// emitted color for a single cell — used by the Paint preview to ghost the
+/// target color without mutating the grid.
 pub fn greedy_quads_bounded(
     grid: &VoxelGrid,
     hide: Option<IVec3>,
+    recolor: Option<(IVec3, Color8)>,
     min: IVec3,
     max: IVec3,
 ) -> Vec<GreedyQuad> {
@@ -161,7 +168,14 @@ pub fn greedy_quads_bounded(
         if hide == Some(p) {
             return None;
         }
-        grid.get(p)
+        let base = grid.get(p)?;
+        if let Some((cell, c)) = recolor
+            && cell == p
+        {
+            Some([c[0], c[1], c[2], base[3]])
+        } else {
+            Some(base)
+        }
     };
 
     let mut quads = Vec::new();
@@ -270,8 +284,12 @@ pub fn greedy_quads_bounded(
 /// the runtime renderer goes through per-chunk meshes via
 /// `regenerate_mesh_system`.
 #[allow(dead_code)]
-pub fn build_mesh(grid: &VoxelGrid, hide: Option<IVec3>) -> Mesh {
-    build_mesh_from_quads(greedy_quads(grid, hide))
+pub fn build_mesh(
+    grid: &VoxelGrid,
+    hide: Option<IVec3>,
+    recolor: Option<(IVec3, Color8)>,
+) -> Mesh {
+    build_mesh_from_quads(greedy_quads(grid, hide, recolor))
 }
 
 fn build_mesh_from_quads(quads: Vec<GreedyQuad>) -> Mesh {
@@ -330,12 +348,18 @@ pub struct VoxelChunkMeshes {
 #[derive(Resource, Default)]
 pub struct PreviewHide {
     pub cell: Option<IVec3>,
-    last: Option<IVec3>,
+    pub recolor: Option<(IVec3, Color8)>,
+    last_cell: Option<IVec3>,
+    last_recolor: Option<(IVec3, Color8)>,
 }
 
 impl PreviewHide {
     pub fn set(&mut self, c: Option<IVec3>) {
         self.cell = c;
+    }
+
+    pub fn set_recolor(&mut self, r: Option<(IVec3, Color8)>) {
+        self.recolor = r;
     }
 }
 
@@ -346,11 +370,22 @@ pub fn regenerate_mesh_system(
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let hide_changed = hide.cell != hide.last;
+    let hide_changed = hide.cell != hide.last_cell;
+    let recolor_changed = hide.recolor != hide.last_recolor;
 
     if hide_changed {
-        for opt in [hide.cell, hide.last] {
+        for opt in [hide.cell, hide.last_cell] {
             if let Some(p) = opt
+                && grid.in_bounds(p)
+            {
+                let coord = chunk_coord(p);
+                grid.dirty_chunks.insert(coord);
+            }
+        }
+    }
+    if recolor_changed {
+        for opt in [hide.recolor, hide.last_recolor] {
+            if let Some((p, _)) = opt
                 && grid.in_bounds(p)
             {
                 let coord = chunk_coord(p);
@@ -361,7 +396,8 @@ pub fn regenerate_mesh_system(
 
     if grid.dirty_chunks.is_empty() {
         grid.dirty = false;
-        hide.last = hide.cell;
+        hide.last_cell = hide.cell;
+        hide.last_recolor = hide.recolor;
         return;
     }
 
@@ -380,7 +416,8 @@ pub fn regenerate_mesh_system(
 
         let min = coord * CHUNK_I;
         let max = min + IVec3::splat(CHUNK_I);
-        let new_mesh = build_mesh_from_quads(greedy_quads_bounded(&grid, hide.cell, min, max));
+        let new_mesh =
+            build_mesh_from_quads(greedy_quads_bounded(&grid, hide.cell, hide.recolor, min, max));
 
         if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
             if let Some(slot) = meshes.get_mut(handle) {
@@ -401,7 +438,8 @@ pub fn regenerate_mesh_system(
     }
 
     grid.dirty = false;
-    hide.last = hide.cell;
+    hide.last_cell = hide.cell;
+    hide.last_recolor = hide.recolor;
 }
 
 #[cfg(test)]
@@ -427,7 +465,7 @@ mod tests {
     fn greedy_quads_single_voxel_emits_six_faces() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         assert_eq!(quads.len(), 6);
     }
 
@@ -436,7 +474,7 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
         g.set(IVec3::new(1, 0, 0), Some([1, 1, 1, 255]));
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         assert_eq!(quads.len(), 6);
     }
 
@@ -446,7 +484,7 @@ mod tests {
         for x in 0..4 {
             g.set(IVec3::new(x, 0, 0), Some([1, 1, 1, 255]));
         }
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         assert_eq!(quads.len(), 6);
     }
 
@@ -455,22 +493,45 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 0, 0, 255]));
         g.set(IVec3::new(1, 0, 0), Some([2, 0, 0, 255]));
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         assert_eq!(quads.len(), 10);
+    }
+
+    #[test]
+    fn greedy_quads_recolor_swaps_rgb_keeps_alpha() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(2, 2, 2), Some([10, 20, 30, 200]));
+        let quads = greedy_quads(&g, None, Some((IVec3::new(2, 2, 2), [99, 88, 77, 255])));
+        assert_eq!(quads.len(), 6);
+        for q in &quads {
+            assert_eq!(q.color, [99, 88, 77, 200]);
+        }
+    }
+
+    #[test]
+    fn greedy_quads_recolor_only_affects_targeted_cell() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([10, 10, 10, 255]));
+        g.set(IVec3::new(2, 0, 0), Some([10, 10, 10, 255]));
+        let quads = greedy_quads(&g, None, Some((IVec3::new(0, 0, 0), [200, 0, 0, 255])));
+        let recolored = quads.iter().filter(|q| q.color == [200, 0, 0, 255]).count();
+        let untouched = quads.iter().filter(|q| q.color == [10, 10, 10, 255]).count();
+        assert_eq!(recolored, 6);
+        assert_eq!(untouched, 6);
     }
 
     #[test]
     fn greedy_quads_hide_skips_targeted_cell() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(5, 5, 5), Some([1, 1, 1, 255]));
-        let quads = greedy_quads(&g, Some(IVec3::new(5, 5, 5)));
+        let quads = greedy_quads(&g, Some(IVec3::new(5, 5, 5)), None);
         assert_eq!(quads.len(), 0);
     }
 
     #[test]
     fn build_mesh_empty_grid_has_no_geometry() {
         let g = VoxelGrid::default();
-        let m = build_mesh(&g, None);
+        let m = build_mesh(&g, None, None);
         let pos = m.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions");
         assert_eq!(pos.len(), 0);
     }
@@ -524,14 +585,14 @@ mod tests {
         // occlusion via grid.get under the hood, so the only sensible
         // comparison is per-chunk against per-chunk — we instead compare
         // against the reference `greedy_quads` which already walks per-chunk.
-        let walk_a = greedy_quads(&g, None);
+        let walk_a = greedy_quads(&g, None, None);
         let walk_b = {
             // Independently walk chunk coords and aggregate.
             let mut out = Vec::new();
             for coord in g.chunks.keys().copied().collect::<Vec<_>>() {
                 let min = coord * CHUNK_I;
                 let max = min + IVec3::splat(CHUNK_I);
-                out.extend(greedy_quads_bounded(&g, None, min, max));
+                out.extend(greedy_quads_bounded(&g, None, None, min, max));
             }
             out
         };
@@ -547,7 +608,7 @@ mod tests {
         g.set(IVec3::new(CHUNK_I - 1, 0, 0), Some([1, 1, 1, 255]));
         g.set(IVec3::new(CHUNK_I, 0, 0), Some([1, 1, 1, 255]));
 
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         let total: i64 = area_by_face(&quads).iter().sum();
         // 2 caps (1 area each) + 4 long sides (2 area each) = 10.
         assert_eq!(total, 10);
@@ -557,7 +618,7 @@ mod tests {
     fn greedy_quads_handles_negative_coords() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(-5, 0, -5), Some([1, 1, 1, 255]));
-        let quads = greedy_quads(&g, None);
+        let quads = greedy_quads(&g, None, None);
         assert_eq!(quads.len(), 6);
     }
 
@@ -565,7 +626,7 @@ mod tests {
     fn build_mesh_single_voxel_has_24_vertices_and_36_indices() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
-        let m = build_mesh(&g, None);
+        let m = build_mesh(&g, None, None);
         let pos = m.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions");
         assert_eq!(pos.len(), 24);
         let idx = m.indices().expect("indices");

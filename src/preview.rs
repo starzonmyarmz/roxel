@@ -87,6 +87,7 @@ pub fn brush_preview_system(
     let clear = |vis: &mut Visibility, hide: &mut PreviewHide| {
         *vis = Visibility::Hidden;
         hide.set(None);
+        hide.set_recolor(None);
     };
 
     if egui_wants_pointer
@@ -122,6 +123,7 @@ pub fn brush_preview_system(
     };
     if show_brush_ghost {
         hide.set(None);
+        hide.set_recolor(None);
         let target = hit.cell + hit.normal;
         if !grid.in_bounds(target) {
             *vis = Visibility::Hidden;
@@ -148,10 +150,20 @@ pub fn brush_preview_system(
     match tool.current {
         Tool::Erase => {
             *vis = Visibility::Hidden;
+            hide.set_recolor(None);
             if hit.hit_voxel {
                 hide.set(Some(hit.cell));
             } else {
                 hide.set(None);
+            }
+        }
+        Tool::Paint => {
+            *vis = Visibility::Hidden;
+            hide.set(None);
+            if hit.hit_voxel {
+                hide.set_recolor(Some((hit.cell, color.0)));
+            } else {
+                hide.set_recolor(None);
             }
         }
         _ => {
