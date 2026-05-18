@@ -161,6 +161,7 @@ pub fn update_gizmo_viewport(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut cameras: Query<&mut Camera, With<GizmoCamera>>,
     mut rect_res: ResMut<GizmoRect>,
+    flyby: Res<crate::camera::FlybyState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     let Ok(window) = windows.single() else {
@@ -169,6 +170,16 @@ pub fn update_gizmo_viewport(
     let Ok(mut cam) = cameras.single_mut() else {
         return Ok(());
     };
+
+    // Flyby suppresses the orientation cube — it's distracting against the
+    // cinematic orbit and would also pick up the auto-rotation, confusing
+    // the user's sense of "what does this gizmo represent".
+    if flyby.active {
+        cam.is_active = false;
+        rect_res.0 = None;
+        return Ok(());
+    }
+    cam.is_active = true;
 
     let rect = ctx.available_rect();
     let ppp = ctx.pixels_per_point();
