@@ -12,6 +12,11 @@ Release notes.
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-05-18
+
+- ci: drop sccache from release workflow + bump 4.0.2
+- docs: finalize CHANGELOG for v4.0.1 [skip ci]
+
 ## [4.0.1] - 2026-05-18
 
 - chore: bump to 4.0.1
