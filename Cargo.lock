@@ -5336,7 +5336,7 @@ dependencies = [
 
 [[package]]
 name = "roxel"
-version = "0.3.2"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "bevy",
