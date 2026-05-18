@@ -1,10 +1,10 @@
+use super::dialogs::{DialogResult, PendingDialog};
 use crate::camera::{ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view};
 use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
 use crate::theme::{NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
-use super::dialogs::{DialogResult, PendingDialog};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
 };
@@ -113,6 +113,7 @@ pub enum CommandAction {
     SetThemePref(ThemePref),
     ToggleShowFloorGrid,
     ToggleShowYAxis,
+    ToggleShowOriginAxes,
 }
 
 #[derive(Clone)]
@@ -588,6 +589,18 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         true,
         CommandAction::ToggleShowYAxis,
     ));
+    out.push(entry(
+        if state.prefs.show_origin_axes {
+            "Hide origin axes"
+        } else {
+            "Show origin axes"
+        },
+        Category::Preferences,
+        "red green blue center point triad toggle",
+        None,
+        true,
+        CommandAction::ToggleShowOriginAxes,
+    ));
 
     // Help
     out.push(entry(
@@ -923,11 +936,9 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
 
     // Shortcut (right).
     if let Some(sc) = entry.shortcut {
-        let sc_galley = ui.painter().layout_no_wrap(
-            sc.to_string(),
-            egui::FontId::monospace(font::SMALL),
-            dim,
-        );
+        let sc_galley =
+            ui.painter()
+                .layout_no_wrap(sc.to_string(), egui::FontId::monospace(font::SMALL), dim);
         let sc_x = rect.right() - 10.0 - sc_galley.size().x;
         let sc_y = rect.center().y - sc_galley.size().y * 0.5;
         ui.painter().galley(egui::pos2(sc_x, sc_y), sc_galley, dim);
@@ -968,9 +979,7 @@ pub fn dispatch_command_palette_system(
             p.new_project.dialog_open = true;
         }
         CommandAction::OpenProject => spawn_open(&mut p.pending),
-        CommandAction::SaveProject => {
-            super::dialogs::spawn_save(&mut p.pending, &p.current_path)
-        }
+        CommandAction::SaveProject => super::dialogs::spawn_save(&mut p.pending, &p.current_path),
         CommandAction::SaveProjectAs => {
             super::dialogs::spawn_save_as(&mut p.pending, &p.current_path)
         }
@@ -1051,8 +1060,8 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::SelectShape(prim) => p.shape.primitive = prim,
         CommandAction::FrameView => {
-            let (centroid, radius) = fit_view(&p.grid)
-                .unwrap_or((Vec3::ZERO, crate::camera::EMPTY_WORLD_RADIUS));
+            let (centroid, radius) =
+                fit_view(&p.grid).unwrap_or((Vec3::ZERO, crate::camera::EMPTY_WORLD_RADIUS));
             for mut cam in &mut cameras {
                 cam.target_focus = centroid;
                 cam.target_radius = radius;
@@ -1181,6 +1190,10 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ToggleShowYAxis => {
             p.prefs.show_y_axis = !p.prefs.show_y_axis;
+            crate::theme::save_preferences(&p.prefs);
+        }
+        CommandAction::ToggleShowOriginAxes => {
+            p.prefs.show_origin_axes = !p.prefs.show_origin_axes;
             crate::theme::save_preferences(&p.prefs);
         }
     }

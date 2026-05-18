@@ -91,6 +91,7 @@ mod tests {
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor_grid);
         assert!(p.show_y_axis);
+        assert!(p.show_origin_axes);
     }
 
     #[test]
@@ -135,6 +136,20 @@ mod tests {
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor_grid);
         assert!(p.show_y_axis);
+        assert!(p.show_origin_axes);
+    }
+
+    #[test]
+    fn preferences_roundtrip_origin_axes_false() {
+        // Explicit `show_origin_axes: false` must survive a save/load cycle so
+        // turning the origin triad off persists across sessions.
+        let prefs = Preferences {
+            show_origin_axes: false,
+            ..Default::default()
+        };
+        let ron = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&ron).expect("parse");
+        assert!(!parsed.show_origin_axes);
     }
 
     #[test]
@@ -158,6 +173,8 @@ pub struct Preferences {
     pub show_floor_grid: bool,
     #[serde(default = "default_show_y_axis")]
     pub show_y_axis: bool,
+    #[serde(default = "default_show_origin_axes")]
+    pub show_origin_axes: bool,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -169,6 +186,9 @@ fn default_show_floor_grid() -> bool {
 fn default_show_y_axis() -> bool {
     true
 }
+fn default_show_origin_axes() -> bool {
+    true
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -177,6 +197,7 @@ impl Default for Preferences {
             canvas_bg: default_canvas_bg(),
             show_floor_grid: default_show_floor_grid(),
             show_y_axis: default_show_y_axis(),
+            show_origin_axes: default_show_origin_axes(),
         }
     }
 }

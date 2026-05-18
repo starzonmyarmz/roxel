@@ -98,8 +98,11 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                         ui.horizontal(|ui| {
                             let (rect, _) =
                                 ui.allocate_exact_size(egui::vec2(3.0, 18.0), egui::Sense::hover());
-                            ui.painter()
-                                .rect_filled(rect, egui::CornerRadius::same(radius::XS), accent);
+                            ui.painter().rect_filled(
+                                rect,
+                                egui::CornerRadius::same(radius::XS),
+                                accent,
+                            );
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(&t.message)

@@ -150,7 +150,8 @@ User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a
 - `theme: ThemePref { Light, Dark, System }`
 - `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly.
 - `show_floor_grid: bool` (default true) — Minecraft-style grid lines on the y=0 plane.
-- `show_y_axis: bool` (default true) — extends the green Y-axis up into the sky as a vertical origin anchor.
+- `show_origin_axes: bool` (default true) — RGB axis triad at world origin (red X, green Y, blue Z). When false, the entire triad is hidden including the long Y extension.
+- `show_y_axis: bool` (default true) — extends the green Y-axis up into the sky as a vertical origin anchor. Gated by `show_origin_axes`.
 
 Every field after `theme` is `#[serde(default = "...")]` so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_after_floor_fields_removed` guards this.
 
@@ -220,6 +221,12 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 `EguiPlugin` is added with `auto_create_primary_context: false` (set via `EguiGlobalSettings`); the gizmo's secondary camera is what makes this necessary. If you add a new resource consumed by a system, register it with `init_resource` in `main.rs` — most resources here are `#[derive(Default)]` and use that pattern. `Palettes` is the exception (registered with `insert_resource(Palettes::with_user_loaded())` so user palettes load on startup).
 
 ## File format
+
+### Snapshot (PNG export)
+
+`snapshot.rs` spawns a one-shot offscreen `Camera3d` at the main camera's transform/projection, renders into an `Image` at physical window resolution with `ClearColorConfig::Custom(Color::NONE)`, and captures it via Bevy's `Screenshot` pipeline. The snapshot camera forces `Tonemapping::None` — the tonemap fullscreen pass writes `alpha=1` to every output pixel, which would clobber the transparent clear and produce an opaque-black background. Voxel materials are `unlit` so colors are unaffected by skipping tonemap.
+
+While the snapshot is in flight, `SnapshotInProgress` is set. `floor_grid_system`, `draw_origin_system`, and `selection_render_system` early-return on the snapshot frame so gizmo overlays don't appear in the captured image. `start_snapshot_system` is ordered `.before(...)` each of those so they see the flag on the same frame. The observer that runs after `ScreenshotCaptured` clears the flag.
 
 `.roxel` projects are `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. No `version`, no `size` — the open-world grid has neither. Coordinates are signed; a model can sit anywhere relative to the origin and round-trip exactly.
 

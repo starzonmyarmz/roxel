@@ -4,7 +4,12 @@
 // projection, renders into an Image at physical (HiDPI) window resolution
 // with `ClearColorConfig::Custom(Color::NONE)`, then captures that image
 // through Bevy's Screenshot pipeline. The gizmo overlay camera writes to the
-// window, not the snapshot image, so it's excluded automatically.
+// window, not the snapshot image, so it's excluded automatically. The floor
+// grid, origin axes, selection outline, and any other gizmo overlays are
+// suppressed for the snapshot frame via `SnapshotInProgress`. Tonemapping is
+// forced off on the snapshot camera so the alpha channel from
+// `Color::NONE`-cleared background pixels round-trips into the PNG instead of
+// being clobbered to 1.0 by the tonemap pass.
 
 use std::path::{Path, PathBuf};
 
@@ -30,13 +35,19 @@ pub struct SnapshotSession {
     camera: Option<Entity>,
 }
 
+/// Set for the duration of a snapshot render so gizmo/overlay systems can
+/// early-return and stay out of the captured image.
+#[derive(Resource, Default)]
+pub struct SnapshotInProgress(pub bool);
+
 pub fn start_snapshot_system(
     mut commands: Commands,
     mut request: ResMut<SnapshotRequest>,
     mut session: ResMut<SnapshotSession>,
+    mut in_progress: ResMut<SnapshotInProgress>,
     mut toasts: ResMut<Toasts>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    main_cam: Query<(&GlobalTransform, &Projection, Option<&Tonemapping>), With<PanOrbitCamera>>,
+    main_cam: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let Some(path) = request.0.take() else { return };
@@ -46,7 +57,7 @@ pub fn start_snapshot_system(
     }
 
     let Ok(window) = windows.single() else { return };
-    let Ok((xform, projection, tonemapping)) = main_cam.single() else {
+    let Ok((xform, projection)) = main_cam.single() else {
         return;
     };
 
@@ -56,7 +67,7 @@ pub fn start_snapshot_system(
     let image = Image::new_target_texture(width, height, TextureFormat::Rgba8UnormSrgb, None);
     let handle = images.add(image);
 
-    let mut cam = commands.spawn((
+    let cam = commands.spawn((
         Camera3d::default(),
         Camera {
             clear_color: ClearColorConfig::Custom(Color::NONE),
@@ -66,18 +77,22 @@ pub fn start_snapshot_system(
         RenderTarget::Image(handle.clone().into()),
         Transform::from(*xform),
         projection.clone(),
+        // Force tonemapping off — the tonemap fullscreen pass writes alpha=1
+        // to every output pixel, which would replace the transparent clear
+        // areas with opaque background. Voxel materials are `unlit`, so the
+        // captured colors look the same with or without tonemapping.
+        Tonemapping::None,
         SnapshotCamera,
     ));
-    if let Some(tm) = tonemapping {
-        cam.insert(*tm);
-    }
     session.camera = Some(cam.id());
+    in_progress.0 = true;
 
     let path_for_observer = path.clone();
     commands.spawn(Screenshot::image(handle.clone())).observe(
         move |trigger: On<ScreenshotCaptured>,
               mut commands: Commands,
               mut session: ResMut<SnapshotSession>,
+              mut in_progress: ResMut<SnapshotInProgress>,
               mut toasts: ResMut<Toasts>| {
             match save_rgba_png(&path_for_observer, &trigger.image) {
                 Ok(()) => {
@@ -92,6 +107,7 @@ pub fn start_snapshot_system(
             if let Some(cam) = session.camera.take() {
                 commands.entity(cam).despawn();
             }
+            in_progress.0 = false;
         },
     );
 }

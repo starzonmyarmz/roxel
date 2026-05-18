@@ -195,8 +195,12 @@ mod tests {
         // produce a floor cell. The bounded version of this test required the
         // cursor inside [0, size); we drop that.
         let g = VoxelGrid::default();
-        let hit = pick(&g, Vec3::new(-200.0, 10.0, -300.0), Vec3::new(0.0, -1.0, 0.0))
-            .expect("floor");
+        let hit = pick(
+            &g,
+            Vec3::new(-200.0, 10.0, -300.0),
+            Vec3::new(0.0, -1.0, 0.0),
+        )
+        .expect("floor");
         assert!(!hit.hit_voxel);
         assert_eq!(hit.cell, IVec3::new(-200, -1, -300));
     }

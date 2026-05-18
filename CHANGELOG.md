@@ -12,6 +12,11 @@ Release notes.
 
 ## [Unreleased]
 
+- feat: preference to hide origin RGB axis triad
+- fix: PNG export now writes a true transparent background instead of black
+- fix: PNG export no longer captures floor grid, origin axes, or selection overlay
+- polish: origin axes render above the floor grid via dedicated gizmo group with depth bias
+
 ## [4.0.2] - 2026-05-18
 
 - ci: drop sccache from release workflow + bump 4.0.2

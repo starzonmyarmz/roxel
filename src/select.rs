@@ -266,8 +266,12 @@ pub fn selection_render_system(
     state: Res<SelectState>,
     _grid: Res<VoxelGrid>,
     time: Res<Time>,
+    snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
     mut gizmos: Gizmos<SelectionGizmos>,
 ) {
+    if snapshot_active.0 {
+        return;
+    }
     // In-progress drag takes priority over a committed selection so the user
     // sees the new region they're drawing.
     let active_aabb = if state.phase != SelectPhase::Idle {
@@ -358,7 +362,8 @@ pub fn selection_key_action_system(
         selection.aabb = None;
         return;
     }
-    if cmd && keys.just_pressed(KeyCode::KeyA)
+    if cmd
+        && keys.just_pressed(KeyCode::KeyA)
         && let Some((min, max)) = grid.bounding_box()
     {
         selection.aabb = Some(SelectionAabb { min, max });

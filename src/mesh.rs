@@ -284,11 +284,7 @@ pub fn greedy_quads_bounded(
 /// the runtime renderer goes through per-chunk meshes via
 /// `regenerate_mesh_system`.
 #[allow(dead_code)]
-pub fn build_mesh(
-    grid: &VoxelGrid,
-    hide: Option<IVec3>,
-    recolor: Option<(IVec3, Color8)>,
-) -> Mesh {
+pub fn build_mesh(grid: &VoxelGrid, hide: Option<IVec3>, recolor: Option<(IVec3, Color8)>) -> Mesh {
     build_mesh_from_quads(greedy_quads(grid, hide, recolor))
 }
 
@@ -416,8 +412,13 @@ pub fn regenerate_mesh_system(
 
         let min = coord * CHUNK_I;
         let max = min + IVec3::splat(CHUNK_I);
-        let new_mesh =
-            build_mesh_from_quads(greedy_quads_bounded(&grid, hide.cell, hide.recolor, min, max));
+        let new_mesh = build_mesh_from_quads(greedy_quads_bounded(
+            &grid,
+            hide.cell,
+            hide.recolor,
+            min,
+            max,
+        ));
 
         if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
             if let Some(slot) = meshes.get_mut(handle) {
@@ -515,7 +516,10 @@ mod tests {
         g.set(IVec3::new(2, 0, 0), Some([10, 10, 10, 255]));
         let quads = greedy_quads(&g, None, Some((IVec3::new(0, 0, 0), [200, 0, 0, 255])));
         let recolored = quads.iter().filter(|q| q.color == [200, 0, 0, 255]).count();
-        let untouched = quads.iter().filter(|q| q.color == [10, 10, 10, 255]).count();
+        let untouched = quads
+            .iter()
+            .filter(|q| q.color == [10, 10, 10, 255])
+            .count();
         assert_eq!(recolored, 6);
         assert_eq!(untouched, 6);
     }

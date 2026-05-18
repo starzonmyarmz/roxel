@@ -389,9 +389,7 @@ pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Optio
 /// is fixed; upper bound scales with `fit_view` clamped to a floor so empty
 /// scenes still feel orbit-able.
 pub fn zoom_radius_limits(grid: &VoxelGrid) -> (f32, f32) {
-    let fit = fit_view(grid)
-        .map(|(_, r)| r)
-        .unwrap_or(EMPTY_WORLD_RADIUS);
+    let fit = fit_view(grid).map(|(_, r)| r).unwrap_or(EMPTY_WORLD_RADIUS);
     // Fixed lower bound so the user can always zoom in to individual voxels
     // regardless of scene size. Scaling this with cluster fit_radius made
     // large scenes feel locked out of close-up inspection.

@@ -24,21 +24,25 @@ use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use std::collections::HashMap;
 
 use crate::camera::{
-    EMPTY_WORLD_RADIUS, RecenterRequest, ViewportRect, apply_recenter_system,
-    default_camera_focus, frame_view_system, spawn_camera, update_viewport_rect,
-    update_zoom_limits_system, zoom_click_system, zoom_key_system,
+    EMPTY_WORLD_RADIUS, RecenterRequest, ViewportRect, apply_recenter_system, default_camera_focus,
+    frame_view_system, spawn_camera, update_viewport_rect, update_zoom_limits_system,
+    zoom_click_system, zoom_key_system,
 };
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
     spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
 };
-use crate::grid::{NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared};
+use crate::grid::{
+    NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared,
+};
 use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
-use crate::snapshot::{SnapshotRequest, SnapshotSession, start_snapshot_system};
+use crate::snapshot::{
+    SnapshotInProgress, SnapshotRequest, SnapshotSession, start_snapshot_system,
+};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
     resolve_canvas_color, resolve_theme,
@@ -104,6 +108,7 @@ fn main() {
         .insert_resource(Palettes::with_user_loaded())
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
+        .init_resource::<SnapshotInProgress>()
         .init_resource::<GizmoRect>()
         .init_resource::<GizmoDrag>()
         .init_resource::<GizmoHover>()
@@ -116,6 +121,7 @@ fn main() {
         .init_resource::<Toasts>()
         .init_resource::<CommandPalette>()
         .init_gizmo_group::<AxisGizmoGroup>()
+        .init_gizmo_group::<OriginAxesGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
     #[cfg(target_os = "macos")]
@@ -136,6 +142,7 @@ fn main() {
         (
             setup_scene,
             configure_axis_gizmo,
+            configure_origin_axes_gizmos,
             crate::select::configure_selection_gizmos,
         ),
     )
@@ -158,7 +165,10 @@ fn main() {
             crate::select::selection_render_system.before(regenerate_mesh_system),
             crate::select::selection_key_action_system,
             crate::select::move_selection_keys_system,
-            start_snapshot_system,
+            start_snapshot_system
+                .before(floor_grid_system)
+                .before(draw_origin_system)
+                .before(crate::select::selection_render_system),
             apply_new_project_system.before(regenerate_mesh_system),
             apply_import_system,
             toast_lifetime_system,
@@ -283,10 +293,11 @@ fn apply_canvas_bg_system(
 fn floor_grid_system(
     prefs: Res<Preferences>,
     theme: Res<crate::theme::Theme>,
+    snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
     cameras: Query<&PanOrbitCamera>,
     mut gizmos: Gizmos,
 ) {
-    if !prefs.show_floor_grid {
+    if snapshot_active.0 || !prefs.show_floor_grid {
         return;
     }
     let Ok(cam) = cameras.single() else { return };
@@ -365,7 +376,25 @@ pub const GRID_CHUNK_RADIUS: f32 = 512.0;
 /// where (0, 0, 0) sits even with no voxels painted. The green Y axis
 /// extends far up into the sky as a vertical anchor when `show_y_axis` is
 /// enabled, so the user never loses track of the origin column.
-fn draw_origin_system(prefs: Res<Preferences>, mut gizmos: Gizmos) {
+/// Dedicated gizmo group for the origin axis triad. Uses `depth_bias = -1.0`
+/// so the lines win against the floor grid (both sit at y≈0) and read clearly
+/// on top.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct OriginAxesGizmos;
+
+fn configure_origin_axes_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<OriginAxesGizmos>();
+    config.depth_bias = -1.0;
+}
+
+fn draw_origin_system(
+    prefs: Res<Preferences>,
+    snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
+    mut gizmos: Gizmos<OriginAxesGizmos>,
+) {
+    if snapshot_active.0 || !prefs.show_origin_axes {
+        return;
+    }
     let len = 1.0;
     gizmos.line(Vec3::ZERO, Vec3::X * len, Color::srgb(1.0, 0.3, 0.3));
     gizmos.line(Vec3::ZERO, Vec3::Z * len, Color::srgb(0.3, 0.3, 1.0));
@@ -410,4 +439,3 @@ fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {
         *done = true;
     }
 }
-

@@ -48,7 +48,11 @@ pub fn tool_button(
     } else {
         egui::Color32::TRANSPARENT
     };
-    let hovered = if active { theme.surface_hover } else { hover_fill };
+    let hovered = if active {
+        theme.surface_hover
+    } else {
+        hover_fill
+    };
     let icon_img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::lg_square())
         .tint(theme.text);
@@ -260,7 +264,9 @@ pub fn swatch_button(
         egui::Stroke::new(stroke::ACCENT, theme.accent)
     } else {
         let border = match theme.mode {
-            crate::theme::ThemeMode::Dark => egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36),
+            crate::theme::ThemeMode::Dark => {
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36)
+            }
             crate::theme::ThemeMode::Light => egui::Color32::from_rgba_unmultiplied(0, 0, 0, 36),
         };
         egui::Stroke::new(stroke::NORMAL, border)
