@@ -13,8 +13,10 @@ Release notes.
 ## [Unreleased]
 
 - feat: open-world voxel grid — no fixed canvas size. Paint anywhere on X / Z, as high as memory allows; y < 0 is the only hard bound. Chunks allocate on first write and drop when empty.
-- feat: camera-following 256×256 floor plane with Minecraft-style chunk-grid lines (light every voxel, heavy every 16); RGB axis triad always visible at world origin.
-- feat: footer reads `Design WxHxD` from the occupied AABB and `Zoom N voxels` from the orbit radius — no more % readout.
+- feat: two-band y=0 grid — per-voxel (with every-16 major) up to radius 128, every-16 only up to radius 512, hidden beyond. RGB axis triad always at world origin, with an optional Y-axis sky line as a vertical anchor.
+- feat: footer reads `Size W×H×D` from the occupied AABB and `Zoom N voxels` from the live orbit radius.
+- breaking: ground floor plane dropped; the y=0 grid is the only floor reference. `show_floor` / `floor_color` / `preview_outline` preferences removed (old `preferences.ron` files load silently — serde drops the unknown keys).
+- polish: zoom uses √2-per-click steps (was ×2); lower bound fixed at radius 8 so big scenes still allow close inspection, upper bound capped at `max(2 × fit_radius, 64)`. Z+click recenters focus to the voxel under the cursor before zooming.
 - feat: soft toast warning when a scene crosses 5M voxels or 4K loaded chunks; one-shot, clears with hysteresis.
 - breaking: `.roxel` v1 format dropped. New format stores only `voxels` (no `version`, no `size`). v1 files happen to load when their `voxels` field matches but are not officially supported.
 - breaking: New-project modal is a confirm dialog only — no grid-size picker.
@@ -24,11 +26,9 @@ Release notes.
 - feat: Save remembers the last-used file path; new Save As… entry (⇧⌘S) under File menu and command palette
 - feat: Shape tool — primitive popup on the left rail; rail icon reflects the active primitive (Rectangle / Ellipse / Line); drop the Filled toggle (always filled)
 - feat: Cmd/Ctrl+D clears the current selection
-- feat: zoom percentage clamped to a bounded range (0–1000%) so the readout never overshoots
 - fix: initial framing is panel-aware on startup and after every project rebuild — voxels no longer land offscreen behind side panels
 - chore: optional `dev` cargo feature for Bevy dynamic linking (`cargo run --features dev`) for faster link times
 - polish: left tool rail — transparent unselected buttons, gray selected, lighter-gray hover; tighter spacing; shorter status bar
-- feat: optional voxel-grid overlay on the floor plane (Preferences → Show floor grid, Cmd+K toggle)
 - feat: brush-style hover ghost for the Shape tool before the first click
 - polish: subtler brush + shape previews — outline alpha halved, shape silhouette draws only boundary edges instead of per-cell wireframes
 - polish: drop per-cell wireframes from selection render; keep the marching-ants AABB

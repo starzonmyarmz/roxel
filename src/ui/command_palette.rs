@@ -1,4 +1,4 @@
-use crate::camera::{apply_zoom, fit_view};
+use crate::camera::{ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view};
 use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
@@ -111,9 +111,8 @@ pub enum CommandAction {
     PickColor(Color8),
 
     SetThemePref(ThemePref),
-    ToggleShowFloor,
     ToggleShowFloorGrid,
-    TogglePreviewOutline,
+    ToggleShowYAxis,
 }
 
 #[derive(Clone)]
@@ -566,18 +565,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::SetThemePref(ThemePref::Dark),
     ));
     out.push(entry(
-        if state.prefs.show_floor {
-            "Hide floor plane"
-        } else {
-            "Show floor plane"
-        },
-        Category::Preferences,
-        "ground visibility toggle",
-        None,
-        true,
-        CommandAction::ToggleShowFloor,
-    ));
-    out.push(entry(
         if state.prefs.show_floor_grid {
             "Hide floor grid"
         } else {
@@ -590,16 +577,16 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::ToggleShowFloorGrid,
     ));
     out.push(entry(
-        if state.prefs.preview_outline {
-            "Hide brush preview outline"
+        if state.prefs.show_y_axis {
+            "Hide Y axis line"
         } else {
-            "Show brush preview outline"
+            "Show Y axis line"
         },
         Category::Preferences,
-        "ghost cuboid outline toggle",
+        "vertical origin sky line toggle",
         None,
         true,
-        CommandAction::TogglePreviewOutline,
+        CommandAction::ToggleShowYAxis,
     ));
 
     // Help
@@ -1075,7 +1062,7 @@ pub fn dispatch_command_palette_system(
             for mut cam in &mut cameras {
                 cam.target_radius = apply_zoom(
                     cam.target_radius,
-                    0.5,
+                    ZOOM_STEP_IN,
                     cam.zoom_lower_limit,
                     cam.zoom_upper_limit,
                 );
@@ -1085,7 +1072,7 @@ pub fn dispatch_command_palette_system(
             for mut cam in &mut cameras {
                 cam.target_radius = apply_zoom(
                     cam.target_radius,
-                    2.0,
+                    ZOOM_STEP_OUT,
                     cam.zoom_lower_limit,
                     cam.zoom_upper_limit,
                 );
@@ -1188,16 +1175,12 @@ pub fn dispatch_command_palette_system(
             p.prefs.theme = t;
             crate::theme::save_preferences(&p.prefs);
         }
-        CommandAction::ToggleShowFloor => {
-            p.prefs.show_floor = !p.prefs.show_floor;
-            crate::theme::save_preferences(&p.prefs);
-        }
         CommandAction::ToggleShowFloorGrid => {
             p.prefs.show_floor_grid = !p.prefs.show_floor_grid;
             crate::theme::save_preferences(&p.prefs);
         }
-        CommandAction::TogglePreviewOutline => {
-            p.prefs.preview_outline = !p.prefs.preview_outline;
+        CommandAction::ToggleShowYAxis => {
+            p.prefs.show_y_axis = !p.prefs.show_y_axis;
             crate::theme::save_preferences(&p.prefs);
         }
     }

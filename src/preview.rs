@@ -7,7 +7,6 @@ use bevy_panorbit_camera::PanOrbitCamera;
 use crate::grid::{Color8, VoxelGrid};
 use crate::mesh::PreviewHide;
 use crate::picking::{cursor_ray, pick};
-use crate::theme::Preferences;
 use crate::tools::{CurrentColor, PointerState, Tool, ToolState};
 
 pub fn outline_color_for(c: Color8) -> Color {
@@ -74,7 +73,6 @@ pub fn brush_preview_system(
     mut hide: ResMut<PreviewHide>,
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
     gizmo_view: crate::ui::GizmoView,
-    prefs: Res<Preferences>,
     mut gizmos: Gizmos,
 ) {
     let Ok((mut tf, mut vis)) = q.single_mut() else {
@@ -141,12 +139,10 @@ pub fn brush_preview_system(
                 0.45,
             );
         }
-        if prefs.preview_outline {
-            gizmos.cube(
-                Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
-                outline_color_for(c),
-            );
-        }
+        gizmos.cube(
+            Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
+            outline_color_for(c),
+        );
         return;
     }
     match tool.current {

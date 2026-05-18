@@ -38,10 +38,10 @@ use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, regenerate_mesh_system};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
-use crate::snapshot::{GroundPlane, SnapshotRequest, SnapshotSession, start_snapshot_system};
+use crate::snapshot::{SnapshotRequest, SnapshotSession, start_snapshot_system};
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
-    resolve_canvas_color, resolve_floor_color, resolve_theme,
+    resolve_canvas_color, resolve_theme,
 };
 use crate::tools::{
     CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState,
@@ -54,11 +54,6 @@ use crate::ui::{
     toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
-
-/// Visual extent of the camera-following floor plane. Large enough that the
-/// user can't see the plane's edge at typical orbit radii; recentered every
-/// frame so it stays under the camera focus regardless of pan distance.
-const FLOOR_PLANE_SIZE: f32 = 256.0;
 
 fn main() {
     let prefs = load_preferences();
@@ -177,9 +172,6 @@ fn main() {
             zoom_click_system,
             zoom_key_system,
             apply_canvas_bg_system,
-            apply_floor_color_system,
-            apply_floor_visibility_system,
-            floor_follow_camera_system,
             floor_grid_system,
             draw_origin_system,
             perf_warn_system,
@@ -230,31 +222,6 @@ fn setup_scene(
         chunks: HashMap::new(),
         material: mat,
     });
-
-    // One large floor plane recentered under the camera focus each frame. The
-    // open-world grid has no fixed extent, so the floor visually "follows" the
-    // user as they pan, with chunk-grid lines drawn by `floor_grid_system`.
-    let floor_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.13, 0.14, 0.17),
-        perceptual_roughness: 1.0,
-        reflectance: 0.0,
-        ..default()
-    });
-    let plane = meshes.add(floor_mesh(FLOOR_PLANE_SIZE));
-    commands.spawn((
-        Mesh3d(plane),
-        MeshMaterial3d(floor_mat),
-        Transform::from_xyz(0.0, -0.01, 0.0),
-        GroundPlane,
-    ));
-}
-
-pub fn floor_mesh(size: f32) -> Mesh {
-    Mesh::from(
-        bevy::math::primitives::Plane3d::default()
-            .mesh()
-            .size(size, size),
-    )
 }
 
 fn apply_new_project_system(
@@ -289,42 +256,10 @@ fn apply_new_project_system(
 
 fn apply_import_system(mut pending: ResMut<PendingImport>) {
     // Open-world: imports just `grid.set` cells at their source coordinates.
-    // No floor/wall rebuild, no camera reframe — the user can press Cmd+0 to
-    // frame the imported model if they want. Consume the flag to signal we
-    // saw it.
+    // No camera reframe — the user can press Cmd+0 to frame the imported
+    // model. Consume the flag to signal we saw it.
     if pending.0 {
         pending.0 = false;
-    }
-}
-
-fn floor_follow_camera_system(
-    cameras: Query<&PanOrbitCamera>,
-    mut floor: Query<&mut Transform, With<GroundPlane>>,
-) {
-    let Ok(cam) = cameras.single() else { return };
-    for mut tf in &mut floor {
-        // Floor stays at y = -0.01 (just below the y = 0 voxel layer to avoid
-        // z-fighting). XZ tracks the camera focus.
-        tf.translation.x = cam.focus.x;
-        tf.translation.z = cam.focus.z;
-        tf.translation.y = -0.01;
-    }
-}
-
-fn apply_floor_color_system(
-    prefs: Res<Preferences>,
-    theme: Res<Theme>,
-    mut mats: ResMut<Assets<StandardMaterial>>,
-    planes: Query<&MeshMaterial3d<StandardMaterial>, With<GroundPlane>>,
-) {
-    let [r, g, b] = resolve_floor_color(&prefs, &theme);
-    let next = Color::srgb_u8(r, g, b);
-    for handle in &planes {
-        if let Some(mat) = mats.get_mut(&handle.0)
-            && mat.base_color != next
-        {
-            mat.base_color = next;
-        }
     }
 }
 
@@ -340,86 +275,109 @@ fn apply_canvas_bg_system(
     }
 }
 
-fn apply_floor_visibility_system(
-    prefs: Res<Preferences>,
-    mut floor: Query<&mut Visibility, With<GroundPlane>>,
-) {
-    let want = if prefs.show_floor {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    for mut v in &mut floor {
-        if *v != want {
-            *v = want;
-        }
-    }
-}
-
-/// Draws the procedural-feel chunk-grid lines on the floor. Minecraft-style:
-/// thin lines every voxel, heavier lines every 16 voxels. Centered on the
-/// camera focus so the grid pattern follows the user as they pan.
+/// Draws procedural grid lines on the y=0 plane. Two-band LOD:
+/// - radius ≤ `GRID_VOXEL_RADIUS`: per-voxel grid (spacing 1) with heavier
+///   lines every 16.
+/// - radius ≤ `GRID_CHUNK_RADIUS`: spacing-16 grid only.
+/// - beyond: hidden — at that range the cluster itself is the scale.
 fn floor_grid_system(
     prefs: Res<Preferences>,
     theme: Res<crate::theme::Theme>,
     cameras: Query<&PanOrbitCamera>,
     mut gizmos: Gizmos,
 ) {
-    if !prefs.show_floor_grid || !prefs.show_floor {
+    if !prefs.show_floor_grid {
         return;
     }
     let Ok(cam) = cameras.single() else { return };
+    let radius = cam.target_radius.max(0.001);
+    if radius > GRID_CHUNK_RADIUS {
+        return;
+    }
     let lift = 0.001;
-    let alpha_minor = match theme.mode {
-        crate::theme::ThemeMode::Dark => 0.06,
-        crate::theme::ThemeMode::Light => 0.10,
-    };
-    let alpha_major = match theme.mode {
-        crate::theme::ThemeMode::Dark => 0.14,
-        crate::theme::ThemeMode::Light => 0.22,
-    };
+    let cx = cam.focus.x.round() as i32;
+    let cz = cam.focus.z.round() as i32;
     let make = |a: f32| match theme.mode {
         crate::theme::ThemeMode::Dark => Color::srgba(1.0, 1.0, 1.0, a),
         crate::theme::ThemeMode::Light => Color::srgba(0.0, 0.0, 0.0, a),
     };
+    let (a_minor, a_major) = match theme.mode {
+        crate::theme::ThemeMode::Dark => (0.07, 0.18),
+        crate::theme::ThemeMode::Light => (0.11, 0.26),
+    };
 
-    // Grid spans a 64-voxel-wide window centered on the camera focus rounded
-    // to the nearest voxel. Far enough to fill the visible floor at typical
-    // zoom levels without spending gizmos on cells the user can't see.
-    let half: i32 = 32;
-    let cx = cam.focus.x.round() as i32;
-    let cz = cam.focus.z.round() as i32;
+    let half = ((radius * 3.0) as i32).clamp(48, 1024);
     let lo_x = cx - half;
     let hi_x = cx + half;
     let lo_z = cz - half;
     let hi_z = cz + half;
-    for i in lo_x..=hi_x {
-        let major = i.rem_euclid(16) == 0;
-        let c = make(if major { alpha_major } else { alpha_minor });
+
+    let (spacing, line_color) = if radius <= GRID_VOXEL_RADIUS {
+        (1, make(a_minor))
+    } else {
+        // Chunk-band: only every-16 lines, drawn at the major alpha so the
+        // grid still reads clearly against open canvas at that distance.
+        (16, make(a_major))
+    };
+    let major_color = make(a_major);
+    let start_x = lo_x.div_euclid(spacing) * spacing;
+    let start_z = lo_z.div_euclid(spacing) * spacing;
+
+    let mut i = start_x;
+    while i <= hi_x {
+        let c = if spacing == 1 && i.rem_euclid(16) == 0 {
+            major_color
+        } else {
+            line_color
+        };
         gizmos.line(
             Vec3::new(i as f32, lift, lo_z as f32),
             Vec3::new(i as f32, lift, hi_z as f32),
             c,
         );
+        i += spacing;
     }
-    for i in lo_z..=hi_z {
-        let major = i.rem_euclid(16) == 0;
-        let c = make(if major { alpha_major } else { alpha_minor });
+    let mut i = start_z;
+    while i <= hi_z {
+        let c = if spacing == 1 && i.rem_euclid(16) == 0 {
+            major_color
+        } else {
+            line_color
+        };
         gizmos.line(
             Vec3::new(lo_x as f32, lift, i as f32),
             Vec3::new(hi_x as f32, lift, i as f32),
             c,
         );
+        i += spacing;
     }
 }
 
+/// Orbit radius past which the per-voxel (spacing-1) grid is dropped — the
+/// individual voxel lines alias into noise beyond this point.
+pub const GRID_VOXEL_RADIUS: f32 = 128.0;
+
+/// Orbit radius past which the grid is hidden entirely. Between this and
+/// `GRID_VOXEL_RADIUS` only the every-16 chunk grid is drawn.
+pub const GRID_CHUNK_RADIUS: f32 = 512.0;
+
 /// Draws a small RGB axis triad at world origin so the user can always see
-/// where (0, 0, 0) sits even with no voxels painted.
-fn draw_origin_system(mut gizmos: Gizmos) {
+/// where (0, 0, 0) sits even with no voxels painted. The green Y axis
+/// extends far up into the sky as a vertical anchor when `show_y_axis` is
+/// enabled, so the user never loses track of the origin column.
+fn draw_origin_system(prefs: Res<Preferences>, mut gizmos: Gizmos) {
     let len = 1.0;
     gizmos.line(Vec3::ZERO, Vec3::X * len, Color::srgb(1.0, 0.3, 0.3));
-    gizmos.line(Vec3::ZERO, Vec3::Y * len, Color::srgb(0.3, 1.0, 0.3));
     gizmos.line(Vec3::ZERO, Vec3::Z * len, Color::srgb(0.3, 0.3, 1.0));
+    if prefs.show_y_axis {
+        gizmos.line(
+            Vec3::ZERO,
+            Vec3::Y * 10_000.0,
+            Color::srgba(0.3, 1.0, 0.3, 0.55),
+        );
+    } else {
+        gizmos.line(Vec3::ZERO, Vec3::Y * len, Color::srgb(0.3, 1.0, 0.3));
+    }
 }
 
 /// Per-frame perf-warning latch. Fires a one-shot toast the first time the
@@ -452,3 +410,4 @@ fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {
         *done = true;
     }
 }
+

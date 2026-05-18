@@ -6,7 +6,6 @@ use std::collections::HashSet;
 
 use crate::preview::outline_color_for;
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
-use crate::theme::Preferences;
 use crate::tools::{
     CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset,
 };
@@ -63,7 +62,6 @@ pub fn shape_preview_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
-    prefs: Res<Preferences>,
     mut gizmos: Gizmos,
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
@@ -110,9 +108,7 @@ pub fn shape_preview_system(
         );
     }
 
-    if prefs.preview_outline {
-        draw_silhouette(&mut gizmos, &cells, outline_color_for(color.0));
-    }
+    draw_silhouette(&mut gizmos, &cells, outline_color_for(color.0));
 
     *vis = Visibility::Visible;
 }

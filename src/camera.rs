@@ -217,6 +217,14 @@ mod tests {
     }
 
     #[test]
+    fn zoom_step_in_and_out_are_reciprocal() {
+        // √2 in and out cancel exactly so toggling zoom in/out returns the
+        // user to the same radius without drift.
+        let product = ZOOM_STEP_IN * ZOOM_STEP_OUT;
+        assert!((product - 1.0).abs() < 1e-6, "product={product}");
+    }
+
+    #[test]
     fn zoom_clamps_to_lower_limit() {
         assert!((apply_zoom(0.6, 0.5, 0.5, None) - 0.5).abs() < 1e-6);
     }
@@ -227,25 +235,45 @@ mod tests {
     }
 
     #[test]
-    fn zoom_radius_limits_yield_1000_pct_at_lower_bound() {
+    fn zoom_radius_lower_bound_is_fixed() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
-        let (lower, upper) = zoom_radius_limits(&grid);
-        let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
-        let pct = (fit_radius / lower) * 100.0;
-        assert!((pct - MAX_ZOOM_PCT).abs() < 1e-3, "pct={pct}");
-        assert!(upper > fit_radius * 100.0, "upper={upper} fit={fit_radius}");
+        let (lower, _) = zoom_radius_limits(&grid);
+        assert!((lower - ZOOM_LOWER_LIMIT).abs() < 1e-6);
     }
 
     #[test]
-    fn zoom_radius_limits_empty_grid_uses_empty_world_radius() {
+    fn zoom_radius_upper_scales_with_cluster_above_floor() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
+        let (_, upper) = zoom_radius_limits(&grid);
+        let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
+        let expected = (fit_radius * ZOOM_OUT_MULTIPLIER).max(ZOOM_OUT_FLOOR);
+        assert!((upper - expected).abs() < 1e-3, "upper={upper}");
+    }
+
+    #[test]
+    fn zoom_radius_limits_caps_at_two_times_cluster_size() {
+        // Big cluster — cap should hit 2× fit_radius, above the empty-scene floor.
+        let mut grid = VoxelGrid::default();
+        for x in 0..40 {
+            grid.set(IVec3::new(x, 0, 0), Some([255, 0, 0, 255]));
+        }
+        let (_, upper) = zoom_radius_limits(&grid);
+        let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
+        assert!(fit_radius * ZOOM_OUT_MULTIPLIER > ZOOM_OUT_FLOOR);
+        assert!((upper - fit_radius * ZOOM_OUT_MULTIPLIER).abs() < 1e-3);
+    }
+
+    #[test]
+    fn zoom_radius_limits_empty_grid_uses_floor() {
         let grid = VoxelGrid::default();
         let (lower, upper) = zoom_radius_limits(&grid);
-        assert!(lower > 0.0);
+        assert!((lower - ZOOM_LOWER_LIMIT).abs() < 1e-6);
         assert!(upper > lower);
-        // Upper bound proportional to EMPTY_WORLD_RADIUS rather than a
-        // grid-size-derived constant.
-        assert!((upper - EMPTY_WORLD_RADIUS * 1000.0).abs() < 1e-3);
+        // Empty scene: fit fallback = EMPTY_WORLD_RADIUS (32). 2× = 64, equals
+        // ZOOM_OUT_FLOOR, so upper lands exactly on the floor.
+        assert!((upper - ZOOM_OUT_FLOOR).abs() < 1e-3);
     }
 
     #[test]
@@ -302,6 +330,9 @@ pub fn zoom_click_system(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut contexts: bevy_egui::EguiContexts,
+    cam_query: Query<(&Camera, &GlobalTransform), With<PanOrbitCamera>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    grid: Res<crate::grid::VoxelGrid>,
     mut cameras: Query<&mut PanOrbitCamera>,
 ) {
     if !keys.pressed(KeyCode::KeyZ) || !mouse.just_pressed(MouseButton::Left) {
@@ -315,8 +346,21 @@ pub fn zoom_click_system(
         return;
     }
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
-    let factor = if alt { 2.0 } else { 0.5 };
+    let factor = if alt { ZOOM_STEP_OUT } else { ZOOM_STEP_IN };
+
+    // Recenter focus to whatever's under the cursor so the zoom converges
+    // on the user's point of interest rather than orbiting around an old
+    // anchor point.
+    let new_focus = (|| -> Option<Vec3> {
+        let (origin, dir) = crate::picking::cursor_ray(&cam_query, &windows)?;
+        let hit = crate::picking::pick(&grid, origin, dir)?;
+        Some(hit.cell.as_vec3() + Vec3::splat(0.5))
+    })();
+
     for mut cam in &mut cameras {
+        if let Some(focus) = new_focus {
+            cam.target_focus = focus;
+        }
         cam.target_radius = apply_zoom(
             cam.target_radius,
             factor,
@@ -325,6 +369,12 @@ pub fn zoom_click_system(
         );
     }
 }
+
+/// Click/keyboard zoom step. √2 multiplier per click — gentler than the
+/// previous ×2 doubling so large scenes feel less jarring while still
+/// covering useful range in a few clicks.
+pub const ZOOM_STEP_IN: f32 = std::f32::consts::FRAC_1_SQRT_2;
+pub const ZOOM_STEP_OUT: f32 = std::f32::consts::SQRT_2;
 
 /// Apply a zoom factor to `radius`, clamped to `[lower_limit, upper_limit]`.
 pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Option<f32>) -> f32 {
@@ -335,24 +385,36 @@ pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Optio
     }
 }
 
-/// Dynamic zoom radius limits derived from the current grid. Maps a fixed
-/// percentage range (zoom ∈ [`MIN_ZOOM_PCT`, `MAX_ZOOM_PCT`]) onto a radius
-/// range relative to `fit_view`'s radius. Empty grids use `EMPTY_WORLD_RADIUS`
-/// so the camera still has sensible scroll bounds before the user paints.
+/// Dynamic zoom radius limits derived from the current grid. Lower bound
+/// is fixed; upper bound scales with `fit_view` clamped to a floor so empty
+/// scenes still feel orbit-able.
 pub fn zoom_radius_limits(grid: &VoxelGrid) -> (f32, f32) {
     let fit = fit_view(grid)
         .map(|(_, r)| r)
         .unwrap_or(EMPTY_WORLD_RADIUS);
-    let lower = (fit / (MAX_ZOOM_PCT / 100.0)).max(0.01);
-    let upper = fit * 1000.0;
+    // Fixed lower bound so the user can always zoom in to individual voxels
+    // regardless of scene size. Scaling this with cluster fit_radius made
+    // large scenes feel locked out of close-up inspection.
+    let lower = ZOOM_LOWER_LIMIT;
+    // Upper cap = 2× fit_radius with a fixed floor so empty/tiny scenes
+    // still allow comfortable orbit-out, but big scenes don't let you fly
+    // off into a void of empty space.
+    let upper = (fit * ZOOM_OUT_MULTIPLIER).max(ZOOM_OUT_FLOOR);
     (lower, upper)
 }
 
-/// Internal clamp range used to constrain the orbit radius. The percentage
-/// is no longer surfaced to the user (the footer reads `Zoom N voxels`
-/// instead), but the upper-end constant stays as the underlying scroll-zoom
-/// limit divisor for `zoom_radius_limits`.
-pub const MAX_ZOOM_PCT: f32 = 1000.0;
+/// Smallest orbit radius the user can zoom to. 8 voxels = camera sits close
+/// enough to inspect a single voxel face without snapping inside it.
+pub const ZOOM_LOWER_LIMIT: f32 = 8.0;
+
+/// How far past `fit_view` radius the user can orbit out. 2× keeps the
+/// cluster filling most of the view; further out felt like infinite empty
+/// space and made it easy to lose the model.
+pub const ZOOM_OUT_MULTIPLIER: f32 = 2.0;
+
+/// Floor for the upper zoom cap when the cluster is tiny / empty. Keeps
+/// the spawn-camera radius reachable on a fresh project.
+pub const ZOOM_OUT_FLOOR: f32 = 64.0;
 
 pub fn update_zoom_limits_system(grid: Res<VoxelGrid>, mut cameras: Query<&mut PanOrbitCamera>) {
     let (lower, upper) = zoom_radius_limits(&grid);
@@ -392,7 +454,7 @@ pub fn zoom_key_system(
     if !zoom_in && !zoom_out {
         return;
     }
-    let factor = if zoom_in { 0.5 } else { 2.0 };
+    let factor = if zoom_in { ZOOM_STEP_IN } else { ZOOM_STEP_OUT };
     for mut cam in &mut cameras {
         cam.target_radius = apply_zoom(
             cam.target_radius,

@@ -422,9 +422,9 @@ pub fn ui_system(
                     let design_label = match grid.bounding_box() {
                         Some((min, max)) => {
                             let extent = max - min + bevy::math::IVec3::ONE;
-                            format!("Design {}×{}×{}", extent.x, extent.y, extent.z)
+                            format!("Size {}×{}×{}", extent.x, extent.y, extent.z)
                         }
-                        None => "Design —".to_string(),
+                        None => "Size —".to_string(),
                     };
                     widgets::status_label(ui, &theme, &design_label);
                     ui.add_space(12.0);
@@ -438,7 +438,8 @@ pub fn ui_system(
                         ),
                     );
                     if let Some(cam) = zoom.cameras.iter().next() {
-                        let r = cam.target_radius.round().max(0.0) as i32;
+                        let actual = cam.radius.unwrap_or(cam.target_radius);
+                        let r = actual.round().max(0.0) as i32;
                         ui.add_space(12.0);
                         widgets::status_label(
                             ui,
@@ -1081,15 +1082,12 @@ pub fn ui_system(
                         widgets::hex_label(ui, &theme, *rgb, true);
                     });
                 }
-                widgets::plane_color_row(ui, &theme, theme.mode, "Floor", &mut prefs.floor_color);
             });
 
             widgets::section(ui, &theme, "Visibility", |ui| {
-                ui.checkbox(&mut prefs.show_floor, "Show floor plane");
-                ui.add_space(2.0);
                 ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
                 ui.add_space(2.0);
-                ui.checkbox(&mut prefs.preview_outline, "Show preview outline");
+                ui.checkbox(&mut prefs.show_y_axis, "Show Y axis line");
             });
         });
         if !open_flag {

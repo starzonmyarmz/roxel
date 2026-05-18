@@ -1,46 +1,7 @@
-use crate::theme::{NUNITO_700_FAMILY, PlaneColorPref, Theme, plane_match_color};
+use crate::theme::{NUNITO_700_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
 use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
 use bevy_egui::egui;
-
-pub fn plane_color_row(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    mode: crate::theme::ThemeMode,
-    label: &str,
-    pref: &mut PlaneColorPref,
-) {
-    let mut is_custom = matches!(pref, PlaneColorPref::Custom(_));
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [72.0, 20.0],
-            egui::Label::new(
-                egui::RichText::new(label)
-                    .color(theme.text_dim)
-                    .size(font::SMALL),
-            ),
-        );
-        if ui.radio(!is_custom, "Match theme").clicked() {
-            *pref = PlaneColorPref::MatchTheme;
-            is_custom = false;
-        }
-        if ui.radio(is_custom, "Custom").clicked() {
-            let seed = match *pref {
-                PlaneColorPref::Custom(rgb) => rgb,
-                PlaneColorPref::MatchTheme => plane_match_color(mode),
-            };
-            *pref = PlaneColorPref::Custom(seed);
-        }
-    });
-    if let PlaneColorPref::Custom(ref mut rgb) = *pref {
-        ui.add_space(space::XS);
-        ui.horizontal(|ui| {
-            ui.add_space(76.0);
-            ui.color_edit_button_srgb(rgb);
-            hex_label(ui, theme, *rgb, true);
-        });
-    }
-}
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {

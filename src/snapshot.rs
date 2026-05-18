@@ -3,9 +3,8 @@
 // Spawns a one-shot Camera3d that copies the primary camera's transform and
 // projection, renders into an Image at physical (HiDPI) window resolution
 // with `ClearColorConfig::Custom(Color::NONE)`, then captures that image
-// through Bevy's Screenshot pipeline. The ground plane is hidden for the
-// duration of the capture; the gizmo overlay camera writes to the window,
-// not the snapshot image, so it's excluded automatically.
+// through Bevy's Screenshot pipeline. The gizmo overlay camera writes to the
+// window, not the snapshot image, so it's excluded automatically.
 
 use std::path::{Path, PathBuf};
 
@@ -21,9 +20,6 @@ use bevy_panorbit_camera::PanOrbitCamera;
 use crate::ui::Toasts;
 
 #[derive(Component)]
-pub struct GroundPlane;
-
-#[derive(Component)]
 pub struct SnapshotCamera;
 
 #[derive(Resource, Default)]
@@ -32,7 +28,6 @@ pub struct SnapshotRequest(pub Option<PathBuf>);
 #[derive(Resource, Default)]
 pub struct SnapshotSession {
     camera: Option<Entity>,
-    hidden: Vec<Entity>,
 }
 
 pub fn start_snapshot_system(
@@ -43,7 +38,6 @@ pub fn start_snapshot_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     main_cam: Query<(&GlobalTransform, &Projection, Option<&Tonemapping>), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
-    mut ground: Query<(Entity, &mut Visibility), With<GroundPlane>>,
 ) {
     let Some(path) = request.0.take() else { return };
     if session.camera.is_some() {
@@ -79,19 +73,12 @@ pub fn start_snapshot_system(
     }
     session.camera = Some(cam.id());
 
-    session.hidden.clear();
-    for (e, mut vis) in ground.iter_mut() {
-        *vis = Visibility::Hidden;
-        session.hidden.push(e);
-    }
-
     let path_for_observer = path.clone();
     commands.spawn(Screenshot::image(handle.clone())).observe(
         move |trigger: On<ScreenshotCaptured>,
               mut commands: Commands,
               mut session: ResMut<SnapshotSession>,
-              mut toasts: ResMut<Toasts>,
-              mut vis: Query<&mut Visibility>| {
+              mut toasts: ResMut<Toasts>| {
             match save_rgba_png(&path_for_observer, &trigger.image) {
                 Ok(()) => {
                     let label = path_for_observer
@@ -104,11 +91,6 @@ pub fn start_snapshot_system(
             }
             if let Some(cam) = session.camera.take() {
                 commands.entity(cam).despawn();
-            }
-            for e in session.hidden.drain(..) {
-                if let Ok(mut v) = vis.get_mut(e) {
-                    *v = Visibility::Inherited;
-                }
             }
         },
     );

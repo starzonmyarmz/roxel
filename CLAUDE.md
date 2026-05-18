@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tests
 
-Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (sparse chunk allocate/drop, y<0 refusal, iter_occupied, bounding_box across negative coords, dirty-chunk seam propagation, perf-threshold latch math), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + floor fallback + step-cap termination in empty world), `mesh` (sRGB roundtrip, greedy quad counts, chunked vs monolithic equivalence across seams, negative coords), `theme` (canvas/plane resolution + serde back-compat for older `preferences.ron` including legacy `show_walls` / `wall_color` fields), `io::project` (sparse roundtrip, negative + far-coord roundtrip, v1 lax-deserialize), `io::vox` (AABB-shift on export, refusal beyond 256³, axis remap), `io::palettes` (user palette roundtrip, builtins not persisted). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
+Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (sparse chunk allocate/drop, y<0 refusal, iter_occupied, bounding_box across negative coords, dirty-chunk seam propagation, perf-threshold latch math), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + y=0 fallback + step-cap termination in empty world), `mesh` (sRGB roundtrip, greedy quad counts, chunked vs monolithic equivalence across seams, negative coords), `camera` (fit_view, zoom step reciprocity, zoom_radius_limits lower/upper bounds), `theme` (canvas resolution + serde back-compat for older `preferences.ron` carrying now-removed `show_floor` / `floor_color` / `show_walls` / `wall_color` fields), `io::project` (sparse roundtrip, negative + far-coord roundtrip, v1 lax-deserialize), `io::vox` (AABB-shift on export, refusal beyond 256³, axis remap), `io::palettes` (user palette roundtrip, builtins not persisted). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
 
 **Always add or update tests when adding or modifying a feature** — `cargo test` runs as a pre-commit gate (see below), so untested feature work is incomplete.
 
@@ -149,20 +149,18 @@ User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a
 `Preferences` (`theme.rs`) carries:
 - `theme: ThemePref { Light, Dark, System }`
 - `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly.
-- `floor_color: PlaneColorPref` — same shape as canvas. `MatchTheme` resolves to a luminance-shifted neutral (`plane_match_color`) so the floor reads as a distinct surface against the canvas without tinting voxels.
-- `show_floor: bool` (default true) — toggle the floor plane.
-- `show_floor_grid: bool` (default false) — overlay the Minecraft-style chunk-grid lines on the floor.
-- `preview_outline: bool` (default true) — draws a 1.01-scale contrast-aware gizmo cube around the brush/shape preview.
+- `show_floor_grid: bool` (default true) — Minecraft-style grid lines on the y=0 plane.
+- `show_y_axis: bool` (default true) — extends the green Y-axis up into the sky as a vertical origin anchor.
 
-Every field after `theme` is `#[serde(default = "...")]` so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. The `floor_color` field also aliases the older `plane_color` name. Removed fields (`show_walls`, `wall_color`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_with_missing_new_fields` and `theme::tests::preferences_round_trip_after_walls_removed` guard both directions.
+Every field after `theme` is `#[serde(default = "...")]` so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_after_floor_fields_removed` guards this.
 
-`Preferences` is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`. Theme + pref changes propagate through `refresh_theme_system` (every frame, `NonSendMarker` for main-thread `WINIT_WINDOWS` access — resolves `ThemePref::System` against `winit::Window::theme()`) and the `apply_canvas_bg_system` / `apply_floor_color_system` / `apply_floor_visibility_system` systems in `main.rs`, which diff before writing so we don't dirty assets every frame.
+`Preferences` is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`. Theme + pref changes propagate through `refresh_theme_system` (every frame, `NonSendMarker` for main-thread `WINIT_WINDOWS` access — resolves `ThemePref::System` against `winit::Window::theme()`) and `apply_canvas_bg_system` in `main.rs`, which diffs before writing so we don't dirty assets every frame.
 
-### Floor + origin
+### Grid + origin
 
-There are no walls. The floor is a single 256×256 plane (`FLOOR_PLANE_SIZE` in `main.rs`) recentered every frame on the camera focus XZ via `floor_follow_camera_system`, so it always sits under the user no matter how far they pan. Chunk-grid lines are drawn by `floor_grid_system` as immediate-mode `Gizmos` in a 64-voxel window around the focus, with thin lines every voxel and heavier lines every 16 voxels (Minecraft-style; toggle via `show_floor_grid` preference).
+There is no floor plane. `floor_grid_system` (`main.rs`) draws the y=0 grid as immediate-mode `Gizmos` in a 3×-orbit-radius window centered on the camera focus. Two LOD bands: per-voxel lines (with every-16 major) up to `GRID_VOXEL_RADIUS = 128`, every-16 chunk lines only up to `GRID_CHUNK_RADIUS = 512`, hidden beyond. Gated on `show_floor_grid`.
 
-`draw_origin_system` always draws a 1-voxel RGB axis triad at (0, 0, 0) using the Bevy `Gizmos` API. This is the user's anchor in the open world — there's no other landmark.
+`draw_origin_system` always draws an RGB axis triad at (0, 0, 0). The green Y leg extends 10,000 units up into the sky when `show_y_axis` is set so the user never loses the origin column.
 
 ### Fonts
 
@@ -191,11 +189,11 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 `spawn_camera` (`camera.rs`) places the orbit camera at the isometric direction `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` so a fresh project doesn't open looking down a single axis. `EMPTY_WORLD_RADIUS = 32.0` is the spawn radius and the empty-world fallback used everywhere a fit-view-style answer is required (frame-view on empty, zoom-limits on empty, new-project reset).
 
-`frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels via `grid.bounding_box()` and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. On an empty scene it falls back to focus=origin, radius=`EMPTY_WORLD_RADIUS`. The bottom-bar zoom readout is the literal `cam.target_radius` rounded to a voxel count (`Zoom N voxels`) — no more percentage.
+`frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels via `grid.bounding_box()` and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. On an empty scene it falls back to focus=origin, radius=`EMPTY_WORLD_RADIUS`. The bottom-bar zoom readout uses `cam.radius` (the current smoothed value, not `target_radius`) rounded to a voxel count (`Zoom N voxels`) — reading the target lied during long lerps from huge radii.
 
-`zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: halves (zoom in) or doubles (zoom out, when Alt is also held) `PanOrbitCamera.target_radius`, clamped to `zoom_lower_limit`. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
+`zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: multiplies `target_radius` by `ZOOM_STEP_IN = 1/√2` (zoom in) or `ZOOM_STEP_OUT = √2` (zoom out, when Alt is also held), clamped to `[zoom_lower_limit, zoom_upper_limit]`. The click also recenters `target_focus` to whatever's under the cursor (picked voxel, or floor plane) so the zoom converges on the user's point of interest. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
 
-`MAX_ZOOM_PCT = 1000.0` is the only zoom-percentage constant that survives — used internally as the divisor in `zoom_radius_limits` to derive the lower clamp from `fit_view`'s radius. It is never rendered to the user.
+`zoom_radius_limits` derives the camera's allowed radius range from the current scene. Lower bound is fixed at `ZOOM_LOWER_LIMIT = 8.0` (independent of cluster size, so big scenes still allow close inspection); upper bound is `max(fit_radius * ZOOM_OUT_MULTIPLIER, ZOOM_OUT_FLOOR)` = `max(fit * 2, 64)` so empty scenes stay orbit-able and big scenes don't fly off into void.
 
 ### Cursor hints
 

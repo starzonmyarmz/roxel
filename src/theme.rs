@@ -89,8 +89,8 @@ mod tests {
         let p = Preferences::default();
         assert_eq!(p.theme, ThemePref::System);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
-        assert!(p.show_floor);
-        assert!(!p.show_floor_grid);
+        assert!(p.show_floor_grid);
+        assert!(p.show_y_axis);
     }
 
     #[test]
@@ -117,55 +117,6 @@ mod tests {
     }
 
     #[test]
-    fn dark_plane_is_lighter_than_dark_canvas() {
-        let c = canvas_match_color(ThemeMode::Dark);
-        let p = plane_match_color(ThemeMode::Dark);
-        let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
-        let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
-        assert!(
-            pl > cl,
-            "dark plane must be lighter than canvas: c={c:?} p={p:?}"
-        );
-    }
-
-    #[test]
-    fn light_plane_is_darker_than_light_canvas() {
-        let c = canvas_match_color(ThemeMode::Light);
-        let p = plane_match_color(ThemeMode::Light);
-        let cl = c[0] as i32 + c[1] as i32 + c[2] as i32;
-        let pl = p[0] as i32 + p[1] as i32 + p[2] as i32;
-        assert!(
-            pl < cl,
-            "light plane must be darker than canvas: c={c:?} p={p:?}"
-        );
-    }
-
-    #[test]
-    fn resolve_plane_match_theme_uses_plane_match_color() {
-        let prefs = Preferences {
-            floor_color: PlaneColorPref::MatchTheme,
-            ..Default::default()
-        };
-        assert_eq!(
-            resolve_floor_color(&prefs, &Theme::dark()),
-            plane_match_color(ThemeMode::Dark)
-        );
-        assert_eq!(
-            resolve_floor_color(&prefs, &Theme::light()),
-            plane_match_color(ThemeMode::Light)
-        );
-    }
-
-    #[test]
-    fn resolve_plane_custom_returns_custom() {
-        let prefs = Preferences {
-            floor_color: PlaneColorPref::Custom([99, 88, 77]),
-            ..Default::default()
-        };
-        assert_eq!(resolve_floor_color(&prefs, &Theme::dark()), [99, 88, 77]);
-    }
-
-    #[test]
     fn resolve_canvas_custom_returns_custom() {
         let prefs = Preferences {
             canvas_bg: CanvasBgPref::Custom([10, 20, 30]),
@@ -182,19 +133,19 @@ mod tests {
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert_eq!(p.theme, ThemePref::Dark);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
-        assert!(p.show_floor);
-        assert!(!p.show_floor_grid);
-        assert!(p.preview_outline);
+        assert!(p.show_floor_grid);
+        assert!(p.show_y_axis);
     }
 
     #[test]
-    fn preferences_round_trip_after_walls_removed() {
-        // An older preferences.ron carrying now-removed fields (`show_walls`,
-        // `wall_color`) must still load. Serde silently drops unknown fields.
-        let ron = "(theme: Dark, show_walls: true, wall_color: MatchTheme)";
+    fn preferences_loads_after_floor_fields_removed() {
+        // Older preferences.ron carrying now-removed fields (`show_floor`,
+        // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
+        // silently drops unknown fields.
+        let ron = "(theme: Dark, show_floor: true, floor_color: MatchTheme, show_walls: true, wall_color: MatchTheme)";
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert_eq!(p.theme, ThemePref::Dark);
-        assert!(p.show_floor);
+        assert!(p.show_floor_grid);
     }
 }
 
@@ -203,29 +154,19 @@ pub struct Preferences {
     pub theme: ThemePref,
     #[serde(default = "default_canvas_bg")]
     pub canvas_bg: CanvasBgPref,
-    #[serde(default = "default_plane_color", alias = "plane_color")]
-    pub floor_color: PlaneColorPref,
-    #[serde(default = "default_show_floor")]
-    pub show_floor: bool,
     #[serde(default = "default_show_floor_grid")]
     pub show_floor_grid: bool,
-    #[serde(default = "default_preview_outline")]
-    pub preview_outline: bool,
+    #[serde(default = "default_show_y_axis")]
+    pub show_y_axis: bool,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
     CanvasBgPref::MatchTheme
 }
-fn default_plane_color() -> PlaneColorPref {
-    PlaneColorPref::MatchTheme
-}
-fn default_show_floor() -> bool {
+fn default_show_floor_grid() -> bool {
     true
 }
-fn default_show_floor_grid() -> bool {
-    false
-}
-fn default_preview_outline() -> bool {
+fn default_show_y_axis() -> bool {
     true
 }
 
@@ -234,10 +175,8 @@ impl Default for Preferences {
         Self {
             theme: ThemePref::default(),
             canvas_bg: default_canvas_bg(),
-            floor_color: default_plane_color(),
-            show_floor: default_show_floor(),
             show_floor_grid: default_show_floor_grid(),
-            preview_outline: default_preview_outline(),
+            show_y_axis: default_show_y_axis(),
         }
     }
 }
@@ -254,34 +193,6 @@ pub enum ThemePref {
 pub enum CanvasBgPref {
     MatchTheme,
     Custom([u8; 3]),
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub enum PlaneColorPref {
-    MatchTheme,
-    Custom([u8; 3]),
-}
-
-/// Per-mode default plane (floor + walls) color when `PlaneColorPref::MatchTheme`
-/// is set. Sits a step away from the canvas in luminance so the planes read as
-/// distinct surfaces — slightly lighter than dark canvas, slightly darker than
-/// light canvas — while staying near-neutral so voxel hues are unaffected.
-pub fn plane_match_color(mode: ThemeMode) -> [u8; 3] {
-    match mode {
-        ThemeMode::Dark => [0x26, 0x26, 0x28],
-        ThemeMode::Light => [0xEC, 0xEC, 0xEF],
-    }
-}
-
-fn resolve(pref: PlaneColorPref, mode: ThemeMode) -> [u8; 3] {
-    match pref {
-        PlaneColorPref::Custom(rgb) => rgb,
-        PlaneColorPref::MatchTheme => plane_match_color(mode),
-    }
-}
-
-pub fn resolve_floor_color(prefs: &Preferences, theme: &Theme) -> [u8; 3] {
-    resolve(prefs.floor_color, theme.mode)
 }
 
 /// Per-mode default canvas color used when `CanvasBgPref::MatchTheme` is set.

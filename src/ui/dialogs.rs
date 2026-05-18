@@ -48,9 +48,8 @@ impl PendingDialog {
     }
 }
 
-/// Signals that a non-`.roxel` import just resized the grid. Read by
-/// `apply_import_system` in main.rs to rebuild floor/walls and reframe the
-/// camera, then cleared.
+/// Signals that a non-`.roxel` import just populated cells. Read and
+/// cleared by `apply_import_system` in main.rs.
 #[derive(Resource, Default)]
 pub struct PendingImport(pub bool);
 
