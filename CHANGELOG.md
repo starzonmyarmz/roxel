@@ -12,6 +12,14 @@ Release notes.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-05-18
+
+- chore: bump to 4.0.1
+- ci: push releases to itch.io via butler
+- docs: add macOS Gatekeeper bypass callout to README
+- docs: finalize CHANGELOG for v4.0.0 [skip ci]
+- ci: speed up workflows via sccache, nextest, prebuilt cargo-bundle
+
 ## [4.0.0] - 2026-05-18
 
 - chore: bump to 4.0.0
