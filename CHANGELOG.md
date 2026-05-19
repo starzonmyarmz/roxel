@@ -12,6 +12,14 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(camera): view-angle presets (Front / Back / Left / Right / Top / Iso) in the command palette
+- feat(select): double-click selects the connected same-color blob via flood, instead of the AABB hull
+- feat(ui): themed palette select dropdown matching the design-token system
+- chore: add `scripts/release.sh` helper for tagged releases
+- refactor(ui): promote inline literals (modal widths, dropdown sizes, toast dims, command-palette dims) to `tokens::{size, width, height}`
+- refactor(io): dedup `tmp_path` test helper across obj/fbx/svg/ase by routing through `io::test_util`
+- perf(tools): cache `MoveDragState.originals_set` at drag start so per-frame collision checks no longer rebuild a HashSet
+
 ## [0.5.0] - 2026-05-19
 
 - chore: bump to 0.5.0
