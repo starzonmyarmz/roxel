@@ -1,5 +1,5 @@
 use crate::theme::Theme;
-use crate::ui::tokens::{font, radius, stroke};
+use crate::ui::tokens::{font, radius, size, stroke, width};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use std::collections::VecDeque;
@@ -79,7 +79,7 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
         .fixed_pos(egui::pos2(center_x, bottom_y))
         .pivot(egui::Align2::CENTER_BOTTOM)
         .show(ctx, |ui| {
-            ui.set_max_width(360.0);
+            ui.set_max_width(width::TOAST);
             ui.spacing_mut().item_spacing.y = 6.0;
             for t in toasts.0.iter() {
                 let accent = match t.kind {
@@ -97,7 +97,7 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let (rect, _) =
-                                ui.allocate_exact_size(egui::vec2(3.0, 18.0), egui::Sense::hover());
+                                ui.allocate_exact_size(size::TOAST_ACCENT, egui::Sense::hover());
                             ui.painter().rect_filled(
                                 rect,
                                 egui::CornerRadius::same(radius::XS),

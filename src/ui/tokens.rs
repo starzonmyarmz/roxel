@@ -47,6 +47,7 @@ pub mod pad {
     use super::Vec2;
     pub const NONE: Vec2 = Vec2::new(0.0, 0.0); // icon-only buttons
     pub const ICON: Vec2 = Vec2::new(8.0, 0.0); // wide_action_button row
+    pub const COMPACT: Vec2 = Vec2::new(6.0, 6.0); // shape-primitive popup buttons
     pub const BUTTON: Vec2 = Vec2::new(12.0, 4.0); // chip_button
     pub const DEFAULT: Vec2 = Vec2::new(12.0, 8.0); // global default
     pub const DIALOG: Vec2 = Vec2::new(16.0, 8.0); // modal action buttons
@@ -87,6 +88,34 @@ pub mod stroke {
     pub const ACCENT: f32 = 2.0; // selected swatch ring
 }
 
+/// Fixed widget sizes (Vec2 or scalar). 4-px grid, even.
+pub mod size {
+    use super::Vec2;
+    pub const RULE_HEIGHT: f32 = 20.0; // vertical_rule
+    pub const ICON_BUTTON: Vec2 = Vec2::new(28.0, 26.0); // icon_only_button min
+    pub const ACTION_ROW_HEIGHT: f32 = 26.0; // wide_action_button, select_row
+    pub const DROPDOWN_HEIGHT: f32 = 28.0;
+    pub const PREFS_LABEL: Vec2 = Vec2::new(72.0, 20.0);
+    pub const TOAST_ACCENT: Vec2 = Vec2::new(4.0, 20.0); // toast left accent bar
+    pub const CMD_PALETTE_ROW: f32 = 30.0;
+}
+
+/// Container widths. Modals, panels, menus.
+pub mod width {
+    #[cfg_attr(target_os = "macos", allow(dead_code))] // native muda menu on mac
+    pub const TOP_BAR_MENU: f32 = 180.0; // Import / Export submenus
+    pub const SIDE_PANEL: f32 = 244.0; // right inspector
+    pub const MODAL_PREFS: f32 = 340.0;
+    pub const MODAL_NEW: f32 = 260.0;
+    pub const COMMAND_PALETTE: f32 = 520.0;
+    pub const TOAST: f32 = 360.0;
+}
+
+/// Container heights / max-heights.
+pub mod height {
+    pub const COMMAND_PALETTE_MAX: f32 = 360.0;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +153,7 @@ mod tests {
         let vs = [
             pad::NONE,
             pad::ICON,
+            pad::COMPACT,
             pad::BUTTON,
             pad::DEFAULT,
             pad::DIALOG,
@@ -134,6 +164,31 @@ mod tests {
         for v in vs {
             assert_eq!(v.x as u32 % 2, 0, "pad/gap x={} is odd", v.x);
             assert_eq!(v.y as u32 % 2, 0, "pad/gap y={} is odd", v.y);
+        }
+    }
+
+    #[test]
+    fn size_width_height_all_even() {
+        let scalars = [
+            size::RULE_HEIGHT,
+            size::ACTION_ROW_HEIGHT,
+            size::DROPDOWN_HEIGHT,
+            size::CMD_PALETTE_ROW,
+            width::TOP_BAR_MENU,
+            width::SIDE_PANEL,
+            width::MODAL_PREFS,
+            width::MODAL_NEW,
+            width::COMMAND_PALETTE,
+            width::TOAST,
+            height::COMMAND_PALETTE_MAX,
+        ];
+        for v in scalars {
+            assert_eq!(v as u32 % 2, 0, "size scalar {v} is odd");
+        }
+        let vecs = [size::ICON_BUTTON, size::PREFS_LABEL, size::TOAST_ACCENT];
+        for v in vecs {
+            assert_eq!(v.x as u32 % 2, 0, "size vec x={} is odd", v.x);
+            assert_eq!(v.y as u32 % 2, 0, "size vec y={} is odd", v.y);
         }
     }
 

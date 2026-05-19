@@ -1,12 +1,15 @@
 use super::icons;
 use crate::theme::{NUNITO_700_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
+use crate::ui::tokens::{font, gap, icon, pad, radius, size, space, stroke};
 use bevy_egui::egui;
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, 20.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(stroke::NORMAL, size::RULE_HEIGHT),
+        egui::Sense::hover(),
+    );
     ui.painter().vline(
         rect.center().x,
         rect.y_range(),
@@ -141,7 +144,7 @@ pub fn icon_only_button(
         ui.add_enabled(
             enabled,
             egui::Button::image(img)
-                .min_size(egui::vec2(28.0, 26.0))
+                .min_size(size::ICON_BUTTON)
                 .corner_radius(egui::CornerRadius::same(radius::SM))
                 .stroke(egui::Stroke::NONE),
         )
@@ -365,7 +368,7 @@ pub fn chip_button<T: PartialEq + Copy>(
 pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
         ui.add_sized(
-            [72.0, 20.0],
+            size::PREFS_LABEL,
             egui::Label::new(
                 egui::RichText::new(label)
                     .color(theme.text_dim)
@@ -426,7 +429,7 @@ pub fn wide_action_button(
         ui.spacing_mut().button_padding = pad::ICON;
         ui.spacing_mut().interact_size = gap::NONE;
         ui.allocate_ui_with_layout(
-            egui::vec2(width, 26.0),
+            egui::vec2(width, size::ACTION_ROW_HEIGHT),
             egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
             |ui| {
                 ui.add_enabled(
@@ -457,8 +460,8 @@ pub fn select_dropdown(
     items: &[String],
     selected_idx: usize,
 ) -> Option<usize> {
-    let height = 28.0;
-    let chevron_pad = 8.0;
+    let height = size::DROPDOWN_HEIGHT;
+    let chevron_pad = space::SM;
     let label_pad = 10.0;
 
     let id = ui.make_persistent_id(id_salt);
@@ -539,7 +542,10 @@ fn select_row(
     selected: bool,
     width: f32,
 ) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(width, size::ACTION_ROW_HEIGHT),
+        egui::Sense::click(),
+    );
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let hovered = resp.hovered();
     let fill = if selected {

@@ -10,7 +10,7 @@ use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
 };
-use crate::ui::tokens::{font, icon, radius, stroke};
+use crate::ui::tokens::{font, height, icon, radius, size, stroke, width};
 use crate::ui::{icons, widgets};
 use crate::{io, select};
 use bevy::ecs::system::SystemParam;
@@ -794,8 +794,8 @@ pub fn draw(
     .resizable(false)
     .open(&mut open_flag)
     .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-    .default_width(520.0)
-    .min_width(520.0)
+    .default_width(width::COMMAND_PALETTE)
+    .min_width(width::COMMAND_PALETTE)
     .frame(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
@@ -833,7 +833,7 @@ pub fn draw(
             ui.add_space(8.0);
         } else {
             egui::ScrollArea::vertical()
-                .max_height(360.0)
+                .max_height(height::COMMAND_PALETTE_MAX)
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
@@ -933,7 +933,7 @@ fn next_enabled(catalog: &[CatalogEntry], order: &[usize], current: usize, step:
 }
 
 fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bool) -> bool {
-    let row_h = 30.0;
+    let row_h = size::CMD_PALETTE_ROW;
     let full = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(full, row_h), egui::Sense::click());
     let bg = if selected {

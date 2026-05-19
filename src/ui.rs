@@ -28,7 +28,7 @@ use crate::theme::{
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
-use crate::ui::tokens::{font, radius, space, stroke, swatch};
+use crate::ui::tokens::{font, gap, pad, radius, space, stroke, swatch, width};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -192,7 +192,7 @@ pub fn ui_system(
                         .tint(TEXT),
                     egui::RichText::new("Import").size(font::BODY),
                     |ui| {
-                        ui.set_min_width(180.0);
+                        ui.set_min_width(width::TOP_BAR_MENU);
                         if ui
                             .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                             .clicked()
@@ -240,7 +240,7 @@ pub fn ui_system(
                         .tint(TEXT),
                     egui::RichText::new("Export").size(font::BODY),
                     |ui| {
-                        ui.set_min_width(180.0);
+                        ui.set_min_width(width::TOP_BAR_MENU);
                         if ui
                             .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                             .clicked()
@@ -518,8 +518,8 @@ pub fn ui_system(
                     .gap(6.0)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-                        ui.spacing_mut().button_padding = egui::vec2(6.0, 6.0);
+                        ui.spacing_mut().item_spacing = gap::TIGHT;
+                        ui.spacing_mut().button_padding = pad::COMPACT;
                         ui.horizontal(|ui| {
                             for (prim, label) in [
                                 (ShapePrimitive::Rectangle, "Rectangle"),
@@ -589,8 +589,8 @@ pub fn ui_system(
     // ---------- Right inspector ----------
     let right_resp = egui::SidePanel::right("right_panel")
         .resizable(true)
-        .default_width(244.0)
-        .min_width(244.0)
+        .default_width(width::SIDE_PANEL)
+        .min_width(width::SIDE_PANEL)
         .max_width(468.0)
         .frame(
             egui::Frame::default()
@@ -1110,7 +1110,7 @@ pub fn ui_system(
         let before = *prefs;
         let mut open_flag = true;
         widgets::modal_window(ctx, &theme, "Preferences", &mut open_flag).show(ctx, |ui| {
-            ui.set_min_width(340.0);
+            ui.set_min_width(width::MODAL_PREFS);
             widgets::section(ui, &theme, "Appearance", |ui| {
                 widgets::prefs_row(ui, &theme, "Theme", |ui| {
                     widgets::chip_button(ui, &theme, &mut prefs.theme, ThemePref::System, "System");
@@ -1167,7 +1167,7 @@ pub fn ui_system(
         let mut create_clicked = false;
         let mut cancel_clicked = false;
         widgets::modal_window(ctx, &theme, "New project", &mut open).show(ctx, |ui| {
-            ui.set_min_width(260.0);
+            ui.set_min_width(width::MODAL_NEW);
             widgets::hint_label(ui, &theme, "Start over? This discards any unsaved work.");
             ui.add_space(8.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
