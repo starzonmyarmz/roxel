@@ -1,5 +1,6 @@
 use crate::theme::{NUNITO_700_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
+use super::icons;
 use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
 use bevy_egui::egui;
 
@@ -440,6 +441,123 @@ pub fn wide_action_button(
         .inner
     })
     .inner
+}
+
+/// Themed select dropdown matching the design system. Trigger is a panel-wide
+/// button with the current label on the left and a chevron on the right;
+/// click opens a popup of selectable rows. Use in place of `egui::ComboBox`
+/// so the control reads as the same family as `chip_button` and other
+/// surface-fill / hair-border widgets.
+pub fn select_dropdown(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    id_salt: &str,
+    width: f32,
+    selected_label: &str,
+    items: &[String],
+    selected_idx: usize,
+) -> Option<usize> {
+    let height = 28.0;
+    let chevron_pad = 8.0;
+    let label_pad = 10.0;
+
+    let id = ui.make_persistent_id(id_salt);
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(width, height),
+        egui::Sense::click(),
+    );
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    let popup_open = egui::Popup::is_id_open(ui.ctx(), id);
+    let hovered = resp.hovered() || popup_open;
+    let fill = if hovered { theme.surface_hover } else { theme.surface };
+    let painter = ui.painter();
+    painter.rect(
+        rect,
+        egui::CornerRadius::same(radius::SM),
+        fill,
+        egui::Stroke::new(stroke::HAIR, theme.border),
+        egui::StrokeKind::Inside,
+    );
+
+    let text_rect = egui::Rect::from_min_max(
+        rect.left_top() + egui::vec2(label_pad, 0.0),
+        rect.right_bottom() - egui::vec2(height, 0.0),
+    );
+    painter.text(
+        text_rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        selected_label,
+        egui::FontId::new(font::BODY, egui::FontFamily::Proportional),
+        theme.text,
+    );
+
+    let chev_size = icon::MD;
+    let chev_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - chevron_pad - chev_size * 0.5, rect.center().y),
+        egui::vec2(chev_size, chev_size),
+    );
+    egui::Image::new(icons::chevron_down())
+        .tint(theme.text_dim)
+        .paint_at(ui, chev_rect);
+
+    let mut chosen = None;
+    egui::Popup::from_toggle_button_response(&resp)
+        .id(id)
+        .gap(4.0)
+        .align(egui::RectAlign::BOTTOM_START)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .frame(
+            egui::Frame::popup(ui.style())
+                .fill(theme.panel)
+                .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+                .corner_radius(egui::CornerRadius::same(radius::MD))
+                .inner_margin(egui::Margin::same(4)),
+        )
+        .width(width)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing = gap::NONE;
+            let row_w = ui.available_width();
+            for (i, name) in items.iter().enumerate() {
+                if select_row(ui, theme, name, i == selected_idx, row_w).clicked() {
+                    chosen = Some(i);
+                    egui::Popup::close_id(ui.ctx(), id);
+                }
+            }
+        });
+    chosen
+}
+
+fn select_row(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    label: &str,
+    selected: bool,
+    width: f32,
+) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(width, 26.0),
+        egui::Sense::click(),
+    );
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let hovered = resp.hovered();
+    let fill = if selected {
+        theme.accent
+    } else if hovered {
+        theme.surface_hover
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    let fg = if selected { egui::Color32::WHITE } else { theme.text };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(radius::XS), fill);
+    ui.painter().text(
+        rect.left_center() + egui::vec2(8.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::new(font::BODY, egui::FontFamily::Proportional),
+        fg,
+    );
+    resp
 }
 
 #[cfg(test)]

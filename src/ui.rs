@@ -679,18 +679,19 @@ pub fn ui_system(
 
                             // Buffer so widget frames don't overflow and auto-grow the SidePanel.
                             let row_w = (ui.available_width() - 2.0).max(80.0);
-                            egui::ComboBox::from_id_salt("palette_combo")
-                                .selected_text(palettes.0[active_idx].name.clone())
-                                .width(row_w)
-                                .show_ui(ui, |ui| {
-                                    for (i, p) in palettes.0.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut palette_choice.0,
-                                            i,
-                                            p.name.clone(),
-                                        );
-                                    }
-                                });
+                            let names: Vec<String> =
+                                palettes.0.iter().map(|p| p.name.clone()).collect();
+                            if let Some(i) = widgets::select_dropdown(
+                                ui,
+                                &theme,
+                                "palette_combo",
+                                row_w,
+                                &palettes.0[active_idx].name,
+                                &names,
+                                active_idx,
+                            ) {
+                                palette_choice.0 = i;
+                            }
 
                             if palette_rename.editing == Some(active_idx) && !active_is_builtin {
                                 ui.add_space(4.0);
@@ -1049,7 +1050,7 @@ pub fn ui_system(
                                     ui,
                                     &theme,
                                     "Voxels",
-                                    aabb.voxel_count(&grid).to_string(),
+                                    selection.voxel_count(&grid).to_string(),
                                 );
                             });
                         }

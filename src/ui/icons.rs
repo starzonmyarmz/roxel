@@ -74,6 +74,9 @@ pub fn arrow_up() -> egui::ImageSource<'static> {
 pub fn arrow_down() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/arrow-down.svg")
 }
+pub fn chevron_down() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/chevron-down.svg")
+}
 pub fn corner_down_left() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/corner-down-left.svg")
 }
