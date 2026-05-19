@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use std::path::PathBuf;
 
+use crate::camera::{CameraPreset, PendingViewPreset};
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io::recent::MAX_RECENT;
@@ -38,6 +39,8 @@ pub enum MenuAction {
     Preferences,
     Changelog,
     ShowCommandPalette,
+    ViewPreset(CameraPreset),
+    FrameView,
 }
 
 const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
@@ -219,6 +222,88 @@ fn build_menu() -> MenuStore {
     actions.insert(undo_item.id().0.clone(), MenuAction::Undo);
     actions.insert(redo_item.id().0.clone(), MenuAction::Redo);
 
+    let view = Submenu::new("View", true);
+    let frame_item = MenuItem::new(
+        "Frame View",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit0)),
+    );
+    let view_front = MenuItem::new(
+        "Front",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit1)),
+    );
+    let view_back = MenuItem::new(
+        "Back",
+        true,
+        Some(Accelerator::new(
+            Some(Modifiers::SUPER | Modifiers::SHIFT),
+            Code::Digit1,
+        )),
+    );
+    let view_right = MenuItem::new(
+        "Right",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit3)),
+    );
+    let view_left = MenuItem::new(
+        "Left",
+        true,
+        Some(Accelerator::new(
+            Some(Modifiers::SUPER | Modifiers::SHIFT),
+            Code::Digit3,
+        )),
+    );
+    let view_iso = MenuItem::new(
+        "Isometric",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit5)),
+    );
+    let view_top = MenuItem::new(
+        "Top",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit7)),
+    );
+    view.append_items(&[
+        &frame_item,
+        &PredefinedMenuItem::separator(),
+        &view_front,
+        &view_back,
+        &view_right,
+        &view_left,
+        &view_top,
+        &PredefinedMenuItem::separator(),
+        &view_iso,
+    ])
+    .expect("append view menu");
+    menu.append(&view).expect("append view submenu");
+
+    actions.insert(frame_item.id().0.clone(), MenuAction::FrameView);
+    actions.insert(
+        view_front.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Front),
+    );
+    actions.insert(
+        view_back.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Back),
+    );
+    actions.insert(
+        view_right.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Right),
+    );
+    actions.insert(
+        view_left.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Left),
+    );
+    actions.insert(
+        view_top.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Top),
+    );
+    actions.insert(
+        view_iso.id().0.clone(),
+        MenuAction::ViewPreset(CameraPreset::Iso),
+    );
+
     let window = Submenu::new("Window", true);
     window
         .append_items(&[
@@ -326,6 +411,8 @@ pub struct MenuActionParams<'w> {
     pub cmd_palette: ResMut<'w, CommandPalette>,
     pub current_path: Res<'w, CurrentProjectPath>,
     pub recent: ResMut<'w, RecentFiles>,
+    pub view_preset: ResMut<'w, PendingViewPreset>,
+    pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -365,6 +452,12 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.prefs_window.open = !p.prefs_window.open;
             }
             MenuAction::Changelog => open_changelog(),
+            MenuAction::ViewPreset(preset) => {
+                p.view_preset.0 = Some(preset);
+            }
+            MenuAction::FrameView => {
+                p.frame_view.0 = true;
+            }
             MenuAction::ShowCommandPalette => {
                 if p.cmd_palette.open {
                     p.cmd_palette.open = false;

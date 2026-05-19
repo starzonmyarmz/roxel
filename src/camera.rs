@@ -2,7 +2,7 @@ use crate::grid::VoxelGrid;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
-use std::f32::consts::{FRAC_PI_2, TAU};
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI, TAU};
 
 /// Default orbit radius used when the world is empty (no occupied cells to
 /// frame) and as the initial spawn radius. Picked to comfortably show the
@@ -86,18 +86,18 @@ pub fn panel_compensation_offset(
 
 pub fn frame_view_system(
     keys: Res<ButtonInput<KeyCode>>,
+    mut pending: ResMut<PendingFrameView>,
     mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
     grid: Res<VoxelGrid>,
     viewport: Res<ViewportRect>,
 ) {
-    if !keys.just_pressed(KeyCode::Digit0) && !keys.just_pressed(KeyCode::Numpad0) {
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
+    let key_trigger = (keys.just_pressed(KeyCode::Digit0) || keys.just_pressed(KeyCode::Numpad0))
+        && (keys.pressed(KeyCode::SuperLeft)
+            || keys.pressed(KeyCode::SuperRight)
+            || keys.pressed(KeyCode::ControlLeft)
+            || keys.pressed(KeyCode::ControlRight));
+    let menu_trigger = std::mem::take(&mut pending.0);
+    if !key_trigger && !menu_trigger {
         return;
     }
 
@@ -431,6 +431,59 @@ mod tests {
     }
 
     #[test]
+    fn preset_front_looks_down_negative_z() {
+        let dir = preset_direction(CameraPreset::Front);
+        assert!((dir - Vec3::Z).length() < 1e-5, "dir={dir:?}");
+    }
+
+    #[test]
+    fn preset_top_looks_straight_down() {
+        // Top preset positions the camera above focus → direction.y ≈ 1.
+        // x/z stay near zero within the pole-epsilon (cos(pitch) ≈ 0.05).
+        let dir = preset_direction(CameraPreset::Top);
+        assert!(dir.y > 0.99, "y={}", dir.y);
+        assert!(dir.x.abs() < 0.06 && dir.z.abs() < 0.06, "dir={dir:?}");
+    }
+
+    #[test]
+    fn preset_iso_matches_spawn_direction() {
+        let dir = preset_direction(CameraPreset::Iso);
+        let expected = Vec3::ONE.normalize();
+        assert!((dir - expected).length() < 1e-5, "dir={dir:?}");
+    }
+
+    #[test]
+    fn preset_back_is_front_yaw_plus_pi() {
+        let (yaw_front, _) = preset_angles(CameraPreset::Front);
+        let (yaw_back, _) = preset_angles(CameraPreset::Back);
+        assert!((yaw_back - yaw_front - PI).abs() < 1e-6);
+    }
+
+    #[test]
+    fn preset_left_is_right_yaw_negated() {
+        let (yaw_right, _) = preset_angles(CameraPreset::Right);
+        let (yaw_left, _) = preset_angles(CameraPreset::Left);
+        assert!((yaw_left + yaw_right).abs() < 1e-6);
+    }
+
+    #[test]
+    fn preset_right_looks_down_negative_x() {
+        let dir = preset_direction(CameraPreset::Right);
+        assert!((dir - Vec3::X).length() < 1e-5, "dir={dir:?}");
+    }
+
+    #[test]
+    fn preset_back_looks_down_positive_z() {
+        let dir = preset_direction(CameraPreset::Back);
+        assert!((dir - (-Vec3::Z)).length() < 1e-5, "dir={dir:?}");
+    }
+
+    #[test]
+    fn pending_view_preset_default_empty() {
+        assert!(PendingViewPreset::default().0.is_none());
+    }
+
+    #[test]
     fn fit_view_handles_negative_coords() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(-10, 0, -5), Some([1, 1, 1, 255]));
@@ -440,6 +493,139 @@ mod tests {
         // voxel extent.
         assert!((focus.x - 5.5).abs() < 1e-4, "x={}", focus.x);
         assert!((focus.z - 10.5).abs() < 1e-4, "z={}", focus.z);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CameraPreset {
+    Front,
+    Back,
+    Right,
+    Left,
+    Top,
+    Iso,
+}
+
+impl CameraPreset {
+    pub fn label(self) -> &'static str {
+        match self {
+            CameraPreset::Front => "Front",
+            CameraPreset::Back => "Back",
+            CameraPreset::Right => "Right",
+            CameraPreset::Left => "Left",
+            CameraPreset::Top => "Top",
+            CameraPreset::Iso => "Isometric",
+        }
+    }
+}
+
+/// Pitch ceiling for Top preset — must stay just under the crate's
+/// `pitch_upper_limit` (set in `spawn_camera`) to avoid the gimbal-lock pole.
+pub const TOP_PRESET_PITCH: f32 = FRAC_PI_2 - 0.05;
+
+/// (yaw, pitch) targets for each preset. Convention matches
+/// `bevy_panorbit_camera`: offset from focus =
+/// `(sin(yaw)·cos(pitch), sin(pitch), cos(yaw)·cos(pitch)) · radius`.
+pub fn preset_angles(preset: CameraPreset) -> (f32, f32) {
+    match preset {
+        CameraPreset::Front => (0.0, 0.0),
+        CameraPreset::Back => (PI, 0.0),
+        CameraPreset::Right => (FRAC_PI_2, 0.0),
+        CameraPreset::Left => (-FRAC_PI_2, 0.0),
+        CameraPreset::Top => (0.0, TOP_PRESET_PITCH),
+        CameraPreset::Iso => (FRAC_PI_4, (1.0_f32 / 3.0_f32.sqrt()).asin()),
+    }
+}
+
+/// Test-only helper: converts (yaw, pitch) into a unit direction vector
+/// from focus to camera position. Runtime callers write `target_yaw` /
+/// `target_pitch` directly and let `bevy_panorbit_camera` recompute position.
+#[cfg(test)]
+pub fn preset_direction(preset: CameraPreset) -> Vec3 {
+    let (yaw, pitch) = preset_angles(preset);
+    Vec3::new(
+        yaw.sin() * pitch.cos(),
+        pitch.sin(),
+        yaw.cos() * pitch.cos(),
+    )
+}
+
+/// One-shot view-preset request. Written by the keybind system and the
+/// command palette / native menu; consumed by `apply_pending_view_preset_system`.
+#[derive(Resource, Default)]
+pub struct PendingViewPreset(pub Option<CameraPreset>);
+
+/// One-shot Frame-View request. Written by the native menu click handler
+/// (the keyboard accelerator already calls `frame_view_system` directly).
+#[derive(Resource, Default)]
+pub struct PendingFrameView(pub bool);
+
+pub fn apply_pending_view_preset_system(
+    mut pending: ResMut<PendingViewPreset>,
+    mut flyby: ResMut<FlybyState>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+    grid: Res<VoxelGrid>,
+) {
+    let Some(preset) = pending.0.take() else {
+        return;
+    };
+    flyby.active = false;
+
+    let (centroid, radius) =
+        fit_view(&grid).unwrap_or((default_camera_focus(), EMPTY_WORLD_RADIUS));
+    let (yaw, pitch) = preset_angles(preset);
+
+    for mut cam in &mut cameras {
+        cam.target_focus = centroid;
+        cam.target_radius = radius;
+        cam.target_yaw = yaw;
+        cam.target_pitch = pitch;
+    }
+}
+
+pub fn camera_preset_keys_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut contexts: bevy_egui::EguiContexts,
+    mut pending: ResMut<PendingViewPreset>,
+) {
+    let egui_wants_keyboard = contexts
+        .ctx_mut()
+        .map(|c| c.wants_keyboard_input())
+        .unwrap_or(false);
+    if egui_wants_keyboard {
+        return;
+    }
+    let cmd = keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight);
+    if !cmd {
+        return;
+    }
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+
+    let preset = if keys.just_pressed(KeyCode::Digit1) || keys.just_pressed(KeyCode::Numpad1) {
+        Some(if shift {
+            CameraPreset::Back
+        } else {
+            CameraPreset::Front
+        })
+    } else if keys.just_pressed(KeyCode::Digit3) || keys.just_pressed(KeyCode::Numpad3) {
+        Some(if shift {
+            CameraPreset::Left
+        } else {
+            CameraPreset::Right
+        })
+    } else if keys.just_pressed(KeyCode::Digit5) || keys.just_pressed(KeyCode::Numpad5) {
+        Some(CameraPreset::Iso)
+    } else if keys.just_pressed(KeyCode::Digit7) || keys.just_pressed(KeyCode::Numpad7) {
+        Some(CameraPreset::Top)
+    } else {
+        None
+    };
+
+    if let Some(p) = preset {
+        pending.0 = Some(p);
     }
 }
 

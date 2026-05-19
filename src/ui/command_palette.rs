@@ -1,5 +1,7 @@
 use super::dialogs::{DialogResult, PendingDialog};
-use crate::camera::{ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view};
+use crate::camera::{
+    CameraPreset, PendingViewPreset, ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view,
+};
 use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
@@ -95,6 +97,7 @@ pub enum CommandAction {
     SelectShape(ShapePrimitive),
 
     FrameView,
+    ViewPreset(CameraPreset),
     ZoomIn,
     ZoomOut,
     ToggleFlyby,
@@ -436,6 +439,27 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         true,
         CommandAction::FrameView,
     ));
+    for (preset, shortcut, keywords) in [
+        (CameraPreset::Front, "⌘1", "view angle camera +z forward"),
+        (CameraPreset::Back, "⇧⌘1", "view angle camera -z behind"),
+        (CameraPreset::Right, "⌘3", "view angle camera +x side"),
+        (CameraPreset::Left, "⇧⌘3", "view angle camera -x side"),
+        (CameraPreset::Top, "⌘7", "view angle camera down plan"),
+        (
+            CameraPreset::Iso,
+            "⌘5",
+            "view angle camera isometric default",
+        ),
+    ] {
+        out.push(entry(
+            &format!("{} view", preset.label()),
+            Category::View,
+            keywords,
+            Some(shortcut),
+            true,
+            CommandAction::ViewPreset(preset),
+        ));
+    }
     out.push(entry(
         "Zoom in",
         Category::View,
@@ -985,6 +1009,7 @@ pub struct DispatchParams<'w> {
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
     flyby: ResMut<'w, crate::camera::FlybyState>,
     toasts: ResMut<'w, super::Toasts>,
+    view_preset: ResMut<'w, PendingViewPreset>,
 }
 
 pub fn dispatch_command_palette_system(
@@ -1086,6 +1111,9 @@ pub fn dispatch_command_palette_system(
                 cam.target_focus = centroid;
                 cam.target_radius = radius;
             }
+        }
+        CommandAction::ViewPreset(preset) => {
+            p.view_preset.0 = Some(preset);
         }
         CommandAction::ZoomIn => {
             for mut cam in &mut cameras {
