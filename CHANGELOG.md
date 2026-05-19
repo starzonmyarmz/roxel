@@ -12,28 +12,22 @@ Release notes.
 
 ## [Unreleased]
 
-## [0.4.1] - 2026-05-19
+## [0.4.2] - 2026-05-18
 
+- ci: drop sccache from release workflow + bump 0.4.2
+- docs: finalize CHANGELOG for v0.4.1 [skip ci]
 
-## [0.4.2] - 2026-05-19
+## [0.4.1] - 2026-05-18
 
-
-## [4.0.2] - 2026-05-18
-
-- ci: drop sccache from release workflow + bump 4.0.2
-- docs: finalize CHANGELOG for v4.0.1 [skip ci]
-
-## [4.0.1] - 2026-05-18
-
-- chore: bump to 4.0.1
+- chore: bump to 0.4.1
 - ci: push releases to itch.io via butler
 - docs: add macOS Gatekeeper bypass callout to README
-- docs: finalize CHANGELOG for v4.0.0 [skip ci]
+- docs: finalize CHANGELOG for v0.4.0 [skip ci]
 - ci: speed up workflows via sccache, nextest, prebuilt cargo-bundle
 
-## [4.0.0] - 2026-05-18
+## [0.4.0] - 2026-05-18
 
-- chore: bump to 4.0.0
+- chore: bump to 0.4.0
 - fix: drop unenrolled GitHub Sponsors entry from FUNDING.yml
 - polish: voxel-only floor, multi-band grid, smoother zoom
 - Modify FUNDING.yml with funding usernames

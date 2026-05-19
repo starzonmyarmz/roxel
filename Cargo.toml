@@ -1,6 +1,6 @@
 [package]
 name = "roxel"
-version = "4.0.2"
+version = "0.4.2"
 edition = "2024"
 
 [[bin]]
