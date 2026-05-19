@@ -12,8 +12,31 @@ Release notes.
 
 ## [Unreleased]
 
-- breaking: project file extension renamed from `.roxel` to `.rox`; existing files must be renamed
-- feat: Open Recent menu — last 10 opened or saved `.rox` projects persist to `recent.ron`, available from the File menu (in-app and native macOS menu bar)
+## [0.4.3] - 2026-05-19
+
+- chore: bump to 0.4.3
+- docs: note Open Recent menu in README, CHANGELOG, and CLAUDE.md
+- feat(menu): add native Open Recent submenu on macOS
+- feat(ui): track recently opened/saved projects + Open Recent menu
+- feat(io): add recent-files store module
+- feat(select): double-click selects connected same-color voxels
+- feat(ui): rename select tool label to "Marquee select"
+- docs: add sample .vox models and marketing imagery [skip ci]
+- feat!: rename project file extension from .roxel to .rox
+- docs: finalize CHANGELOG for v0.4.0 [skip ci]
+- fix: correct version from 4.0.x to 0.4.x
+- docs: finalize CHANGELOG for v0.4.1 [skip ci]
+- docs: finalize CHANGELOG for v0.4.2 [skip ci]
+- docs: changelog entry for flyby gizmo hide
+- fix: hide orientation gizmo during flyby
+- feat: flyby camera mode
+- docs: CLAUDE.md note for OriginAxesGizmos group + show_origin_axes gate
+- feat: hide-origin pref, transparent PNG export, axes over grid
+- feat: Cmd+A selects every occupied voxel
+- feat: ghost paint tool color on hovered voxel
+- Merge pull request #1 from starzonmyarmz/worktree-ci-drop-sccache
+- ci: drop sccache from CI workflow
+- docs: finalize CHANGELOG for v4.0.2 [skip ci]
 
 ## [0.4.0] - 2026-05-19
 
