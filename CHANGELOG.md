@@ -12,6 +12,9 @@ Release notes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-19
+
+
 ## [0.4.2] - 2026-05-18
 
 - ci: drop sccache from release workflow + bump 0.4.2
