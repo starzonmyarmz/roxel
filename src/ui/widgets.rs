@@ -1,6 +1,6 @@
+use super::icons;
 use crate::theme::{NUNITO_700_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use super::icons;
 use crate::ui::tokens::{font, gap, icon, pad, radius, space, stroke};
 use bevy_egui::egui;
 
@@ -462,15 +462,16 @@ pub fn select_dropdown(
     let label_pad = 10.0;
 
     let id = ui.make_persistent_id(id_salt);
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(width, height),
-        egui::Sense::click(),
-    );
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
 
     let popup_open = egui::Popup::is_id_open(ui.ctx(), id);
     let hovered = resp.hovered() || popup_open;
-    let fill = if hovered { theme.surface_hover } else { theme.surface };
+    let fill = if hovered {
+        theme.surface_hover
+    } else {
+        theme.surface
+    };
     let painter = ui.painter();
     painter.rect(
         rect,
@@ -494,7 +495,10 @@ pub fn select_dropdown(
 
     let chev_size = icon::MD;
     let chev_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - chevron_pad - chev_size * 0.5, rect.center().y),
+        egui::pos2(
+            rect.right() - chevron_pad - chev_size * 0.5,
+            rect.center().y,
+        ),
         egui::vec2(chev_size, chev_size),
     );
     egui::Image::new(icons::chevron_down())
@@ -535,10 +539,7 @@ fn select_row(
     selected: bool,
     width: f32,
 ) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(width, 26.0),
-        egui::Sense::click(),
-    );
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let hovered = resp.hovered();
     let fill = if selected {
@@ -548,8 +549,13 @@ fn select_row(
     } else {
         egui::Color32::TRANSPARENT
     };
-    let fg = if selected { egui::Color32::WHITE } else { theme.text };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(radius::XS), fill);
+    let fg = if selected {
+        egui::Color32::WHITE
+    } else {
+        theme.text
+    };
+    ui.painter()
+        .rect_filled(rect, egui::CornerRadius::same(radius::XS), fill);
     ui.painter().text(
         rect.left_center() + egui::vec2(8.0, 0.0),
         egui::Align2::LEFT_CENTER,

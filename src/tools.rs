@@ -605,16 +605,15 @@ pub fn tool_input_system(
             // because the second LMB-press would otherwise commit the
             // in-progress extrude from the first click.
             if lmb_just && !blocked {
-                let pick_cell = pick(&grid, origin, dir).and_then(|h| h.hit_voxel.then_some(h.cell));
+                let pick_cell =
+                    pick(&grid, origin, dir).and_then(|h| h.hit_voxel.then_some(h.cell));
                 let now = time.elapsed_secs_f64();
                 let is_double = pick_cell.is_some()
                     && select_state.last_press_cell == pick_cell
                     && (now - select_state.last_press_secs) < DOUBLE_CLICK_SECS;
                 select_state.last_press_secs = now;
                 select_state.last_press_cell = pick_cell;
-                if is_double
-                    && let Some(c) = pick_cell
-                {
+                if is_double && let Some(c) = pick_cell {
                     let cells = connected_same_color(&grid, c);
                     if !cells.is_empty() {
                         selection.set_cells(cells.into_iter().collect());

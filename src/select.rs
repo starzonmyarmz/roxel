@@ -123,7 +123,6 @@ impl Selection {
             None => 0,
         }
     }
-
 }
 
 fn aabb_of_cells_iter(mut iter: impl Iterator<Item = IVec3>) -> Option<SelectionAabb> {
@@ -203,12 +202,7 @@ pub fn clear_selection(grid: &mut VoxelGrid, history: &mut History, selection: &
 
 /// Recolor every non-empty cell inside the AABB with `color`. Empty cells stay
 /// empty — Paint must not materialize new voxels. One history stroke.
-fn recolor_aabb(
-    grid: &mut VoxelGrid,
-    history: &mut History,
-    aabb: &SelectionAabb,
-    color: Color8,
-) {
+fn recolor_aabb(grid: &mut VoxelGrid, history: &mut History, aabb: &SelectionAabb, color: Color8) {
     history.begin();
     for cell in aabb.iter_cells() {
         if grid.in_bounds(cell) && grid.get(cell).is_some() {
@@ -885,7 +879,8 @@ mod tests {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 1, 1)]);
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(2, 1, 1),
@@ -920,7 +915,8 @@ mod tests {
                 IVec3::new(3, 1, 1),
             ],
         );
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(3, 1, 1),
@@ -948,7 +944,8 @@ mod tests {
         grid.set(IVec3::new(1, 1, 1), Some(red));
         // Obstacle one cell away — not in selection.
         grid.set(IVec3::new(2, 1, 1), Some(blue));
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(1, 1, 1),
@@ -983,7 +980,8 @@ mod tests {
                 IVec3::new(3, 1, 1),
             ],
         );
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(3, 1, 1),
@@ -1006,7 +1004,8 @@ mod tests {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         grid.set(IVec3::new(0, 0, 0), Some(red));
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(0, 0, 0),
                 IVec3::new(0, 0, 0),
@@ -1029,7 +1028,8 @@ mod tests {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         grid.set(IVec3::new(0, 0, 0), Some(red));
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(0, 0, 0),
                 IVec3::new(0, 0, 0),
@@ -1053,7 +1053,8 @@ mod tests {
     fn move_selection_zero_delta_is_noop() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(1, 1, 1), Some([1, 2, 3, 255]));
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(1, 1, 1),
@@ -1079,7 +1080,8 @@ mod tests {
             IVec3::new(2, 2, 1),
         ];
         fill_grid(&mut grid, red, &pts);
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(1, 1, 1),
                 IVec3::new(2, 2, 1),
@@ -1108,7 +1110,8 @@ mod tests {
     #[test]
     fn move_selection_empty_selection_just_slides_aabb() {
         let mut grid = VoxelGrid::default();
-        let mut selection = Selection { cells: None,
+        let mut selection = Selection {
+            cells: None,
             aabb: Some(SelectionAabb::from_corners(
                 IVec3::new(0, 0, 0),
                 IVec3::new(2, 2, 2),
@@ -1300,8 +1303,9 @@ mod tests {
         let cells: HashSet<IVec3> = connected_same_color(&grid, IVec3::new(0, 0, 0))
             .into_iter()
             .collect();
-        let expected: HashSet<IVec3> =
-            [IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)].into_iter().collect();
+        let expected: HashSet<IVec3> = [IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)]
+            .into_iter()
+            .collect();
         assert_eq!(cells, expected);
     }
 
@@ -1402,7 +1406,11 @@ mod tests {
     #[test]
     fn selection_contains_uses_mask_when_present() {
         let mut sel = Selection::default();
-        sel.set_cells([IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)].into_iter().collect());
+        sel.set_cells(
+            [IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)]
+                .into_iter()
+                .collect(),
+        );
         assert!(sel.contains(IVec3::new(0, 0, 0)));
         assert!(sel.contains(IVec3::new(2, 0, 0)));
         // (1,0,0) is inside the AABB hull but not in the mask.
@@ -1418,7 +1426,11 @@ mod tests {
         grid.set(IVec3::new(1, 0, 0), Some(blue));
         grid.set(IVec3::new(2, 0, 0), Some(red));
         let mut sel = Selection::default();
-        sel.set_cells([IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)].into_iter().collect());
+        sel.set_cells(
+            [IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)]
+                .into_iter()
+                .collect(),
+        );
         let mut history = History::default();
         clear_selection(&mut grid, &mut history, &sel);
         assert!(grid.get(IVec3::new(0, 0, 0)).is_none());
@@ -1436,7 +1448,11 @@ mod tests {
         grid.set(IVec3::new(1, 0, 0), Some(blue));
         grid.set(IVec3::new(2, 0, 0), Some(red));
         let mut sel = Selection::default();
-        sel.set_cells([IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)].into_iter().collect());
+        sel.set_cells(
+            [IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)]
+                .into_iter()
+                .collect(),
+        );
         let mut history = History::default();
         recolor_selection(&mut grid, &mut history, &sel, green);
         assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(green));
@@ -1497,8 +1513,9 @@ mod tests {
         // Two cells touching only at a single shared edge → K=2 diagonal at
         // that edge, K=1 elsewhere. Saddle edge must be drawn (twice, once
         // per cell, but deduped) — assert it appears.
-        let mask: HashSet<IVec3> =
-            [IVec3::new(0, 0, 0), IVec3::new(1, 1, 0)].into_iter().collect();
+        let mask: HashSet<IVec3> = [IVec3::new(0, 0, 0), IVec3::new(1, 1, 0)]
+            .into_iter()
+            .collect();
         let edges = silhouette_edges(&mask);
         // The shared edge is the Z-axis edge at (1, 1, 0).
         assert!(edges.contains(&(2, IVec3::new(1, 1, 0))));
@@ -1513,7 +1530,11 @@ mod tests {
         grid.set(IVec3::new(1, 0, 0), Some(blue));
         grid.set(IVec3::new(2, 0, 0), Some(red));
         let mut sel = Selection::default();
-        sel.set_cells([IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)].into_iter().collect());
+        sel.set_cells(
+            [IVec3::new(0, 0, 0), IVec3::new(2, 0, 0)]
+                .into_iter()
+                .collect(),
+        );
         let mut history = History::default();
         assert!(move_selection(
             &mut grid,

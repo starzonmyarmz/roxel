@@ -31,8 +31,8 @@ pub fn save_to(p: &Path, paths: &[PathBuf]) -> std::io::Result<()> {
     let stored = Stored {
         paths: paths.to_vec(),
     };
-    let body = ron::ser::to_string_pretty(&stored, ron::ser::PrettyConfig::default())
-        .unwrap_or_default();
+    let body =
+        ron::ser::to_string_pretty(&stored, ron::ser::PrettyConfig::default()).unwrap_or_default();
     std::fs::write(p, body)
 }
 
@@ -77,7 +77,11 @@ mod tests {
         push(&mut list, "/b".into());
         assert_eq!(
             list,
-            vec![PathBuf::from("/b"), PathBuf::from("/a"), PathBuf::from("/c")]
+            vec![
+                PathBuf::from("/b"),
+                PathBuf::from("/a"),
+                PathBuf::from("/c")
+            ]
         );
     }
 
@@ -89,7 +93,10 @@ mod tests {
         push(&mut list, "/new".into());
         assert_eq!(list.len(), MAX_RECENT);
         assert_eq!(list[0], PathBuf::from("/new"));
-        assert_eq!(list.last(), Some(&PathBuf::from(format!("/p{}", MAX_RECENT - 2))));
+        assert_eq!(
+            list.last(),
+            Some(&PathBuf::from(format!("/p{}", MAX_RECENT - 2)))
+        );
     }
 
     #[test]
