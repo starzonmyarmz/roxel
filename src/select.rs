@@ -2,6 +2,12 @@ use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::tools::{StrokeAnchor, Tool, ToolState};
 use bevy::prelude::*;
+use std::collections::{HashSet, VecDeque};
+
+/// Max gap between two LMB-press events that still counts as a double-click.
+/// Bevy 0.18 has no native double-click detection so the Select tool tracks
+/// last press time + cell itself.
+pub const DOUBLE_CLICK_SECS: f64 = 0.4;
 
 /// Gizmo group for selection visuals: marching-ants AABB outline + per-cell
 /// wireframe markers. Configured with `depth_bias = -1.0` so the overlay
@@ -89,6 +95,12 @@ pub struct SelectState {
     pub corner2: Option<IVec3>,
     pub normal_sign: i32,
     pub thickness: i32,
+    /// Wall-clock seconds at the previous LMB-press while the Select tool
+    /// was active. Used together with `last_press_cell` to detect a
+    /// double-click. Not cleared by `reset()` — `reset()` runs between the
+    /// first and second click of a double-click sequence.
+    pub last_press_secs: f64,
+    pub last_press_cell: Option<IVec3>,
 }
 
 impl SelectState {
@@ -199,6 +211,51 @@ pub fn move_selection(
         max: new_max,
     });
     true
+}
+
+/// 6-connected flood fill from `start` over cells matching `start`'s color.
+/// Returns an empty vec when `start` is empty. Pure: no allocations on the
+/// grid, no history side effects.
+pub fn connected_same_color(grid: &VoxelGrid, start: IVec3) -> Vec<IVec3> {
+    let Some(color) = grid.get(start) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut seen: HashSet<IVec3> = HashSet::new();
+    let mut q: VecDeque<IVec3> = VecDeque::new();
+    seen.insert(start);
+    q.push_back(start);
+    const DIRS: [IVec3; 6] = [
+        IVec3::X,
+        IVec3::NEG_X,
+        IVec3::Y,
+        IVec3::NEG_Y,
+        IVec3::Z,
+        IVec3::NEG_Z,
+    ];
+    while let Some(p) = q.pop_front() {
+        out.push(p);
+        for d in DIRS {
+            let n = p + d;
+            if seen.insert(n) && grid.get(n) == Some(color) {
+                q.push_back(n);
+            }
+        }
+    }
+    out
+}
+
+/// AABB hull of an arbitrary cell list. `None` for an empty slice.
+pub fn aabb_of_cells(cells: &[IVec3]) -> Option<SelectionAabb> {
+    let mut iter = cells.iter().copied();
+    let first = iter.next()?;
+    let mut min = first;
+    let mut max = first;
+    for c in iter {
+        min = min.min(c);
+        max = max.max(c);
+    }
+    Some(SelectionAabb { min, max })
 }
 
 /// Build an in-progress AABB from the current `SelectState` corners + signed
@@ -903,6 +960,7 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 3,
+            ..Default::default()
         };
         let aabb = in_progress_aabb(&state).unwrap();
         assert_eq!(aabb.min.y, 5);
@@ -923,6 +981,7 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: -3,
+            ..Default::default()
         };
         let aabb = in_progress_aabb(&state).unwrap();
         assert_eq!(aabb.min.y, 2);
@@ -942,6 +1001,7 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 0,
+            ..Default::default()
         };
         let aabb = in_progress_aabb(&state).unwrap();
         assert_eq!(aabb.min.y, 5);
@@ -1001,10 +1061,107 @@ mod tests {
             corner2: Some(IVec3::new(3, 4, 5)),
             normal_sign: 1,
             thickness: 0,
+            ..Default::default()
         };
         let aabb = in_progress_aabb(&state).unwrap();
         assert_eq!(aabb.min, IVec3::new(3, 4, 5));
         assert_eq!(aabb.max, IVec3::new(3, 4, 5));
+    }
+
+    #[test]
+    fn connected_same_color_returns_single_cell_when_isolated() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        grid.set(IVec3::new(5, 5, 5), Some(red));
+        let cells = connected_same_color(&grid, IVec3::new(5, 5, 5));
+        assert_eq!(cells, vec![IVec3::new(5, 5, 5)]);
+    }
+
+    #[test]
+    fn connected_same_color_walks_face_neighbors() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        let pts = [
+            IVec3::new(0, 0, 0),
+            IVec3::new(1, 0, 0),
+            IVec3::new(2, 0, 0),
+            IVec3::new(2, 1, 0),
+            IVec3::new(2, 1, 1),
+        ];
+        fill_grid(&mut grid, red, &pts);
+        let cells: HashSet<IVec3> = connected_same_color(&grid, IVec3::new(0, 0, 0))
+            .into_iter()
+            .collect();
+        let expected: HashSet<IVec3> = pts.iter().copied().collect();
+        assert_eq!(cells, expected);
+    }
+
+    #[test]
+    fn connected_same_color_excludes_diagonal_neighbor() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        // Two same-color voxels sharing only an edge — not face-connected.
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(1, 1, 0), Some(red));
+        let cells = connected_same_color(&grid, IVec3::new(0, 0, 0));
+        assert_eq!(cells, vec![IVec3::new(0, 0, 0)]);
+    }
+
+    #[test]
+    fn connected_same_color_stops_at_color_boundary() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        let blue = [0, 0, 200, 255];
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(1, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 0, 0), Some(blue));
+        grid.set(IVec3::new(3, 0, 0), Some(red));
+        let cells: HashSet<IVec3> = connected_same_color(&grid, IVec3::new(0, 0, 0))
+            .into_iter()
+            .collect();
+        let expected: HashSet<IVec3> =
+            [IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)].into_iter().collect();
+        assert_eq!(cells, expected);
+    }
+
+    #[test]
+    fn connected_same_color_empty_start_returns_empty() {
+        let grid = VoxelGrid::default();
+        assert!(connected_same_color(&grid, IVec3::new(0, 0, 0)).is_empty());
+    }
+
+    #[test]
+    fn connected_same_color_spans_negative_coords() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        let pts = [
+            IVec3::new(-2, 0, -3),
+            IVec3::new(-1, 0, -3),
+            IVec3::new(0, 0, -3),
+        ];
+        fill_grid(&mut grid, red, &pts);
+        let cells: HashSet<IVec3> = connected_same_color(&grid, IVec3::new(-1, 0, -3))
+            .into_iter()
+            .collect();
+        let expected: HashSet<IVec3> = pts.iter().copied().collect();
+        assert_eq!(cells, expected);
+    }
+
+    #[test]
+    fn aabb_of_cells_returns_none_for_empty() {
+        assert!(aabb_of_cells(&[]).is_none());
+    }
+
+    #[test]
+    fn aabb_of_cells_bounds_extremes() {
+        let cells = [
+            IVec3::new(-2, 4, 3),
+            IVec3::new(5, 0, -1),
+            IVec3::new(1, 2, 7),
+        ];
+        let aabb = aabb_of_cells(&cells).unwrap();
+        assert_eq!(aabb.min, IVec3::new(-2, 0, -1));
+        assert_eq!(aabb.max, IVec3::new(5, 4, 7));
     }
 
     #[test]
@@ -1021,6 +1178,7 @@ mod tests {
             corner2: Some(IVec3::new(2, 4, 2)),
             normal_sign: -1,
             thickness: 3,
+            ..Default::default()
         };
         // Drag in normal direction (downward) extends min below target_layer.
         let aabb = in_progress_aabb(&state).unwrap();

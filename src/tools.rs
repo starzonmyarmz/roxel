@@ -1,7 +1,10 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick, pick_with};
-use crate::select::{SelectPhase, SelectState, Selection, SelectionAabb, clear_aabb, recolor_aabb};
+use crate::select::{
+    DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, aabb_of_cells,
+    clear_aabb, connected_same_color, recolor_aabb,
+};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -538,6 +541,7 @@ pub fn tool_input_system(
     mut shape_state: ResMut<ShapeState>,
     select_params: SelectParams,
     gates: InputGates,
+    time: Res<Time>,
 ) {
     let InputGates {
         gizmo_drag,
@@ -591,6 +595,27 @@ pub fn tool_input_system(
         let z = keys.pressed(KeyCode::KeyZ);
         let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
         if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
+            // Double-click on a voxel selects every 6-connected same-color
+            // voxel touching it. Detect before delegating to `select_input`
+            // because the second LMB-press would otherwise commit the
+            // in-progress extrude from the first click.
+            if lmb_just && !blocked {
+                let pick_cell = pick(&grid, origin, dir).and_then(|h| h.hit_voxel.then_some(h.cell));
+                let now = time.elapsed_secs_f64();
+                let is_double = pick_cell.is_some()
+                    && select_state.last_press_cell == pick_cell
+                    && (now - select_state.last_press_secs) < DOUBLE_CLICK_SECS;
+                select_state.last_press_secs = now;
+                select_state.last_press_cell = pick_cell;
+                if is_double
+                    && let Some(c) = pick_cell
+                    && let Some(aabb) = aabb_of_cells(&connected_same_color(&grid, c))
+                {
+                    selection.aabb = Some(aabb);
+                    select_state.reset();
+                    return;
+                }
+            }
             select_input(
                 &mut select_state,
                 &mut selection,
