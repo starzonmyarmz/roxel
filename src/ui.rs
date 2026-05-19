@@ -560,7 +560,7 @@ pub fn ui_system(
                     &mut tool,
                     Tool::Select,
                     icons::tool(Tool::Select),
-                    "Select",
+                    "Marquee select",
                     "M",
                 );
                 ui.add_space(2.0);
