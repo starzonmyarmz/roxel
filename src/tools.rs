@@ -2,8 +2,8 @@ use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
 use crate::picking::{cursor_ray, pick, pick_with};
 use crate::select::{
-    DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, aabb_of_cells,
-    clear_aabb, connected_same_color, recolor_aabb,
+    DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
+    connected_same_color, recolor_selection,
 };
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::ecs::system::SystemParam;
@@ -93,6 +93,10 @@ pub struct MoveDragState {
     /// Pre-drag occupied cells inside the selection AABB.
     pub originals: Vec<(IVec3, Color8)>,
     pub original_aabb: Option<SelectionAabb>,
+    /// Snapshot of the selection's cell mask at drag start. Carries the per-
+    /// cell selection through the move so cancel/abort restores it intact and
+    /// each frame shifts it alongside the AABB.
+    pub original_cells: Option<std::collections::HashSet<IVec3>>,
     /// True when the drag started without a prior selection (clicked a bare
     /// voxel). Selection is cleared on commit so the move stays single-shot.
     pub ad_hoc: bool,
@@ -109,6 +113,7 @@ impl MoveDragState {
         self.applied_delta = IVec3::ZERO;
         self.originals.clear();
         self.original_aabb = None;
+        self.original_cells = None;
         self.prev_state.clear();
         self.ad_hoc = false;
     }
@@ -438,7 +443,7 @@ fn shape_input(
 
 fn select_commit(state: &mut SelectState, selection: &mut Selection) {
     if let Some(aabb) = crate::select::in_progress_aabb(state) {
-        selection.aabb = Some(aabb);
+        selection.set_aabb(aabb);
     }
     state.reset();
 }
@@ -462,7 +467,7 @@ fn select_input(
         if state.phase != SelectPhase::Idle {
             state.reset();
         } else {
-            selection.aabb = None;
+            selection.clear();
         }
         return;
     }
@@ -609,11 +614,13 @@ pub fn tool_input_system(
                 select_state.last_press_cell = pick_cell;
                 if is_double
                     && let Some(c) = pick_cell
-                    && let Some(aabb) = aabb_of_cells(&connected_same_color(&grid, c))
                 {
-                    selection.aabb = Some(aabb);
-                    select_state.reset();
-                    return;
+                    let cells = connected_same_color(&grid, c);
+                    if !cells.is_empty() {
+                        selection.set_cells(cells.into_iter().collect());
+                        select_state.reset();
+                        return;
+                    }
                 }
             }
             select_input(
@@ -776,17 +783,17 @@ pub fn tool_input_system(
     // falls through to normal single-cell stroke behavior.
     if lmb_just
         && matches!(tool.current, Tool::Paint | Tool::Erase)
-        && let Some(aabb) = selection.aabb
+        && selection.aabb.is_some()
         && let Some(hit) = pick(&grid, origin, dir)
         && hit.hit_voxel
-        && aabb.contains(hit.cell)
+        && selection.contains(hit.cell)
     {
         match tool.current {
             Tool::Paint => {
-                recolor_aabb(&mut grid, &mut history, &aabb, color.0);
+                recolor_selection(&mut grid, &mut history, &selection, color.0);
                 recent.push(color.0);
             }
-            Tool::Erase => clear_aabb(&mut grid, &mut history, &aabb),
+            Tool::Erase => clear_selection(&mut grid, &mut history, &selection),
             _ => {}
         }
         return;
@@ -906,11 +913,12 @@ pub fn move_drag_system(
     if tool.current != Tool::Move {
         if drag.active {
             history.abort(&mut grid);
-            selection.aabb = if drag.ad_hoc {
-                None
+            if drag.ad_hoc {
+                selection.clear();
             } else {
-                drag.original_aabb
-            };
+                selection.aabb = drag.original_aabb;
+                selection.cells = drag.original_cells.clone();
+            }
             drag.reset();
         }
         return;
@@ -941,11 +949,12 @@ pub fn move_drag_system(
     // Cancel mid-drag → revert and abandon the stroke.
     if drag.active && (esc || rmb_just) {
         history.abort(&mut grid);
-        selection.aabb = if drag.ad_hoc {
-            None
+        if drag.ad_hoc {
+            selection.clear();
         } else {
-            drag.original_aabb
-        };
+            selection.aabb = drag.original_aabb;
+            selection.cells = drag.original_cells.clone();
+        }
         drag.reset();
         return;
     }
@@ -966,7 +975,7 @@ pub fn move_drag_system(
             return;
         }
         let (effective_aabb, ad_hoc) = match selection.aabb {
-            Some(aabb) if aabb.contains(hit.cell) => (aabb, false),
+            Some(aabb) if selection.contains(hit.cell) => (aabb, false),
             Some(_) => return, // Click outside an existing selection: ignore.
             None => (SelectionAabb::from_corners(hit.cell, hit.cell), true),
         };
@@ -982,10 +991,16 @@ pub fn move_drag_system(
         };
         let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
 
-        let originals: Vec<(IVec3, Color8)> = effective_aabb
-            .iter_cells()
-            .filter_map(|p| grid.get(p).map(|c| (p, c)))
-            .collect();
+        let originals: Vec<(IVec3, Color8)> = match &selection.cells {
+            Some(cells) if !ad_hoc => cells
+                .iter()
+                .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
+                .collect(),
+            _ => effective_aabb
+                .iter_cells()
+                .filter_map(|p| grid.get(p).map(|c| (p, c)))
+                .collect(),
+        };
         if originals.is_empty() {
             return;
         }
@@ -996,12 +1011,13 @@ pub fn move_drag_system(
         drag.applied_delta = IVec3::ZERO;
         drag.originals = originals;
         drag.original_aabb = Some(effective_aabb);
+        drag.original_cells = selection.cells.clone();
         drag.prev_state.clear();
         drag.ad_hoc = ad_hoc;
         // Show the ad-hoc 1-cell selection while dragging so the overlay
         // tracks the moving voxel.
         if ad_hoc {
-            selection.aabb = Some(effective_aabb);
+            selection.set_aabb(effective_aabb);
         }
         return;
     }
@@ -1089,13 +1105,16 @@ pub fn move_drag_system(
             min: orig_aabb.min + new_delta,
             max: orig_aabb.max + new_delta,
         });
+        if let Some(orig_cells) = &drag.original_cells {
+            selection.cells = Some(orig_cells.iter().map(|p| *p + new_delta).collect());
+        }
         return;
     }
 
     // LMB released → commit the move.
     history.end();
     if drag.ad_hoc {
-        selection.aabb = None;
+        selection.clear();
     }
     drag.reset();
 }

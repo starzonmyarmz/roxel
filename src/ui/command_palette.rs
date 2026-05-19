@@ -1067,11 +1067,11 @@ pub fn dispatch_command_palette_system(
         CommandAction::Undo => p.history.undo(&mut p.grid),
         CommandAction::Redo => p.history.redo(&mut p.grid),
         CommandAction::DeleteSelectionContents => {
-            if let Some(aabb) = p.selection.aabb {
-                select::clear_aabb(&mut p.grid, &mut p.history, &aabb);
+            if p.selection.aabb.is_some() {
+                select::clear_selection(&mut p.grid, &mut p.history, &p.selection);
             }
         }
-        CommandAction::ClearSelection => p.selection.aabb = None,
+        CommandAction::ClearSelection => p.selection.clear(),
         CommandAction::SelectTool(t) => {
             if p.tool.current != t {
                 p.tool.previous = p.tool.current;
