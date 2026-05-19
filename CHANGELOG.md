@@ -12,6 +12,11 @@ Release notes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-19
+
+- chore: bump to 0.5.0
+- docs: finalize CHANGELOG for v0.4.3 [skip ci]
+
 ## [0.4.3] - 2026-05-19
 
 - chore: bump to 0.4.3
