@@ -7,6 +7,7 @@ pub mod palettes;
 pub mod project;
 pub mod qb;
 pub mod reader;
+pub mod recent;
 pub mod svg;
 pub mod vox;
 
