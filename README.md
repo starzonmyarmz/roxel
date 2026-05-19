@@ -15,7 +15,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Shift+click line draw between the last placed voxel and the cursor
 - Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes with add/new/duplicate/rename/delete and drag-to-reorder
 - Orbit / pan / zoom camera with isometric default angle
-- Save / load `.roxel` project files (RON)
+- Save / load `.rox` project files (RON)
 - Import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox`
 - Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, Autodesk `.fbx` (binary 7.4), glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
@@ -101,7 +101,7 @@ The workflow lives at `.github/workflows/release.yml`. See [Install](#install) f
 
 ## File format
 
-`.roxel` projects are RON-serialized. Open-world: only occupied cells are
+`.rox` projects are RON-serialized. Open-world: only occupied cells are
 stored, no fixed grid size, coordinates are signed so models can sit at any
 position relative to the origin.
 

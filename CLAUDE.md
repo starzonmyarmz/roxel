@@ -230,6 +230,6 @@ For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-b
 
 While the snapshot is in flight, `SnapshotInProgress` is set. `floor_grid_system`, `draw_origin_system`, and `selection_render_system` early-return on the snapshot frame so gizmo overlays don't appear in the captured image. `start_snapshot_system` is ordered `.before(...)` each of those so they see the flag on the same frame. The observer that runs after `ScreenshotCaptured` clears the flag.
 
-`.roxel` projects are `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. No `version`, no `size` — the open-world grid has neither. Coordinates are signed; a model can sit anywhere relative to the origin and round-trip exactly.
+`.rox` projects are `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. No `version`, no `size` — the open-world grid has neither. Coordinates are signed; a model can sit anywhere relative to the origin and round-trip exactly.
 
 The previous (`version`, `size`, `voxels`) layout was dropped wholesale. ron's struct deserializer silently ignores unknown fields, so an older v1 file happens to load if its `voxels` field matches — the extra `version`/`size` are dropped on the floor. This is not a compat code path; it's a side effect of lax deserialization. Do not add explicit v1 handling.

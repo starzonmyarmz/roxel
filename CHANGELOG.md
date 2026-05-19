@@ -12,8 +12,16 @@ Release notes.
 
 ## [Unreleased]
 
+- breaking: project file extension renamed from `.roxel` to `.rox`; existing files must be renamed
+
 ## [0.4.0] - 2026-05-19
 
+- feat: flyby camera mode — cinematic auto-orbit with bobbing pitch and breathing radius, toggled from the command palette, Esc to exit
+- polish: orientation gizmo hides during flyby so it doesn't spin distractingly with the orbit
+- feat: preference to hide origin RGB axis triad
+- fix: PNG export now writes a true transparent background instead of black
+- fix: PNG export no longer captures floor grid, origin axes, or selection overlay
+- polish: origin axes render above the floor grid via dedicated gizmo group with depth bias
 
 ## [0.4.2] - 2026-05-18
 

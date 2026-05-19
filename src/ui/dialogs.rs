@@ -30,7 +30,7 @@ pub enum DialogResult {
 #[derive(Resource, Default)]
 pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 
-/// Path of the most recently saved or opened `.roxel` project. `None` until
+/// Path of the most recently saved or opened `.rox` project. `None` until
 /// the user picks a target via Save As… or opens an existing project. A bare
 /// "Save" reuses this path; a missing path falls through to Save As behavior.
 #[derive(Resource, Default)]
@@ -48,20 +48,20 @@ impl PendingDialog {
     }
 }
 
-/// Signals that a non-`.roxel` import just populated cells. Read and
+/// Signals that a non-`.rox` import just populated cells. Read and
 /// cleared by `apply_import_system` in main.rs.
 #[derive(Resource, Default)]
 pub struct PendingImport(pub bool);
 
 /// Suggested file name for the Save As dialog: reuse the current path's file
-/// name when there is one, otherwise fall back to "scene.roxel".
+/// name when there is one, otherwise fall back to "scene.rox".
 fn save_as_default_name(current: &CurrentProjectPath) -> String {
     current
         .0
         .as_ref()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .unwrap_or("scene.roxel")
+        .unwrap_or("scene.rox")
         .to_string()
 }
 
@@ -74,7 +74,7 @@ pub fn spawn_save_as(pending: &mut PendingDialog, current: &CurrentProjectPath) 
     let suggested = save_as_default_name(current);
     pending.spawn(async move {
         rfd::AsyncFileDialog::new()
-            .add_filter("Roxel project", &["roxel"])
+            .add_filter("Roxel project", &["rox"])
             .set_file_name(&suggested)
             .save_file()
             .await

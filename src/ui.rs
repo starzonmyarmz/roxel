@@ -152,7 +152,7 @@ pub fn ui_system(
                 {
                     pending.spawn(async move {
                         rfd::AsyncFileDialog::new()
-                            .add_filter("Roxel project", &["roxel"])
+                            .add_filter("Roxel project", &["rox"])
                             .pick_file()
                             .await
                             .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))

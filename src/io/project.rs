@@ -40,7 +40,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {
-        raw_tmp_path(name, "roxel")
+        raw_tmp_path(name, "rox")
     }
 
     #[test]
