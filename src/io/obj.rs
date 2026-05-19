@@ -55,18 +55,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::test_util::tmp_path as raw_tmp_path;
     use bevy::math::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {
-        let mut p = std::env::temp_dir();
-        let pid = std::process::id();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        p.push(format!("roxel-test-{pid}-{nanos}-{name}.obj"));
-        p
+        raw_tmp_path(name, "obj")
     }
 
     fn count_prefix(s: &str, prefix: &str) -> usize {
