@@ -10,8 +10,8 @@ pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
 pub use dialogs::{
-    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, poll_dialogs_system,
-    spawn_save, spawn_save_as,
+    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, RecentFiles,
+    poll_dialogs_system, spawn_save, spawn_save_as,
 };
 pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};

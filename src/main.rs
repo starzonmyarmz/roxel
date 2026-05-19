@@ -54,8 +54,8 @@ use crate::tools::{
 };
 use crate::ui::{
     CommandPalette, CurrentProjectPath, PaletteChoice, Palettes, PendingDialog, PendingImport,
-    Toasts, command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
-    toast_lifetime_system, ui_system,
+    RecentFiles, Toasts, command_palette_shortcut_system, dispatch_command_palette_system,
+    poll_dialogs_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 
@@ -104,6 +104,7 @@ fn main() {
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<CurrentProjectPath>()
+        .insert_resource(RecentFiles::loaded())
         .init_resource::<PaletteChoice>()
         .insert_resource(Palettes::with_user_loaded())
         .init_resource::<SnapshotRequest>()

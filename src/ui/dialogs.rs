@@ -36,6 +36,26 @@ pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 #[derive(Resource, Default)]
 pub struct CurrentProjectPath(pub Option<PathBuf>);
 
+/// Most-recent-first list of `.rox` paths the user has opened or saved.
+/// Capped at [`crate::io::recent::MAX_RECENT`]; persisted to
+/// `dirs::config_dir()/roxel/recent.ron` whenever an entry is pushed.
+#[derive(Resource, Default)]
+pub struct RecentFiles(pub Vec<PathBuf>);
+
+impl RecentFiles {
+    pub fn loaded() -> Self {
+        Self(crate::io::recent::load())
+    }
+    pub fn push(&mut self, path: PathBuf) {
+        crate::io::recent::push(&mut self.0, path);
+        crate::io::recent::save(&self.0);
+    }
+    pub fn clear(&mut self) {
+        self.0.clear();
+        crate::io::recent::save(&self.0);
+    }
+}
+
 impl PendingDialog {
     pub fn is_active(&self) -> bool {
         self.0.is_some()
@@ -113,6 +133,7 @@ pub fn poll_dialogs_system(
     mut pending_import: ResMut<PendingImport>,
     mut toasts: ResMut<Toasts>,
     mut current_path: ResMut<CurrentProjectPath>,
+    mut recent_files: ResMut<RecentFiles>,
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -130,14 +151,16 @@ pub fn poll_dialogs_system(
                 history.redo.clear();
                 pending_import.0 = true;
                 toasts.success(format!("Opened {}", file_label(&path)));
-                current_path.0 = Some(path);
+                current_path.0 = Some(path.clone());
+                recent_files.push(path);
             }
             Err(e) => toasts.error(format!("Open failed: {e}")),
         },
         Some(DialogResult::SaveProject(path)) => match io::project::save(&path, &grid) {
             Ok(()) => {
                 toasts.success(format!("Saved {}", file_label(&path)));
-                current_path.0 = Some(path);
+                current_path.0 = Some(path.clone());
+                recent_files.push(path);
             }
             Err(e) => toasts.error(format!("Save failed: {e}")),
         },
