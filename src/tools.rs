@@ -92,6 +92,10 @@ pub struct MoveDragState {
     pub applied_delta: IVec3,
     /// Pre-drag occupied cells inside the selection AABB.
     pub originals: Vec<(IVec3, Color8)>,
+    /// `originals` cells as a hash set keyed by tuple. Cached so the collision
+    /// check in each drag frame is O(1) per moving cell instead of rebuilding
+    /// a set every frame.
+    pub originals_set: std::collections::HashSet<(i32, i32, i32)>,
     pub original_aabb: Option<SelectionAabb>,
     /// Snapshot of the selection's cell mask at drag start. Carries the per-
     /// cell selection through the move so cancel/abort restores it intact and
@@ -112,6 +116,7 @@ impl MoveDragState {
         self.start_cell = None;
         self.applied_delta = IVec3::ZERO;
         self.originals.clear();
+        self.originals_set.clear();
         self.original_aabb = None;
         self.original_cells = None;
         self.prev_state.clear();
@@ -1008,6 +1013,7 @@ pub fn move_drag_system(
         drag.anchor = Some(anchor);
         drag.start_cell = Some(start_cell);
         drag.applied_delta = IVec3::ZERO;
+        drag.originals_set = originals.iter().map(|(p, _)| (p.x, p.y, p.z)).collect();
         drag.originals = originals;
         drag.original_aabb = Some(effective_aabb);
         drag.original_cells = selection.cells.clone();
@@ -1049,16 +1055,11 @@ pub fn move_drag_system(
         // Collision check: refuse shifts that would land a moving voxel on
         // a pre-stroke voxel that isn't part of the moving set. Keeps the
         // selection from devouring obstacles in its path.
-        let originals_set: std::collections::HashSet<(i32, i32, i32)> = drag
-            .originals
-            .iter()
-            .map(|(p, _)| (p.x, p.y, p.z))
-            .collect();
         let mut collides = false;
         for (src, _) in &drag.originals {
             let dst = *src + new_delta;
             let key = (dst.x, dst.y, dst.z);
-            if originals_set.contains(&key) {
+            if drag.originals_set.contains(&key) {
                 continue;
             }
             let pre = match history.pre_stroke_value(dst) {
