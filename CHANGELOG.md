@@ -13,6 +13,7 @@ Release notes.
 ## [Unreleased]
 
 - breaking: project file extension renamed from `.roxel` to `.rox`; existing files must be renamed
+- feat: Open Recent menu — last 10 opened or saved `.rox` projects persist to `recent.ron`, available from the File menu (in-app and native macOS menu bar)
 
 ## [0.4.0] - 2026-05-19
 
