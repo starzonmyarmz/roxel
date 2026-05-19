@@ -135,6 +135,7 @@ fn main() {
                 crate::menu::poll_menu_events_system.after(crate::menu::install_menu_system),
                 crate::menu::apply_menu_actions_system.after(crate::menu::poll_menu_events_system),
                 crate::menu::update_menu_enabled_system.after(crate::menu::install_menu_system),
+                crate::menu::update_recent_menu_system.after(crate::menu::install_menu_system),
             ),
         );
     }

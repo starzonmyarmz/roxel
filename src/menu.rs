@@ -4,17 +4,23 @@ use muda::accelerator::{Accelerator, Code, Modifiers};
 use muda::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use std::collections::HashMap;
 
+use std::path::PathBuf;
+
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
+use crate::io::recent::MAX_RECENT;
 use crate::theme::PreferencesWindow;
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, spawn_save, spawn_save_as,
+    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, spawn_save,
+    spawn_save_as,
 };
 
 #[derive(Clone, Copy, Debug)]
 pub enum MenuAction {
     NewProject,
     OpenProject,
+    OpenRecent(usize),
+    ClearRecent,
     SaveProject,
     SaveProjectAs,
     ExportVox,
@@ -44,6 +50,10 @@ pub struct MenuStore {
     actions: HashMap<String, MenuAction>,
     undo_item: MenuItem,
     redo_item: MenuItem,
+    recent_sub: Submenu,
+    recent_items: Vec<MenuItem>,
+    clear_recent_item: MenuItem,
+    recent_snapshot: Vec<PathBuf>,
 }
 
 pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
@@ -112,6 +122,11 @@ fn build_menu() -> MenuStore {
         true,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyO)),
     );
+    let recent_sub = Submenu::new("Open Recent", false);
+    let recent_items: Vec<MenuItem> = (0..MAX_RECENT)
+        .map(|_| MenuItem::new("", false, None))
+        .collect();
+    let clear_recent_item = MenuItem::new("Clear Menu", true, None);
     let save_item = MenuItem::new(
         "Save",
         true,
@@ -152,6 +167,7 @@ fn build_menu() -> MenuStore {
         &new_item,
         &PredefinedMenuItem::separator(),
         &open_item,
+        &recent_sub,
         &save_item,
         &save_as_item,
         &PredefinedMenuItem::separator(),
@@ -165,6 +181,10 @@ fn build_menu() -> MenuStore {
 
     actions.insert(new_item.id().0.clone(), MenuAction::NewProject);
     actions.insert(open_item.id().0.clone(), MenuAction::OpenProject);
+    for (i, item) in recent_items.iter().enumerate() {
+        actions.insert(item.id().0.clone(), MenuAction::OpenRecent(i));
+    }
+    actions.insert(clear_recent_item.id().0.clone(), MenuAction::ClearRecent);
     actions.insert(save_item.id().0.clone(), MenuAction::SaveProject);
     actions.insert(save_as_item.id().0.clone(), MenuAction::SaveProjectAs);
     actions.insert(imp_vox.id().0.clone(), MenuAction::ImportVox);
@@ -224,6 +244,10 @@ fn build_menu() -> MenuStore {
         actions,
         undo_item,
         redo_item,
+        recent_sub,
+        recent_items,
+        clear_recent_item,
+        recent_snapshot: Vec::new(),
     }
 }
 
@@ -257,6 +281,40 @@ pub fn update_menu_enabled_system(
     }
 }
 
+pub fn update_recent_menu_system(
+    _marker: NonSendMarker,
+    store: Option<NonSendMut<MenuStore>>,
+    recent: Res<RecentFiles>,
+) {
+    let Some(mut store) = store else { return };
+    if store.recent_snapshot == recent.0 {
+        return;
+    }
+    while store.recent_sub.remove_at(0).is_some() {}
+    if recent.0.is_empty() {
+        store.recent_sub.set_enabled(false);
+    } else {
+        for (i, path) in recent.0.iter().enumerate() {
+            let slot = &store.recent_items[i];
+            slot.set_text(recent_item_label(i, path));
+            slot.set_enabled(true);
+            let _ = store.recent_sub.append(slot);
+        }
+        let _ = store.recent_sub.append(&PredefinedMenuItem::separator());
+        let _ = store.recent_sub.append(&store.clear_recent_item);
+        store.recent_sub.set_enabled(true);
+    }
+    store.recent_snapshot = recent.0.clone();
+}
+
+fn recent_item_label(index: usize, path: &std::path::Path) -> String {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_else(|| path.to_str().unwrap_or("file"));
+    format!("{}  {}", index + 1, name)
+}
+
 #[derive(SystemParam)]
 pub struct MenuActionParams<'w> {
     pub queue: ResMut<'w, MenuQueue>,
@@ -267,6 +325,7 @@ pub struct MenuActionParams<'w> {
     pub prefs_window: ResMut<'w, PreferencesWindow>,
     pub cmd_palette: ResMut<'w, CommandPalette>,
     pub current_path: Res<'w, CurrentProjectPath>,
+    pub recent: ResMut<'w, RecentFiles>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -280,6 +339,14 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.new_project.dialog_open = true;
             }
             MenuAction::OpenProject => spawn_open(&mut p.pending),
+            MenuAction::OpenRecent(i) => {
+                if let Some(path) = p.recent.0.get(i).cloned() {
+                    spawn_open_path(&mut p.pending, path);
+                }
+            }
+            MenuAction::ClearRecent => {
+                p.recent.clear();
+            }
             MenuAction::SaveProject => spawn_save(&mut p.pending, &p.current_path),
             MenuAction::SaveProjectAs => spawn_save_as(&mut p.pending, &p.current_path),
             MenuAction::ExportVox => spawn_export_vox(&mut p.pending),
@@ -329,6 +396,13 @@ fn spawn_open(pending: &mut PendingDialog) {
             .await
             .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
     });
+}
+
+fn spawn_open_path(pending: &mut PendingDialog, path: PathBuf) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
 }
 
 fn spawn_export_vox(pending: &mut PendingDialog) {
