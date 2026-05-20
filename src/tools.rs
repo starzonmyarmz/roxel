@@ -331,6 +331,54 @@ fn signed_offset_from_ray(
     }
 }
 
+/// Snap `target` so the footprint defined by `(c1, target)` keeps a uniform
+/// aspect ratio. For rectangle/ellipse: square footprint (both 2D-plane axes
+/// equal in magnitude). For line: snap to the nearest 45° direction in the
+/// face plane.
+pub(crate) fn constrain_shape_corner2(
+    primitive: ShapePrimitive,
+    axis: usize,
+    c1: IVec3,
+    target: IVec3,
+) -> IVec3 {
+    let u_axis = (axis + 1) % 3;
+    let v_axis = (axis + 2) % 3;
+    let c1a = c1.to_array();
+    let ta = target.to_array();
+    let du = ta[u_axis] - c1a[u_axis];
+    let dv = ta[v_axis] - c1a[v_axis];
+    let (nu, nv) = match primitive {
+        ShapePrimitive::Rectangle | ShapePrimitive::Ellipse => {
+            let m = du.abs().max(dv.abs());
+            let su = if du == 0 { 1 } else { du.signum() };
+            let sv = if dv == 0 { 1 } else { dv.signum() };
+            (su * m, sv * m)
+        }
+        ShapePrimitive::Line => {
+            let abs_du = du.abs();
+            let abs_dv = dv.abs();
+            if abs_du == 0 && abs_dv == 0 {
+                (0, 0)
+            } else {
+                let lo = abs_du.min(abs_dv) as f32;
+                let hi = abs_du.max(abs_dv) as f32;
+                let ratio = lo / hi;
+                if ratio < 0.4142 {
+                    if abs_du >= abs_dv { (du, 0) } else { (0, dv) }
+                } else {
+                    let m = abs_du.max(abs_dv);
+                    (du.signum() * m, dv.signum() * m)
+                }
+            }
+        }
+    };
+    let mut out = [0i32; 3];
+    out[axis] = c1a[axis];
+    out[u_axis] = c1a[u_axis] + nu;
+    out[v_axis] = c1a[v_axis] + nv;
+    IVec3::from_array(out)
+}
+
 fn shape_commit(
     options: &ShapeOptions,
     state: &mut ShapeState,
@@ -422,7 +470,13 @@ fn shape_input(
                 return;
             };
             if let Some(target) = anchor_target(&anchor, origin, dir) {
-                state.corner2 = Some(target);
+                let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+                let c2 = if shift && let Some(c1) = state.corner1 {
+                    constrain_shape_corner2(options.primitive, anchor.axis, c1, target)
+                } else {
+                    target
+                };
+                state.corner2 = Some(c2);
             }
             if lmb_released {
                 state.phase = Some(ShapePhase::Extrude);
@@ -1237,6 +1291,69 @@ mod tests {
         // Front face (Z axis): in-plane is XY. Shift drops Y → motion only on X.
         let d = IVec3::new(4, -5, 99);
         assert_eq!(constrain_move_delta(d, 2, true), IVec3::new(4, 0, 0));
+    }
+
+    #[test]
+    fn constrain_shape_rect_makes_square_on_top_face() {
+        // Top face → axis=1 (Y), 2D plane is XZ.
+        let c1 = IVec3::new(0, 4, 0);
+        // dx=3, dz=-7 → both legs magnitude 7 with original signs.
+        let out = constrain_shape_corner2(ShapePrimitive::Rectangle, 1, c1, IVec3::new(3, 4, -7));
+        assert_eq!(out, IVec3::new(7, 4, -7));
+    }
+
+    #[test]
+    fn constrain_shape_ellipse_matches_rect_square_rule() {
+        let c1 = IVec3::new(-2, 0, 5);
+        let out =
+            constrain_shape_corner2(ShapePrimitive::Ellipse, 1, c1, IVec3::new(2, 0, 9));
+        // du=4, dv=4 → already square; unchanged.
+        assert_eq!(out, IVec3::new(2, 0, 9));
+    }
+
+    #[test]
+    fn constrain_shape_rect_preserves_anchor_axis() {
+        // Front face → axis=2 (Z), 2D plane is XY. The Z coord must stay put.
+        let c1 = IVec3::new(0, 0, 8);
+        let out = constrain_shape_corner2(ShapePrimitive::Rectangle, 2, c1, IVec3::new(5, -2, 99));
+        assert_eq!(out.z, 8);
+        // |du|=5, |dv|=2 → square of size 5 with original signs.
+        assert_eq!(out, IVec3::new(5, -5, 8));
+    }
+
+    #[test]
+    fn constrain_shape_line_snaps_to_axis_when_nearly_horizontal() {
+        // Axis=1 (Y face), du=10 dx, dv=1 dz → close to horizontal, snap to u-axis only.
+        let c1 = IVec3::new(0, 0, 0);
+        let out = constrain_shape_corner2(ShapePrimitive::Line, 1, c1, IVec3::new(10, 0, 1));
+        assert_eq!(out, IVec3::new(10, 0, 0));
+    }
+
+    #[test]
+    fn constrain_shape_line_snaps_to_diagonal_when_balanced() {
+        // du=5, dv=4 → ratio 0.8 ≥ tan(22.5°) → diagonal, magnitude max(|du|,|dv|)=5.
+        let c1 = IVec3::new(0, 0, 0);
+        let out = constrain_shape_corner2(ShapePrimitive::Line, 1, c1, IVec3::new(5, 0, 4));
+        assert_eq!(out, IVec3::new(5, 0, 5));
+    }
+
+    #[test]
+    fn constrain_shape_line_preserves_sign_on_diagonal() {
+        let c1 = IVec3::new(0, 0, 0);
+        let out = constrain_shape_corner2(ShapePrimitive::Line, 1, c1, IVec3::new(-6, 0, 5));
+        assert_eq!(out, IVec3::new(-6, 0, 6));
+    }
+
+    #[test]
+    fn constrain_shape_zero_delta_is_identity() {
+        let c1 = IVec3::new(2, 3, 4);
+        for prim in [
+            ShapePrimitive::Rectangle,
+            ShapePrimitive::Ellipse,
+            ShapePrimitive::Line,
+        ] {
+            assert_eq!(constrain_shape_corner2(prim, 1, c1, c1), c1);
+        }
     }
 
     #[test]

@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(tools): hold Shift while dragging a shape footprint to lock aspect ratio — square for rectangle/ellipse, 45° snap for line
+- feat(ui): long-press the shape rail button (180 ms) to open a primitive picker; release over an option commits it. Pop-in is instant (no fade) and option buttons show hover state while LMB is held
 - feat(camera): view-angle presets (Front / Back / Left / Right / Top / Iso) in the command palette
 - feat(select): double-click selects the connected same-color blob via flood, instead of the AABB hull
 - feat(ui): themed palette select dropdown matching the design-token system

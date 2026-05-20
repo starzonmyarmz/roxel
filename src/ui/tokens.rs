@@ -47,7 +47,6 @@ pub mod pad {
     use super::Vec2;
     pub const NONE: Vec2 = Vec2::new(0.0, 0.0); // icon-only buttons
     pub const ICON: Vec2 = Vec2::new(8.0, 0.0); // wide_action_button row
-    pub const COMPACT: Vec2 = Vec2::new(6.0, 6.0); // shape-primitive popup buttons
     pub const BUTTON: Vec2 = Vec2::new(12.0, 4.0); // chip_button
     pub const DEFAULT: Vec2 = Vec2::new(12.0, 8.0); // global default
     pub const DIALOG: Vec2 = Vec2::new(16.0, 8.0); // modal action buttons
@@ -153,7 +152,6 @@ mod tests {
         let vs = [
             pad::NONE,
             pad::ICON,
-            pad::COMPACT,
             pad::BUTTON,
             pad::DEFAULT,
             pad::DIALOG,

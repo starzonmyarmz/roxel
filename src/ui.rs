@@ -28,7 +28,7 @@ use crate::theme::{
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
-use crate::ui::tokens::{font, gap, pad, radius, space, stroke, swatch, width};
+use crate::ui::tokens::{font, gap, radius, space, stroke, swatch, width};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -513,46 +513,109 @@ pub fn ui_system(
                     "Shape",
                     "S",
                 );
-                egui::Popup::menu(&shape_resp)
-                    .align(egui::RectAlign::RIGHT_START)
-                    .gap(6.0)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                    .show(|ui| {
-                        ui.spacing_mut().item_spacing = gap::TIGHT;
-                        ui.spacing_mut().button_padding = pad::COMPACT;
-                        ui.horizontal(|ui| {
-                            for (prim, label) in [
-                                (ShapePrimitive::Rectangle, "Rectangle"),
-                                (ShapePrimitive::Ellipse, "Ellipse"),
-                                (ShapePrimitive::Line, "Line"),
-                            ] {
-                                let selected = shape_options.primitive == prim;
-                                let img = egui::Image::new(icons::shape_primitive(prim))
-                                    .fit_to_exact_size(crate::ui::tokens::icon::md_square())
-                                    .tint(if selected {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        theme.text
-                                    });
-                                let btn = egui::Button::image(img)
-                                    .fill(if selected {
-                                        theme.accent
-                                    } else {
-                                        theme.surface
-                                    })
-                                    .stroke(if selected {
-                                        egui::Stroke::NONE
-                                    } else {
-                                        egui::Stroke::new(stroke::HAIR, theme.border)
-                                    })
-                                    .corner_radius(egui::CornerRadius::same(radius::SM));
-                                if ui.add(btn).on_hover_text(label).clicked() {
-                                    shape_options.primitive = prim;
-                                    ui.close();
-                                }
-                            }
+                // Long-press opens the picker. Quick click just selects the tool
+                // and never paints the popup. State (press_start, opened) lives
+                // in egui memory because `is_pointer_button_down_on` returns false
+                // on the release frame — we still want one final paint then so an
+                // option's release-over check can fire.
+                const LONG_PRESS_SECS: f64 = 0.18;
+                let mem_id = shape_resp.id.with("press_hold");
+                let (mut press_start, mut opened) = ui
+                    .ctx()
+                    .memory(|m| m.data.get_temp::<(f64, bool)>(mem_id))
+                    .unwrap_or((f64::NAN, false));
+                let is_down = shape_resp.is_pointer_button_down_on();
+                let now = ui.input(|i| i.time);
+                if is_down {
+                    if press_start.is_nan() {
+                        press_start = now;
+                    }
+                    if !opened && now - press_start >= LONG_PRESS_SECS {
+                        opened = true;
+                    }
+                }
+                let popup_open = opened;
+                let released = ui.input(|i| i.pointer.any_released());
+                let next = if released || !is_down && !opened {
+                    (f64::NAN, false)
+                } else {
+                    (press_start, opened)
+                };
+                ui.ctx().memory_mut(|m| m.data.insert_temp(mem_id, next));
+                if popup_open {
+                    // Use bare `Area` (not `Popup`) so we can disable the default
+                    // fade-in. Buttons are painted manually so the hover fill
+                    // tracks `contains_pointer()` even while LMB is held — egui's
+                    // standard hover styling only fires when the button itself
+                    // was the press target.
+                    let area_id = shape_resp.id.with("shape_picker_area");
+                    let anchor =
+                        shape_resp.rect.right_top() + egui::vec2(space::SM, 0.0);
+                    egui::Area::new(area_id)
+                        .order(egui::Order::Foreground)
+                        .fade_in(false)
+                        .fixed_pos(anchor)
+                        .show(ui.ctx(), |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                ui.spacing_mut().item_spacing = gap::TIGHT;
+                                ui.horizontal(|ui| {
+                                    let cell = swatch::TOOL;
+                                    for (prim, label) in [
+                                        (ShapePrimitive::Rectangle, "Rectangle"),
+                                        (ShapePrimitive::Ellipse, "Ellipse"),
+                                        (ShapePrimitive::Line, "Line"),
+                                    ] {
+                                        let selected = shape_options.primitive == prim;
+                                        let (rect, r) =
+                                            ui.allocate_exact_size(cell, egui::Sense::click());
+                                        let over = r.contains_pointer();
+                                        let fill = if selected {
+                                            theme.accent
+                                        } else if over {
+                                            theme.surface_hover
+                                        } else {
+                                            theme.surface
+                                        };
+                                        let edge = if selected {
+                                            egui::Stroke::NONE
+                                        } else {
+                                            egui::Stroke::new(stroke::HAIR, theme.border)
+                                        };
+                                        ui.painter().rect(
+                                            rect,
+                                            egui::CornerRadius::same(radius::SM),
+                                            fill,
+                                            edge,
+                                            egui::StrokeKind::Inside,
+                                        );
+                                        let icon_size = crate::ui::tokens::icon::md_square();
+                                        let icon_rect =
+                                            egui::Rect::from_center_size(rect.center(), icon_size);
+                                        let tint = if selected {
+                                            egui::Color32::WHITE
+                                        } else {
+                                            theme.text
+                                        };
+                                        egui::Image::new(icons::shape_primitive(prim))
+                                            .fit_to_exact_size(icon_size)
+                                            .tint(tint)
+                                            .paint_at(ui, icon_rect);
+                                        let r = r.on_hover_text(label);
+                                        let released_on = ui
+                                            .input(|i| i.pointer.any_released())
+                                            && r.contains_pointer();
+                                        if r.clicked() || released_on {
+                                            shape_options.primitive = prim;
+                                            if tool.current != Tool::Shape {
+                                                tool.previous = tool.current;
+                                                tool.current = Tool::Shape;
+                                            }
+                                        }
+                                    }
+                                });
+                            });
                         });
-                    });
+                }
                 ui.add_space(2.0);
                 widgets::tool_button(
                     ui,
