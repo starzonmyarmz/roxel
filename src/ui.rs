@@ -16,6 +16,7 @@ pub use dialogs::{
 pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};
 
+use crate::color_space::ColorSpace;
 use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
@@ -65,6 +66,7 @@ pub struct UiState<'w> {
     pub toasts: Res<'w, Toasts>,
     pub current_path: Res<'w, CurrentProjectPath>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
+    pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
 }
 
 pub fn ui_system(
@@ -93,6 +95,7 @@ pub fn ui_system(
         toasts,
         current_path,
         flyby,
+        mut color_edit,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -114,7 +117,7 @@ pub fn ui_system(
     let PANEL = theme.panel;
     #[allow(non_snake_case, unused_variables)]
     let TEXT = theme.text;
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, unused_variables)]
     let TEXT_DIM = theme.text_dim;
     #[allow(non_snake_case)]
     let BORDER = theme.border;
@@ -549,8 +552,7 @@ pub fn ui_system(
                     // standard hover styling only fires when the button itself
                     // was the press target.
                     let area_id = shape_resp.id.with("shape_picker_area");
-                    let anchor =
-                        shape_resp.rect.right_top() + egui::vec2(space::SM, 0.0);
+                    let anchor = shape_resp.rect.right_top() + egui::vec2(space::SM, 0.0);
                     egui::Area::new(area_id)
                         .order(egui::Order::Foreground)
                         .fade_in(false)
@@ -601,8 +603,7 @@ pub fn ui_system(
                                             .tint(tint)
                                             .paint_at(ui, icon_rect);
                                         let r = r.on_hover_text(label);
-                                        let released_on = ui
-                                            .input(|i| i.pointer.any_released())
+                                        let released_on = ui.input(|i| i.pointer.any_released())
                                             && r.contains_pointer();
                                         if r.clicked() || released_on {
                                             shape_options.primitive = prim;
@@ -678,7 +679,7 @@ pub fn ui_system(
                     inner_frame.show(ui, |ui| {
                         // Color section
                         widgets::section(ui, &theme, "Color", |ui| {
-                            let mut srgba = egui::Color32::from_rgba_unmultiplied(
+                            let srgba = egui::Color32::from_rgba_unmultiplied(
                                 color.0[0], color.0[1], color.0[2], color.0[3],
                             );
                             let swatch_w = ui.available_width();
@@ -691,43 +692,101 @@ pub fn ui_system(
                                 false,
                             )
                             .on_hover_text("Click to edit color");
+                            let active_space = prefs.color_space;
                             egui::Popup::menu(&swatch_resp)
                                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                                 .show(|ui| {
-                                    ui.spacing_mut().slider_width = 275.0;
-                                    if egui::color_picker::color_picker_color32(
-                                        ui,
-                                        &mut srgba,
-                                        egui::color_picker::Alpha::Opaque,
-                                    ) {
-                                        color.0 = [srgba.r(), srgba.g(), srgba.b(), 255];
-                                    }
+                                    space_color_picker(ui, &mut color, active_space);
                                 });
                             ui.add_space(space::XS);
+
+                            // Repopulate edit buffer if foreground or active
+                            // space changed since last frame. Without this
+                            // gate, every keystroke would round-trip through
+                            // Color8 and drop precision (greys lose hue,
+                            // OKLCH chroma quantises).
+                            if color_edit.source != color.0 || color_edit.space != active_space {
+                                color_edit.populate(color.0, active_space);
+                            }
+
+                            // Space dropdown — compact, right-aligned.
+                            let labels: Vec<String> = ColorSpace::ALL
+                                .iter()
+                                .map(|s| s.label().to_string())
+                                .collect();
+                            let current_idx = ColorSpace::ALL
+                                .iter()
+                                .position(|s| *s == active_space)
+                                .unwrap_or(0);
+                            let dd_w = 96.0;
                             ui.horizontal(|ui| {
-                                widgets::hex_label(
-                                    ui,
-                                    &theme,
-                                    [color.0[0], color.0[1], color.0[2]],
-                                    false,
-                                );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(format!(
-                                                    "{}, {}, {}",
-                                                    color.0[0], color.0[1], color.0[2]
-                                                ))
-                                                .color(TEXT_DIM)
-                                                .size(font::SMALL),
-                                            )
-                                            .selectable(true),
-                                        );
+                                        if let Some(i) = widgets::select_dropdown(
+                                            ui,
+                                            &theme,
+                                            "color_space_combo",
+                                            dd_w,
+                                            active_space.label(),
+                                            &labels,
+                                            current_idx,
+                                        ) {
+                                            let next = ColorSpace::ALL[i];
+                                            if next != prefs.color_space {
+                                                prefs.color_space = next;
+                                                color_edit.populate(color.0, next);
+                                                save_preferences(&prefs);
+                                            }
+                                        }
                                     },
                                 );
                             });
+
+                            ui.add_space(space::XS);
+
+                            // Editable per-space field row. Commit on
+                            // lost_focus (covers Enter, Tab, click-away);
+                            // invalid input reverts silently to last valid.
+                            let mut commit_now = false;
+                            match active_space {
+                                ColorSpace::Hex => {
+                                    let resp = ui.add(
+                                        egui::TextEdit::singleline(&mut color_edit.fields[0])
+                                            .font(egui::TextStyle::Monospace)
+                                            .desired_width(ui.available_width()),
+                                    );
+                                    if resp.lost_focus() {
+                                        commit_now = true;
+                                    }
+                                }
+                                _ => {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        let total = ui.available_width();
+                                        let w = ((total - 8.0) / 3.0).max(40.0);
+                                        for i in 0..3 {
+                                            let resp = ui.add(
+                                                egui::TextEdit::singleline(
+                                                    &mut color_edit.fields[i],
+                                                )
+                                                .font(egui::TextStyle::Monospace)
+                                                .desired_width(w),
+                                            );
+                                            if resp.lost_focus() {
+                                                commit_now = true;
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+
+                            if commit_now {
+                                if let Some(rgb) = color_edit.commit() {
+                                    color.0 = [rgb[0], rgb[1], rgb[2], 255];
+                                }
+                                color_edit.populate(color.0, active_space);
+                            }
                         });
 
                         if palette_choice.0 >= palettes.0.len() {
@@ -1272,4 +1331,249 @@ pub fn ui_system(
     toast::draw_toasts(ctx, &theme, &toasts);
 
     Ok(())
+}
+
+/// Custom color picker popup body whose readout row shows the active
+/// [`ColorSpace`]'s component triple (instead of egui's hard-coded RGB
+/// readout). Composed of:
+///
+/// 1. **Header row** — space label + 3 editable [`egui::DragValue`]s.
+/// 2. **2D area** — saturation (x) × value (y), painted as a vertex-gradient
+///    mesh. Click/drag sets S and V; the hue used to render the area lives
+///    in egui memory so dragging through grey (S=0) doesn't lose the hue.
+/// 3. **Hue bar** — full hue gradient strip, click/drag to set hue.
+///
+/// State cache `(last_rgba, h_norm_0_1)` is keyed by widget id; we re-derive
+/// the hue from RGB only when the live color was changed by something else
+/// (palette click, eyedropper, header drag). All writes funnel through
+/// `color.0`.
+fn space_color_picker(
+    ui: &mut egui::Ui,
+    color: &mut crate::tools::CurrentColor,
+    space: ColorSpace,
+) -> bool {
+    use crate::color_space::{
+        hsb_to_rgb, hsl_to_rgb, oklch_to_rgb, rgb_to_hsb, rgb_to_hsl, rgb_to_oklch,
+    };
+
+    // Cache: last rgba we produced + working hue (0..1). Per-widget id so a
+    // palette swatch popup can't clobber the inspector's working state.
+    type State = ([u8; 4], f32);
+    let cache_id = ui.id().with("space_color_picker_state");
+    let cached: Option<State> = ui.data(|d| d.get_temp(cache_id));
+
+    let rgb3 = [color.0[0], color.0[1], color.0[2]];
+    let mut hue_norm = match cached {
+        Some((rgba, h)) if rgba == color.0 => h,
+        _ => {
+            let (h, _, _) = rgb_to_hsb(rgb3);
+            h / 360.0
+        }
+    };
+
+    let mut changed = false;
+    let area_size = 220.0;
+
+    // ---------- Header readout row ----------
+    let triple_from_rgb = |rgb: [u8; 3], sp: ColorSpace| -> [f32; 3] {
+        match sp {
+            ColorSpace::Hex | ColorSpace::Rgb => [rgb[0] as f32, rgb[1] as f32, rgb[2] as f32],
+            ColorSpace::Hsl => {
+                let (h, s, l) = rgb_to_hsl(rgb);
+                [h, s, l]
+            }
+            ColorSpace::Hsb => {
+                let (h, s, v) = rgb_to_hsb(rgb);
+                [h, s, v]
+            }
+            ColorSpace::Oklch => {
+                let (l, c, h) = rgb_to_oklch(rgb);
+                [l, c, h]
+            }
+        }
+    };
+    let mut triple = triple_from_rgb(rgb3, space);
+
+    let (labels, ranges, decimals, speed): (
+        [&'static str; 3],
+        [(f32, f32); 3],
+        [usize; 3],
+        [f32; 3],
+    ) = match space {
+        ColorSpace::Hex | ColorSpace::Rgb => (
+            ["R", "G", "B"],
+            [(0.0, 255.0), (0.0, 255.0), (0.0, 255.0)],
+            [0, 0, 0],
+            [0.5, 0.5, 0.5],
+        ),
+        ColorSpace::Hsl => (
+            ["H", "S", "L"],
+            [(0.0, 360.0), (0.0, 100.0), (0.0, 100.0)],
+            [0, 1, 1],
+            [0.5, 0.25, 0.25],
+        ),
+        ColorSpace::Hsb => (
+            ["H", "S", "B"],
+            [(0.0, 360.0), (0.0, 100.0), (0.0, 100.0)],
+            [0, 1, 1],
+            [0.5, 0.25, 0.25],
+        ),
+        ColorSpace::Oklch => (
+            ["L", "C", "H"],
+            [(0.0, 100.0), (0.0, 0.37), (0.0, 360.0)],
+            [1, 3, 0],
+            [0.25, 0.002, 0.5],
+        ),
+    };
+
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(space.label())
+                .size(font::SMALL)
+                .color(ui.visuals().weak_text_color()),
+        );
+        for i in 0..3 {
+            let resp = ui.add(
+                egui::DragValue::new(&mut triple[i])
+                    .speed(speed[i])
+                    .range(ranges[i].0..=ranges[i].1)
+                    .fixed_decimals(decimals[i])
+                    .prefix(format!("{} ", labels[i])),
+            );
+            if resp.changed() {
+                changed = true;
+            }
+        }
+    });
+
+    if changed {
+        let rgb = match space {
+            ColorSpace::Hex | ColorSpace::Rgb => [
+                triple[0].round().clamp(0.0, 255.0) as u8,
+                triple[1].round().clamp(0.0, 255.0) as u8,
+                triple[2].round().clamp(0.0, 255.0) as u8,
+            ],
+            ColorSpace::Hsl => hsl_to_rgb(triple[0], triple[1], triple[2]),
+            ColorSpace::Hsb => hsb_to_rgb(triple[0], triple[1], triple[2]),
+            ColorSpace::Oklch => oklch_to_rgb(triple[0], triple[1], triple[2]),
+        };
+        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        // Refresh hue from edited color (header may have changed H).
+        let (h, _, _) = rgb_to_hsb(rgb);
+        hue_norm = h / 360.0;
+    }
+
+    ui.add_space(space::XS);
+
+    // Live (S, V) read from current color (in 0..1).
+    let (_h_live, s_live, v_live) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+    let mut s_norm = s_live / 100.0;
+    let mut v_norm = v_live / 100.0;
+
+    // ---------- 2D S × V area ----------
+    let (rect, resp) = ui.allocate_at_least(
+        egui::vec2(area_size, area_size),
+        egui::Sense::click_and_drag(),
+    );
+    if let Some(mpos) = resp.interact_pointer_pos() {
+        s_norm = egui::emath::remap_clamp(mpos.x, rect.left()..=rect.right(), 0.0..=1.0);
+        v_norm = egui::emath::remap_clamp(mpos.y, rect.bottom()..=rect.top(), 0.0..=1.0);
+        let rgb = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
+        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        changed = true;
+    }
+    if ui.is_rect_visible(rect) {
+        const N: usize = 16;
+        let mut mesh = egui::epaint::Mesh::default();
+        for yi in 0..=N {
+            for xi in 0..=N {
+                let xt = xi as f32 / N as f32;
+                let yt = yi as f32 / N as f32;
+                let rgb = hsb_to_rgb(hue_norm * 360.0, xt * 100.0, (1.0 - yt) * 100.0);
+                let cell = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+                let x = egui::emath::lerp(rect.left()..=rect.right(), xt);
+                let y = egui::emath::lerp(rect.top()..=rect.bottom(), yt);
+                mesh.colored_vertex(egui::pos2(x, y), cell);
+                if xi < N && yi < N {
+                    let row = (N + 1) as u32;
+                    let tl = (yi * (N + 1) + xi) as u32;
+                    mesh.add_triangle(tl, tl + 1, tl + row);
+                    mesh.add_triangle(tl + 1, tl + row, tl + row + 1);
+                }
+            }
+        }
+        ui.painter().add(egui::Shape::mesh(mesh));
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            egui::Stroke::new(
+                stroke::HAIR,
+                ui.visuals().widgets.noninteractive.bg_stroke.color,
+            ),
+            egui::StrokeKind::Inside,
+        );
+        let mx = egui::emath::lerp(rect.left()..=rect.right(), s_norm);
+        let my = egui::emath::lerp(rect.top()..=rect.bottom(), 1.0 - v_norm);
+        let dot = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
+        ui.painter().circle(
+            egui::pos2(mx, my),
+            5.5,
+            egui::Color32::from_rgb(dot[0], dot[1], dot[2]),
+            egui::Stroke::new(2.0, egui::Color32::WHITE),
+        );
+    }
+
+    ui.add_space(space::XS);
+
+    // ---------- Hue bar ----------
+    let bar_h = 16.0;
+    let (hue_rect, hue_resp) =
+        ui.allocate_at_least(egui::vec2(area_size, bar_h), egui::Sense::click_and_drag());
+    if let Some(mpos) = hue_resp.interact_pointer_pos() {
+        hue_norm = egui::emath::remap_clamp(mpos.x, hue_rect.left()..=hue_rect.right(), 0.0..=1.0);
+        let rgb = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
+        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        changed = true;
+    }
+    if ui.is_rect_visible(hue_rect) {
+        const N: usize = 24;
+        let mut mesh = egui::epaint::Mesh::default();
+        for i in 0..=N {
+            let t = i as f32 / N as f32;
+            let rgb = hsb_to_rgb(t * 360.0, 100.0, 100.0);
+            let c = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let x = egui::emath::lerp(hue_rect.left()..=hue_rect.right(), t);
+            mesh.colored_vertex(egui::pos2(x, hue_rect.top()), c);
+            mesh.colored_vertex(egui::pos2(x, hue_rect.bottom()), c);
+            if i < N {
+                let base = (i * 2) as u32;
+                mesh.add_triangle(base, base + 1, base + 2);
+                mesh.add_triangle(base + 1, base + 2, base + 3);
+            }
+        }
+        ui.painter().add(egui::Shape::mesh(mesh));
+        ui.painter().rect_stroke(
+            hue_rect,
+            0.0,
+            egui::Stroke::new(
+                stroke::HAIR,
+                ui.visuals().widgets.noninteractive.bg_stroke.color,
+            ),
+            egui::StrokeKind::Inside,
+        );
+        let mx = egui::emath::lerp(hue_rect.left()..=hue_rect.right(), hue_norm);
+        let r = bar_h * 0.4;
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(mx, hue_rect.center().y),
+                egui::pos2(mx + r, hue_rect.bottom()),
+                egui::pos2(mx - r, hue_rect.bottom()),
+            ],
+            egui::Color32::WHITE,
+            egui::Stroke::new(1.0, egui::Color32::BLACK),
+        ));
+    }
+
+    ui.data_mut(|d| d.insert_temp(cache_id, (color.0, hue_norm)));
+    changed
 }
