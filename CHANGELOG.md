@@ -12,7 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
-- feat(ui): color-space selector in inspector — choose Hex / RGB / HSL / HSB / OKLCH for the foreground readout; each field is editable, commits on Enter or focus loss, invalid input silently reverts. The swatch popup is now a custom space-aware picker (replacing egui's built-in `color_picker_color32`): top row shows the active space's label + 3 editable `DragValue`s; below it a 2D saturation×value area + hue bar. Hue is cached in egui memory so dragging through grey doesn't lose it. Active space persists in `preferences.ron`
+- feat(ui): inspector color section + swatch popup picker can read out and edit in Hex / RGB / HSL / HSB / OKLCH; active space persists in `preferences.ron`
 - feat(tools): hold Shift while dragging a shape footprint to lock aspect ratio — square for rectangle/ellipse, 45° snap for line
 - feat(ui): long-press the shape rail button (180 ms) to open a primitive picker; release over an option commits it. Pop-in is instant (no fade) and option buttons show hover state while LMB is held
 - feat(camera): view-angle presets (Front / Back / Left / Right / Top / Iso) in the command palette
