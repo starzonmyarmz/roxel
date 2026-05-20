@@ -16,15 +16,18 @@ Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/
 
 **Always add or update tests when adding or modifying a feature** — `cargo test` runs as a pre-commit gate (see below), so untested feature work is incomplete.
 
-## Pre-commit hook
+## Git hooks
 
-`.githooks/pre-commit` runs `cargo test` and is tracked in the repo. Fresh clones must opt in once:
+Two tracked hooks in `.githooks/`. Fresh clones must opt in once:
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-A local copy at `.git/hooks/pre-commit` is what git invokes by default; the canonical, tracked copy is `.githooks/pre-commit`. Bypass with `git commit --no-verify` when intentional (rare).
+- `pre-commit` — `cargo fmt --all -- --check`. Fast gate; runs on every commit. Bypass with `git commit --no-verify`.
+- `pre-push` — `cargo test`. Heavier gate; runs once per push. Bypass with `git push --no-verify`.
+
+CI re-runs both fmt and `cargo nextest` on every PR, so a `--no-verify` bypass is caught upstream.
 
 ## Architecture
 
