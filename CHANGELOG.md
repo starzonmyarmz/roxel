@@ -12,21 +12,35 @@ Release notes.
 
 ## [Unreleased]
 
-- feat(select): copy, cut, paste the active selection's voxels via Cmd+C / Cmd+X / Cmd+V, the Edit menu (macOS), or the command palette — Cmd+V anchors paste at the cursor pick (face under the pointer), falling back to selection min then stamp origin; selection updates to the pasted region
-- feat(ui): inspector color section + swatch popup picker can read out and edit in Hex / RGB / HSL / HSB / OKLCH; active space persists in `preferences.ron`
-- feat(tools): hold Shift while dragging a shape footprint to lock aspect ratio — square for rectangle/ellipse, 45° snap for line
-- feat(ui): long-press the shape rail button (180 ms) to open a primitive picker; release over an option commits it. Pop-in is instant (no fade) and option buttons show hover state while LMB is held
-- feat(camera): view-angle presets (Front / Back / Left / Right / Top / Iso) in the command palette
-- feat(select): double-click selects the connected same-color blob via flood, instead of the AABB hull
-- feat(ui): themed palette select dropdown matching the design-token system
-- chore: add `scripts/release.sh` helper for tagged releases
-- refactor(ui): promote inline literals (modal widths, dropdown sizes, toast dims, command-palette dims) to `tokens::{size, width, height}`
-- refactor(clipboard): collapse 3 duplicated paste blocks (key handler, macOS menu, command palette) into a single `clipboard::execute_paste` helper
-- refactor(tools): factor 4 hand-rolled `StrokeAnchor` constructions (Shape, Select, Brush/Erase, Move) into `stroke_anchor_from_hit`
-- refactor(ui): replace inline `add_space` / `item_spacing` literals in `ui.rs` and the command palette with `tokens::space` / `tokens::gap`; add `space::{XXS, SX, FOOTER_GROUP, PREFS_INDENT}` so the token guard now covers every spacing call site
-- refactor(tools): trim `tool_input_system` signature from 14 to 12 parameters by grouping mouse/keys/time into `Pointer`, cameras/windows into `Viewport`, and shape options/state into `ShapeInput`
-- refactor(io): dedup `tmp_path` test helper across obj/fbx/svg/ase by routing through `io::test_util`
-- perf(tools): cache `MoveDragState.originals_set` at drag start so per-frame collision checks no longer rebuild a HashSet
+## [0.5.1] - 2026-05-20
+
+- chore: bump to 0.5.1
+- refactor(tools): group tool_input_system params into SystemParams
+- refactor(ui): tokenize inline spacing literals
+- refactor(tools): extract stroke_anchor_from_hit helper
+- refactor(clipboard): extract shared execute_paste helper
+- feat(select): copy / cut / paste for selection
+- ci: enforce CHANGELOG entry for feat/fix/perf PRs
+- ci: add ui-tokens guard
+- docs: add PR template + CONTRIBUTING guide
+- chore: pin rust toolchain to 1.91.1
+- chore: split git hooks into pre-commit (fmt) + pre-push (test)
+- ci: add fmt + clippy jobs
+- feat(updater): GitHub release update checker
+- docs: trim CHANGELOG entry for color-space feature
+- feat(ui): space-aware inspector readout + custom color picker
+- feat(color): color-space conversions + Preferences pref
+- feat(tools): shape aspect lock + long-press primitive picker
+- docs: changelog + CLAUDE.md updates for sweep
+- perf(tools): cache MoveDragState.originals_set
+- refactor(io): dedup tmp_path test helper
+- refactor(ui): promote inline literals to size/width/height tokens
+- feat(camera): view-angle presets (Front/Back/Left/Right/Top/Iso)
+- style: cargo fmt
+- feat(select): double-click selects connected voxels, not AABB hull
+- feat(ui): themed palette select dropdown
+- chore: add release.sh helper script
+- docs: finalize CHANGELOG for v0.5.0 [skip ci]
 
 ## [0.5.0] - 2026-05-19
 
