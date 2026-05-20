@@ -20,6 +20,8 @@ egui_extras = { version = "0.33.3", features = ["svg"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 winit = "0.30"
 dirs = "5"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+open = "5"
 
 [features]
 # Fast dev iteration: link Bevy as a shared library to slash link times.

@@ -18,6 +18,7 @@ mod snapshot;
 mod theme;
 mod tools;
 mod ui;
+mod updater;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
@@ -126,6 +127,7 @@ fn main() {
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
         .init_resource::<Toasts>()
+        .init_resource::<crate::updater::UpdateCheck>()
         .init_resource::<CommandPalette>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<OriginAxesGizmos>()
@@ -200,6 +202,8 @@ fn main() {
             flyby_system,
             camera_preset_keys_system,
             apply_pending_view_preset_system.after(camera_preset_keys_system),
+            crate::updater::startup_check_system,
+            crate::updater::poll_update_check_system,
         ),
     )
     .add_systems(

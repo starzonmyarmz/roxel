@@ -38,6 +38,7 @@ pub enum MenuAction {
     Redo,
     Preferences,
     Changelog,
+    CheckForUpdates,
     ShowCommandPalette,
     ViewPreset(CameraPreset),
     FrameView,
@@ -88,6 +89,11 @@ fn build_menu() -> MenuStore {
         cmd_palette_item.id().0.clone(),
         MenuAction::ShowCommandPalette,
     );
+    let check_updates_item = MenuItem::new("Check for Updates…", true, None);
+    actions.insert(
+        check_updates_item.id().0.clone(),
+        MenuAction::CheckForUpdates,
+    );
     app_menu
         .append_items(&[
             &PredefinedMenuItem::about(
@@ -99,6 +105,7 @@ fn build_menu() -> MenuStore {
                     ..Default::default()
                 }),
             ),
+            &check_updates_item,
             &PredefinedMenuItem::separator(),
             &cmd_palette_item,
             &prefs_item,
@@ -413,6 +420,7 @@ pub struct MenuActionParams<'w> {
     pub recent: ResMut<'w, RecentFiles>,
     pub view_preset: ResMut<'w, PendingViewPreset>,
     pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
+    pub updater: ResMut<'w, crate::updater::UpdateCheck>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -452,6 +460,9 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.prefs_window.open = !p.prefs_window.open;
             }
             MenuAction::Changelog => open_changelog(),
+            MenuAction::CheckForUpdates => {
+                crate::updater::start_check(&mut p.updater, true);
+            }
             MenuAction::ViewPreset(preset) => {
                 p.view_preset.0 = Some(preset);
             }

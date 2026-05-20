@@ -67,6 +67,7 @@ pub struct UiState<'w> {
     pub current_path: Res<'w, CurrentProjectPath>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
+    pub updater: ResMut<'w, crate::updater::UpdateCheck>,
 }
 
 pub fn ui_system(
@@ -88,7 +89,7 @@ pub fn ui_system(
     mut cmd_palette: ResMut<CommandPalette>,
 ) -> Result {
     let UiInput { keys, mouse } = input;
-    #[cfg_attr(target_os = "macos", allow(unused_variables))]
+    #[cfg_attr(target_os = "macos", allow(unused_variables, unused_mut))]
     let UiState {
         mut new_project,
         selection,
@@ -96,6 +97,7 @@ pub fn ui_system(
         current_path,
         flyby,
         mut color_edit,
+        mut updater,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -391,6 +393,35 @@ pub fn ui_system(
                         .clicked()
                     {
                         prefs_window.open = !prefs_window.open;
+                    }
+                    if let Some(rel) = updater.available() {
+                        let url = rel.html_url.clone();
+                        let label = format!("Update {} available", rel.tag);
+                        let resp = ui.add(egui::Button::image_and_text(
+                            egui::Image::new(icons::arrow_up())
+                                .fit_to_exact_size(icon::md_square())
+                                .tint(theme.accent),
+                            egui::RichText::new(label)
+                                .size(font::BODY)
+                                .color(theme.accent),
+                        ));
+                        if resp.on_hover_text("Open the release page").clicked() {
+                            crate::updater::open_url(&url);
+                        }
+                    } else {
+                        let busy = updater.is_checking();
+                        if ui
+                            .add_enabled(
+                                !busy,
+                                egui::Button::new(
+                                    egui::RichText::new("Check for Updates…").size(font::BODY),
+                                ),
+                            )
+                            .on_hover_text("Look for a newer Roxel release on GitHub")
+                            .clicked()
+                        {
+                            crate::updater::start_check(&mut updater, true);
+                        }
                     }
                 });
             });

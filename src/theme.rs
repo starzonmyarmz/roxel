@@ -3,6 +3,7 @@ use bevy::winit::WINIT_WINDOWS;
 use bevy_egui::egui;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use crate::color_space::ColorSpace;
 
@@ -175,6 +176,28 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_last_update_check() {
+        // Older preferences.ron lacking `last_update_check` must still load with
+        // None so the updater treats it as never-checked.
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(p.last_update_check.is_none());
+    }
+
+    #[test]
+    fn preferences_roundtrip_last_update_check() {
+        let prefs = Preferences {
+            last_update_check: Some(
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+            ),
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert_eq!(parsed.last_update_check, prefs.last_update_check);
+    }
+
+    #[test]
     fn preferences_loads_after_floor_fields_removed() {
         // Older preferences.ron carrying now-removed fields (`show_floor`,
         // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
@@ -199,6 +222,8 @@ pub struct Preferences {
     pub show_origin_axes: bool,
     #[serde(default)]
     pub color_space: ColorSpace,
+    #[serde(default)]
+    pub last_update_check: Option<SystemTime>,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -223,6 +248,7 @@ impl Default for Preferences {
             show_y_axis: default_show_y_axis(),
             show_origin_axes: default_show_origin_axes(),
             color_space: ColorSpace::default(),
+            last_update_check: None,
         }
     }
 }
