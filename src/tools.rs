@@ -1,6 +1,6 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
-use crate::picking::{cursor_ray, pick, pick_with};
+use crate::picking::{Hit, cursor_ray, pick, pick_with};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, recolor_selection,
@@ -236,6 +236,38 @@ fn axis_of_normal(n: IVec3) -> usize {
     }
 }
 
+/// Which integer layer along the face-normal axis a stroke anchors on. `Picked`
+/// is the layer of the hit voxel itself (Select, Erase, Move); `Adjacent` is
+/// the layer one step along the face normal (Brush, Shape).
+enum AnchorTarget {
+    Picked,
+    Adjacent,
+}
+
+/// Build a face-plane `StrokeAnchor` from a pick hit and return the face
+/// normal's sign along the anchor axis. Tools that track `normal_sign`
+/// (Shape, Select) use the second return value; tools that don't (Brush,
+/// Erase, Move) can ignore it.
+fn stroke_anchor_from_hit(hit: &Hit, target: AnchorTarget) -> (StrokeAnchor, i32) {
+    let axis = axis_of_normal(hit.normal);
+    let n_arr = hit.normal.to_array();
+    let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
+    let cell_arr = hit.cell.to_array();
+    let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
+    let target_layer = match target {
+        AnchorTarget::Picked => cell_arr[axis],
+        AnchorTarget::Adjacent => cell_arr[axis] + n_arr[axis],
+    };
+    (
+        StrokeAnchor {
+            axis,
+            plane_world,
+            target_layer,
+        },
+        sign,
+    )
+}
+
 fn anchor_target(anchor: &StrokeAnchor, origin: Vec3, dir: Vec3) -> Option<IVec3> {
     let d_arr = dir.to_array();
     let o_arr = origin.to_array();
@@ -440,24 +472,8 @@ fn shape_input(
             let Some(hit) = pick(grid, origin, dir) else {
                 return;
             };
-            let axis = axis_of_normal(hit.normal);
-            let n_arr = hit.normal.to_array();
-            let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
-            let cell_arr = hit.cell.to_array();
-            let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
-            let target_layer = cell_arr[axis] + n_arr[axis];
-            let anchor = StrokeAnchor {
-                axis,
-                plane_world,
-                target_layer,
-            };
-            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or_else(|| {
-                IVec3::new(
-                    cell_arr[0] + n_arr[0],
-                    cell_arr[1] + n_arr[1],
-                    cell_arr[2] + n_arr[2],
-                )
-            });
+            let (anchor, sign) = stroke_anchor_from_hit(&hit, AnchorTarget::Adjacent);
+            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell + hit.normal);
             state.phase = Some(ShapePhase::Footprint);
             state.anchor = Some(anchor);
             state.normal_sign = sign;
@@ -539,19 +555,9 @@ fn select_input(
             let Some(hit) = pick(grid, origin, dir) else {
                 return;
             };
-            let axis = axis_of_normal(hit.normal);
-            let n_arr = hit.normal.to_array();
-            let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
-            let cell_arr = hit.cell.to_array();
-            let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
             // Select targets the picked voxel itself, not the adjacent empty
             // cell — clicking a voxel should select that voxel.
-            let target_layer = cell_arr[axis];
-            let anchor = StrokeAnchor {
-                axis,
-                plane_world,
-                target_layer,
-            };
+            let (anchor, sign) = stroke_anchor_from_hit(&hit, AnchorTarget::Picked);
             let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
             state.phase = SelectPhase::Footprint;
             state.anchor = Some(anchor);
@@ -864,21 +870,14 @@ pub fn tool_input_system(
         let Some(hit) = pick(&grid, origin, dir) else {
             return;
         };
-        let axis = axis_of_normal(hit.normal);
-        let cell_arr = hit.cell.to_array();
-        let n_arr = hit.normal.to_array();
-        let plane_world = cell_arr[axis] as f32 + if n_arr[axis] > 0 { 1.0 } else { 0.0 };
-        let target_layer = match tool.current {
-            Tool::Brush => cell_arr[axis] + n_arr[axis],
-            _ => cell_arr[axis],
+        let target = match tool.current {
+            Tool::Brush => AnchorTarget::Adjacent,
+            _ => AnchorTarget::Picked,
         };
+        let (anchor, _) = stroke_anchor_from_hit(&hit, target);
         history.begin();
         state.stroking = true;
-        state.anchor = Some(StrokeAnchor {
-            axis,
-            plane_world,
-            target_layer,
-        });
+        state.anchor = Some(anchor);
         state.last_placed = None;
         recent.push(color.0);
     }
@@ -1037,16 +1036,7 @@ pub fn move_drag_system(
             Some(_) => return, // Click outside an existing selection: ignore.
             None => (SelectionAabb::from_corners(hit.cell, hit.cell), true),
         };
-        let axis = axis_of_normal(hit.normal);
-        let n_arr = hit.normal.to_array();
-        let sign = if n_arr[axis] >= 0 { 1 } else { -1 };
-        let cell_arr = hit.cell.to_array();
-        let plane_world = cell_arr[axis] as f32 + if sign > 0 { 1.0 } else { 0.0 };
-        let anchor = StrokeAnchor {
-            axis,
-            plane_world,
-            target_layer: cell_arr[axis],
-        };
+        let (anchor, _) = stroke_anchor_from_hit(&hit, AnchorTarget::Picked);
         let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
 
         let originals: Vec<(IVec3, Color8)> = match &selection.cells {
@@ -1262,6 +1252,44 @@ mod tests {
 
     fn cells_set(cells: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {
         cells.into_iter().map(|c| (c.x, c.y, c.z)).collect()
+    }
+
+    fn hit(cell: IVec3, normal: IVec3) -> Hit {
+        Hit {
+            cell,
+            normal,
+            hit_voxel: true,
+        }
+    }
+
+    #[test]
+    fn stroke_anchor_adjacent_targets_one_layer_along_normal() {
+        let (a, s) =
+            stroke_anchor_from_hit(&hit(IVec3::new(2, 3, 4), IVec3::Y), AnchorTarget::Adjacent);
+        assert_eq!(a.axis, 1);
+        assert_eq!(a.plane_world, 4.0);
+        assert_eq!(a.target_layer, 4);
+        assert_eq!(s, 1);
+    }
+
+    #[test]
+    fn stroke_anchor_picked_targets_hit_layer() {
+        let (a, s) =
+            stroke_anchor_from_hit(&hit(IVec3::new(2, 3, 4), IVec3::Y), AnchorTarget::Picked);
+        assert_eq!(a.target_layer, 3);
+        assert_eq!(s, 1);
+    }
+
+    #[test]
+    fn stroke_anchor_negative_normal_keeps_plane_on_low_face() {
+        let (a, s) = stroke_anchor_from_hit(
+            &hit(IVec3::new(0, 5, 0), IVec3::NEG_X),
+            AnchorTarget::Adjacent,
+        );
+        assert_eq!(a.axis, 0);
+        assert_eq!(a.plane_world, 0.0);
+        assert_eq!(a.target_layer, -1);
+        assert_eq!(s, -1);
     }
 
     #[test]
