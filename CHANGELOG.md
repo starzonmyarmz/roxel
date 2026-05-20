@@ -24,6 +24,7 @@ Release notes.
 - refactor(clipboard): collapse 3 duplicated paste blocks (key handler, macOS menu, command palette) into a single `clipboard::execute_paste` helper
 - refactor(tools): factor 4 hand-rolled `StrokeAnchor` constructions (Shape, Select, Brush/Erase, Move) into `stroke_anchor_from_hit`
 - refactor(ui): replace inline `add_space` / `item_spacing` literals in `ui.rs` and the command palette with `tokens::space` / `tokens::gap`; add `space::{XXS, SX, FOOTER_GROUP, PREFS_INDENT}` so the token guard now covers every spacing call site
+- refactor(tools): trim `tool_input_system` signature from 14 to 12 parameters by grouping mouse/keys/time into `Pointer`, cameras/windows into `Viewport`, and shape options/state into `ShapeInput`
 - refactor(io): dedup `tmp_path` test helper across obj/fbx/svg/ase by routing through `io::test_util`
 - perf(tools): cache `MoveDragState.originals_set` at drag start so per-frame collision checks no longer rebuild a HashSet
 

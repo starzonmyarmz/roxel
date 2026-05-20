@@ -25,6 +25,30 @@ pub struct InputGates<'w> {
     pub flyby: Res<'w, crate::camera::FlybyState>,
 }
 
+#[derive(SystemParam)]
+pub struct Pointer<'w> {
+    pub mouse: Res<'w, ButtonInput<MouseButton>>,
+    pub keys: Res<'w, ButtonInput<KeyCode>>,
+    pub time: Res<'w, Time>,
+}
+
+#[derive(SystemParam)]
+pub struct Viewport<'w, 's> {
+    pub cameras: Query<
+        'w,
+        's,
+        (&'static Camera, &'static GlobalTransform),
+        With<bevy_panorbit_camera::PanOrbitCamera>,
+    >,
+    pub windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+}
+
+#[derive(SystemParam)]
+pub struct ShapeInput<'w> {
+    pub options: Res<'w, ShapeOptions>,
+    pub state: ResMut<'w, ShapeState>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Brush,
@@ -597,22 +621,24 @@ fn select_input(
 
 pub fn tool_input_system(
     mut contexts: EguiContexts,
-    mouse: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    cameras: Query<(&Camera, &GlobalTransform), With<bevy_panorbit_camera::PanOrbitCamera>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    pointer: Pointer,
+    viewport: Viewport,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
     mut tool: ResMut<ToolState>,
     mut color: ResMut<CurrentColor>,
     mut recent: ResMut<RecentColors>,
     mut state: ResMut<PointerState>,
-    shape_options: Res<ShapeOptions>,
-    mut shape_state: ResMut<ShapeState>,
+    shape: ShapeInput,
     select_params: SelectParams,
     gates: InputGates,
-    time: Res<Time>,
 ) {
+    let Pointer { mouse, keys, time } = pointer;
+    let Viewport { cameras, windows } = viewport;
+    let ShapeInput {
+        options: shape_options,
+        state: mut shape_state,
+    } = shape;
     let InputGates {
         gizmo_drag,
         gizmo_rect,
