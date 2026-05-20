@@ -21,6 +21,7 @@ Release notes.
 - feat(ui): themed palette select dropdown matching the design-token system
 - chore: add `scripts/release.sh` helper for tagged releases
 - refactor(ui): promote inline literals (modal widths, dropdown sizes, toast dims, command-palette dims) to `tokens::{size, width, height}`
+- refactor(clipboard): collapse 3 duplicated paste blocks (key handler, macOS menu, command palette) into a single `clipboard::execute_paste` helper
 - refactor(io): dedup `tmp_path` test helper across obj/fbx/svg/ase by routing through `io::test_util`
 - perf(tools): cache `MoveDragState.originals_set` at drag start so per-frame collision checks no longer rebuild a HashSet
 

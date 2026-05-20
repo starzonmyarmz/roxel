@@ -1144,21 +1144,14 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::Paste => {
             if let Some(stamp) = p.clipboard.stamp.clone() {
-                let anchor = crate::clipboard::resolve_paste_anchor(&stamp, None, &p.selection);
-                let had_mask = p.selection.cells.is_some();
-                let pasted_set = crate::clipboard::pasted_mask(&stamp, anchor);
-                match crate::clipboard::paste_stamp(&mut p.grid, &mut p.history, &stamp, anchor) {
-                    Some(new_aabb) => {
-                        if had_mask {
-                            p.selection.set_cells(pasted_set);
-                        } else {
-                            p.selection.set_aabb(new_aabb);
-                        }
-                        p.toasts
-                            .info(format!("Pasted {} voxels", stamp.voxel_count()));
-                    }
-                    None => p.toasts.error("Paste blocked: would land below floor"),
-                }
+                crate::clipboard::execute_paste(
+                    &mut p.grid,
+                    &mut p.history,
+                    &mut p.selection,
+                    &mut p.toasts,
+                    &stamp,
+                    None,
+                );
             }
         }
         CommandAction::SelectTool(t) => {

@@ -133,6 +133,37 @@ pub fn resolve_paste_anchor(
     stamp.origin
 }
 
+/// Run the full paste flow shared by the keyboard shortcut, the macOS menu,
+/// and the command palette. `cursor_hit` is the cell the paste should anchor
+/// on (top of a hovered face) when available; menu / palette callers pass
+/// `None` and the anchor falls back to the active selection / stamp origin.
+/// On success the selection updates to the pasted region (preserving mask vs
+/// AABB shape) and a toast is emitted; below-floor pastes are refused with an
+/// error toast.
+pub fn execute_paste(
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    selection: &mut Selection,
+    toasts: &mut crate::ui::Toasts,
+    stamp: &Stamp,
+    cursor_hit: Option<IVec3>,
+) {
+    let anchor = resolve_paste_anchor(stamp, cursor_hit, selection);
+    let had_mask = selection.cells.is_some();
+    let pasted_set = pasted_mask(stamp, anchor);
+    match paste_stamp(grid, history, stamp, anchor) {
+        Some(new_aabb) => {
+            if had_mask {
+                selection.set_cells(pasted_set);
+            } else {
+                selection.set_aabb(new_aabb);
+            }
+            toasts.info(format!("Pasted {} voxels", stamp.voxel_count()));
+        }
+        None => toasts.error("Paste blocked: would land below floor"),
+    }
+}
+
 /// Cmd+C / Cmd+X / Cmd+V handler. Paste anchors at the cell the cursor is
 /// hovering (`hit.cell + hit.normal`), falling back to the active selection's
 /// AABB min, then to the stamp's original origin. After paste, the selection
@@ -179,26 +210,20 @@ pub fn clipboard_key_system(
         return;
     }
     if keys.just_pressed(KeyCode::KeyV) {
-        let Some(stamp) = clipboard.stamp.as_ref() else {
+        let Some(stamp) = clipboard.stamp.clone() else {
             return;
         };
         let cursor_hit = cursor_ray(&cameras, &windows)
             .and_then(|(o, d)| pick(&grid, o, d))
             .map(|h| h.cell + h.normal);
-        let anchor = resolve_paste_anchor(stamp, cursor_hit, &selection);
-        let had_mask = selection.cells.is_some();
-        let pasted_set = pasted_mask(stamp, anchor);
-        match paste_stamp(&mut grid, &mut history, stamp, anchor) {
-            Some(new_aabb) => {
-                if had_mask {
-                    selection.set_cells(pasted_set);
-                } else {
-                    selection.set_aabb(new_aabb);
-                }
-                toasts.info(format!("Pasted {} voxels", stamp.voxel_count()));
-            }
-            None => toasts.error("Paste blocked: would land below floor"),
-        }
+        execute_paste(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            &mut toasts,
+            &stamp,
+            cursor_hit,
+        );
     }
 }
 
@@ -428,6 +453,81 @@ mod tests {
         history.undo(&mut grid);
         assert!(grid.get(IVec3::new(2, 0, 0)).is_none());
         assert!(grid.get(IVec3::new(3, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn execute_paste_updates_aabb_selection_and_emits_toast() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let mut selection = Selection::default();
+        let mut toasts = crate::ui::Toasts::default();
+        let stamp = Stamp {
+            cells: vec![(IVec3::new(0, 0, 0), red()), (IVec3::new(1, 0, 0), red())],
+            origin: IVec3::new(0, 0, 0),
+            aabb: SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)),
+        };
+        execute_paste(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            &mut toasts,
+            &stamp,
+            Some(IVec3::new(5, 0, 5)),
+        );
+        assert_eq!(grid.get(IVec3::new(5, 0, 5)), Some(red()));
+        assert_eq!(grid.get(IVec3::new(6, 0, 5)), Some(red()));
+        assert_eq!(selection.aabb.unwrap().min, IVec3::new(5, 0, 5));
+        assert!(selection.cells.is_none());
+        assert_eq!(toasts.0.len(), 1);
+    }
+
+    #[test]
+    fn execute_paste_preserves_mask_shape() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let mut selection = Selection::default();
+        let mut toasts = crate::ui::Toasts::default();
+        selection.set_cells([IVec3::new(0, 0, 0)].into_iter().collect());
+        let stamp = Stamp {
+            cells: vec![(IVec3::new(0, 0, 0), red())],
+            origin: IVec3::new(0, 0, 0),
+            aabb: SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(0, 0, 0)),
+        };
+        execute_paste(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            &mut toasts,
+            &stamp,
+            Some(IVec3::new(2, 0, 2)),
+        );
+        let mask = selection.cells.expect("mask retained");
+        assert!(mask.contains(&IVec3::new(2, 0, 2)));
+        assert_eq!(mask.len(), 1);
+    }
+
+    #[test]
+    fn execute_paste_below_floor_emits_error_toast() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let mut selection = Selection::default();
+        let mut toasts = crate::ui::Toasts::default();
+        let stamp = Stamp {
+            cells: vec![(IVec3::new(0, 0, 0), red())],
+            origin: IVec3::new(0, 0, 0),
+            aabb: SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(0, 0, 0)),
+        };
+        execute_paste(
+            &mut grid,
+            &mut history,
+            &mut selection,
+            &mut toasts,
+            &stamp,
+            Some(IVec3::new(0, -1, 0)),
+        );
+        assert!(grid.get(IVec3::new(0, 0, 0)).is_none());
+        assert_eq!(toasts.0.len(), 1);
+        assert_eq!(toasts.0[0].kind, crate::ui::toast::ToastKind::Error);
     }
 
     #[test]
