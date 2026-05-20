@@ -23,13 +23,22 @@ pub mod radius {
     pub const LG: u8 = 12; // modal windows
 }
 
-/// Scalar gaps for `ui.add_space(...)`. 4-px grid.
+/// Scalar gaps for `ui.add_space(...)`. Even values; `XS`/`SM`/`MD`/`LG` sit
+/// on the 4-px grid, `XXS`/`SX` are reserved for tight in-section breaks.
 pub mod space {
+    pub const XXS: f32 = 2.0; // micro-break between adjacent rows (visibility checkboxes, tool rail)
     pub const XS: f32 = 4.0;
+    pub const SX: f32 = 6.0; // between XS and SM — palette toolbar header gap, action-button cluster
     pub const SM: f32 = 8.0;
+    /// Wider-than-`SM` separator used between footer command groups
+    /// ("navigate", "run", "close") in the command palette.
+    pub const FOOTER_GROUP: f32 = 10.0;
     pub const MD: f32 = 12.0;
     #[allow(dead_code)] // reserved for layout tuning
     pub const LG: f32 = 16.0;
+    /// Horizontal indent that aligns a row under `size::PREFS_LABEL`.
+    /// Equals `size::PREFS_LABEL.x + XS`.
+    pub const PREFS_INDENT: f32 = 76.0;
 }
 
 /// `item_spacing` Vec2s. Used inside `ui.scope` blocks that need to override
@@ -135,7 +144,16 @@ mod tests {
 
     #[test]
     fn all_scalars_even() {
-        for v in [space::XS, space::SM, space::MD, space::LG] {
+        for v in [
+            space::XXS,
+            space::XS,
+            space::SX,
+            space::SM,
+            space::FOOTER_GROUP,
+            space::MD,
+            space::LG,
+            space::PREFS_INDENT,
+        ] {
             assert_eq!(v as u32 % 2, 0, "space {v} is odd");
             assert!(v >= 0.0);
         }
@@ -195,5 +213,20 @@ mod tests {
         assert!(radius::XS < radius::SM);
         assert!(radius::SM < radius::MD);
         assert!(radius::MD < radius::LG);
+    }
+
+    #[test]
+    fn space_scalars_strictly_increasing() {
+        assert!(space::XXS < space::XS);
+        assert!(space::XS < space::SX);
+        assert!(space::SX < space::SM);
+        assert!(space::SM < space::FOOTER_GROUP);
+        assert!(space::FOOTER_GROUP < space::MD);
+        assert!(space::MD < space::LG);
+    }
+
+    #[test]
+    fn prefs_indent_matches_label_row() {
+        assert_eq!(space::PREFS_INDENT, size::PREFS_LABEL.x + space::XS);
     }
 }

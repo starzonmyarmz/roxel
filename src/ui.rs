@@ -349,9 +349,9 @@ pub fn ui_system(
                     },
                 );
 
-                ui.add_space(8.0);
+                ui.add_space(space::SM);
                 widgets::vertical_rule(ui, &theme);
-                ui.add_space(4.0);
+                ui.add_space(space::XS);
 
                 let undo_enabled = !history.undo.is_empty();
                 if ui
@@ -465,7 +465,7 @@ pub fn ui_system(
                         None => "Size —".to_string(),
                     };
                     widgets::status_label(ui, &theme, &design_label);
-                    ui.add_space(12.0);
+                    ui.add_space(space::MD);
                     widgets::status_label(
                         ui,
                         &theme,
@@ -478,7 +478,7 @@ pub fn ui_system(
                     if let Some(cam) = zoom.cameras.iter().next() {
                         let actual = cam.radius.unwrap_or(cam.target_radius);
                         let r = actual.round().max(0.0) as i32;
-                        ui.add_space(12.0);
+                        ui.add_space(space::MD);
                         widgets::status_label(
                             ui,
                             &theme,
@@ -509,7 +509,7 @@ pub fn ui_system(
                     "Brush",
                     "B",
                 );
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 widgets::tool_button(
                     ui,
                     &theme,
@@ -519,7 +519,7 @@ pub fn ui_system(
                     "Erase",
                     "E",
                 );
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 widgets::tool_button(
                     ui,
                     &theme,
@@ -529,7 +529,7 @@ pub fn ui_system(
                     "Paint",
                     "P",
                 );
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 widgets::tool_button(
                     ui,
                     &theme,
@@ -539,7 +539,7 @@ pub fn ui_system(
                     "Pick",
                     "I",
                 );
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 let shape_resp = widgets::tool_button(
                     ui,
                     &theme,
@@ -650,7 +650,7 @@ pub fn ui_system(
                             });
                         });
                 }
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 widgets::tool_button(
                     ui,
                     &theme,
@@ -660,7 +660,7 @@ pub fn ui_system(
                     "Marquee select",
                     "M",
                 );
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 widgets::tool_button(
                     ui,
                     &theme,
@@ -795,7 +795,7 @@ pub fn ui_system(
                                 }
                                 _ => {
                                     ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
                                         let total = ui.available_width();
                                         let w = ((total - 8.0) / 3.0).max(40.0);
                                         for i in 0..3 {
@@ -849,9 +849,9 @@ pub fn ui_system(
                             }
 
                             if palette_rename.editing == Some(active_idx) && !active_is_builtin {
-                                ui.add_space(4.0);
+                                ui.add_space(space::XS);
                                 ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
                                     let resp = ui.add(
                                         egui::TextEdit::singleline(&mut palette_rename.buf)
                                             .desired_width((row_w - 76.0).max(60.0)),
@@ -885,10 +885,10 @@ pub fn ui_system(
                                 });
                             }
 
-                            ui.add_space(6.0);
+                            ui.add_space(space::SX);
                             // Toolbar: palette mgmt left, .ase IO right
                             ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 4.0;
+                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
                                 if widgets::icon_only_button(ui, &theme, icons::plus(), true)
                                     .on_hover_text("New palette")
                                     .clicked()
@@ -966,7 +966,7 @@ pub fn ui_system(
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
                                         let safe_idx = palette_choice
                                             .0
                                             .min(palettes.0.len().saturating_sub(1));
@@ -1032,7 +1032,7 @@ pub fn ui_system(
                             active_is_builtin = palettes.0[active_idx].builtin;
 
                             if !active_is_builtin {
-                                ui.add_space(6.0);
+                                ui.add_space(space::SX);
                                 let add_enabled = !palettes.0[active_idx].colors.contains(&color.0);
                                 if widgets::wide_action_button(
                                     ui,
@@ -1054,7 +1054,7 @@ pub fn ui_system(
                                 }
                             }
 
-                            ui.add_space(8.0);
+                            ui.add_space(space::SM);
                             let mut reorder: Option<(usize, usize)> = None;
                             let mut remove_idx: Option<usize> = None;
                             let active_palette = palettes.0[active_idx].colors.clone();
@@ -1154,7 +1154,7 @@ pub fn ui_system(
                                 }
                             }
                             if active_is_builtin && !active_palette.is_empty() {
-                                ui.add_space(6.0);
+                                ui.add_space(space::SX);
                                 widgets::hint_label(
                                     ui,
                                     &theme,
@@ -1290,9 +1290,9 @@ pub fn ui_system(
                     }
                 });
                 if let CanvasBgPref::Custom(ref mut rgb) = prefs.canvas_bg {
-                    ui.add_space(4.0);
+                    ui.add_space(space::XS);
                     ui.horizontal(|ui| {
-                        ui.add_space(76.0);
+                        ui.add_space(space::PREFS_INDENT);
                         ui.color_edit_button_srgb(rgb);
                         widgets::hex_label(ui, &theme, *rgb, true);
                     });
@@ -1301,9 +1301,9 @@ pub fn ui_system(
 
             widgets::section(ui, &theme, "Visibility", |ui| {
                 ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_origin_axes, "Show origin axes");
-                ui.add_space(2.0);
+                ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_y_axis, "Show Y axis line");
             });
         });
@@ -1324,9 +1324,9 @@ pub fn ui_system(
         widgets::modal_window(ctx, &theme, "New project", &mut open).show(ctx, |ui| {
             ui.set_min_width(width::MODAL_NEW);
             widgets::hint_label(ui, &theme, "Start over? This discards any unsaved work.");
-            ui.add_space(8.0);
+            ui.add_space(space::SM);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.spacing_mut().item_spacing.x = space::SX;
                 if widgets::dialog_button(ui, &theme, "Create", true).clicked() {
                     create_clicked = true;
                 }

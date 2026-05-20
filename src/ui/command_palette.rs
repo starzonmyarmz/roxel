@@ -10,7 +10,7 @@ use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
 };
-use crate::ui::tokens::{font, height, icon, radius, size, stroke, width};
+use crate::ui::tokens::{font, gap, height, icon, radius, size, space, stroke, width};
 use crate::ui::{icons, widgets};
 use crate::{io, select};
 use bevy::ecs::system::SystemParam;
@@ -847,24 +847,24 @@ pub fn draw(
             resp.request_focus();
         }
 
-        ui.add_space(4.0);
+        ui.add_space(space::XS);
         ui.painter().hline(
             ui.clip_rect().x_range(),
             ui.cursor().min.y,
             egui::Stroke::new(stroke::HAIR, theme.border),
         );
-        ui.add_space(6.0);
+        ui.add_space(space::SX);
 
         if order.is_empty() {
-            ui.add_space(8.0);
+            ui.add_space(space::SM);
             widgets::hint_label(ui, theme, "No commands match.");
-            ui.add_space(8.0);
+            ui.add_space(space::SM);
         } else {
             egui::ScrollArea::vertical()
                 .max_height(height::COMMAND_PALETTE_MAX)
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.spacing_mut().item_spacing.y = gap::NONE.y;
                     for (visual_idx, &idx) in order.iter().enumerate() {
                         let entry = &catalog[idx];
                         let selected = visual_idx == palette.selected;
@@ -876,13 +876,13 @@ pub fn draw(
                 });
         }
 
-        ui.add_space(6.0);
+        ui.add_space(space::SX);
         ui.painter().hline(
             ui.clip_rect().x_range(),
             ui.cursor().min.y,
             egui::Stroke::new(stroke::HAIR, theme.border),
         );
-        ui.add_space(6.0);
+        ui.add_space(space::SX);
         draw_footer_hint(ui, theme);
     });
 
@@ -916,16 +916,16 @@ fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
         egui::Label::new(egui::RichText::new(s).color(dim).size(font::SMALL)).selectable(false)
     };
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 3.0;
+        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
         ui.add(footer_icon(icons::arrow_up()));
         ui.add(footer_icon(icons::arrow_down()));
-        ui.add_space(2.0);
+        ui.add_space(space::XXS);
         ui.add(text("navigate"));
-        ui.add_space(10.0);
+        ui.add_space(space::FOOTER_GROUP);
         ui.add(footer_icon(icons::corner_down_left()));
-        ui.add_space(2.0);
+        ui.add_space(space::XXS);
         ui.add(text("run"));
-        ui.add_space(10.0);
+        ui.add_space(space::FOOTER_GROUP);
         ui.add(
             egui::Label::new(
                 egui::RichText::new("Esc")
@@ -935,7 +935,7 @@ fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
             )
             .selectable(false),
         );
-        ui.add_space(2.0);
+        ui.add_space(space::XXS);
         ui.add(text("close"));
     });
 }
