@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(select): copy, cut, paste the active selection's voxels via Cmd+C / Cmd+X / Cmd+V, the Edit menu (macOS), or the command palette — Cmd+V anchors paste at the cursor pick (face under the pointer), falling back to selection min then stamp origin; selection updates to the pasted region
 - feat(ui): inspector color section + swatch popup picker can read out and edit in Hex / RGB / HSL / HSB / OKLCH; active space persists in `preferences.ron`
 - feat(tools): hold Shift while dragging a shape footprint to lock aspect ratio — square for rectangle/ellipse, 45° snap for line
 - feat(ui): long-press the shape rail button (180 ms) to open a primitive picker; release over an option commits it. Pop-in is instant (no fade) and option buttons show hover state while LMB is held

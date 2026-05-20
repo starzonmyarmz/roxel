@@ -1,4 +1,5 @@
 mod camera;
+mod clipboard;
 mod color_space;
 mod gizmo;
 mod grid;
@@ -105,6 +106,7 @@ fn main() {
         .init_resource::<MoveDragState>()
         .init_resource::<crate::select::Selection>()
         .init_resource::<crate::select::SelectState>()
+        .init_resource::<crate::clipboard::Clipboard>()
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<CurrentProjectPath>()
@@ -173,8 +175,11 @@ fn main() {
             brush_preview_system.before(regenerate_mesh_system),
             shape_preview_system.before(regenerate_mesh_system),
             crate::select::selection_render_system.before(regenerate_mesh_system),
-            crate::select::selection_key_action_system,
-            crate::select::move_selection_keys_system,
+            (
+                crate::select::selection_key_action_system,
+                crate::select::move_selection_keys_system,
+                crate::clipboard::clipboard_key_system,
+            ),
             start_snapshot_system
                 .before(floor_grid_system)
                 .before(draw_origin_system)

@@ -36,6 +36,9 @@ pub enum MenuAction {
     ImportGox,
     Undo,
     Redo,
+    Cut,
+    Copy,
+    Paste,
     Preferences,
     Changelog,
     CheckForUpdates,
@@ -54,6 +57,9 @@ pub struct MenuStore {
     actions: HashMap<String, MenuAction>,
     undo_item: MenuItem,
     redo_item: MenuItem,
+    cut_item: MenuItem,
+    copy_item: MenuItem,
+    paste_item: MenuItem,
     recent_sub: Submenu,
     recent_items: Vec<MenuItem>,
     clear_recent_item: MenuItem,
@@ -222,12 +228,37 @@ fn build_menu() -> MenuStore {
             Code::KeyZ,
         )),
     );
-    edit.append_items(&[&undo_item, &redo_item])
-        .expect("append edit menu");
+    let cut_item = MenuItem::new(
+        "Cut",
+        false,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyX)),
+    );
+    let copy_item = MenuItem::new(
+        "Copy",
+        false,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyC)),
+    );
+    let paste_item = MenuItem::new(
+        "Paste",
+        false,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyV)),
+    );
+    edit.append_items(&[
+        &undo_item,
+        &redo_item,
+        &PredefinedMenuItem::separator(),
+        &cut_item,
+        &copy_item,
+        &paste_item,
+    ])
+    .expect("append edit menu");
     menu.append(&edit).expect("append edit submenu");
 
     actions.insert(undo_item.id().0.clone(), MenuAction::Undo);
     actions.insert(redo_item.id().0.clone(), MenuAction::Redo);
+    actions.insert(cut_item.id().0.clone(), MenuAction::Cut);
+    actions.insert(copy_item.id().0.clone(), MenuAction::Copy);
+    actions.insert(paste_item.id().0.clone(), MenuAction::Paste);
 
     let view = Submenu::new("View", true);
     let frame_item = MenuItem::new(
@@ -336,6 +367,9 @@ fn build_menu() -> MenuStore {
         actions,
         undo_item,
         redo_item,
+        cut_item,
+        copy_item,
+        paste_item,
         recent_sub,
         recent_items,
         clear_recent_item,
@@ -361,15 +395,28 @@ pub fn update_menu_enabled_system(
     _marker: NonSendMarker,
     store: Option<NonSend<MenuStore>>,
     history: Res<History>,
+    selection: Res<crate::select::Selection>,
+    clipboard: Res<crate::clipboard::Clipboard>,
 ) {
     let Some(store) = store else { return };
     let undo_on = !history.undo.is_empty();
     let redo_on = !history.redo.is_empty();
+    let has_sel = selection.aabb.is_some();
+    let has_clip = clipboard.has_stamp();
     if store.undo_item.is_enabled() != undo_on {
         store.undo_item.set_enabled(undo_on);
     }
     if store.redo_item.is_enabled() != redo_on {
         store.redo_item.set_enabled(redo_on);
+    }
+    if store.cut_item.is_enabled() != has_sel {
+        store.cut_item.set_enabled(has_sel);
+    }
+    if store.copy_item.is_enabled() != has_sel {
+        store.copy_item.set_enabled(has_sel);
+    }
+    if store.paste_item.is_enabled() != has_clip {
+        store.paste_item.set_enabled(has_clip);
     }
 }
 
@@ -421,6 +468,9 @@ pub struct MenuActionParams<'w> {
     pub view_preset: ResMut<'w, PendingViewPreset>,
     pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
+    pub selection: ResMut<'w, crate::select::Selection>,
+    pub clipboard: ResMut<'w, crate::clipboard::Clipboard>,
+    pub toasts: ResMut<'w, crate::ui::Toasts>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -456,6 +506,42 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ImportGox => spawn_import_gox(&mut p.pending),
             MenuAction::Undo => p.history.undo(&mut p.grid),
             MenuAction::Redo => p.history.redo(&mut p.grid),
+            MenuAction::Copy => {
+                if let Some(stamp) = crate::clipboard::copy_selection(&p.grid, &p.selection) {
+                    let n = stamp.voxel_count();
+                    p.clipboard.stamp = Some(stamp);
+                    p.toasts.info(format!("Copied {n} voxels"));
+                }
+            }
+            MenuAction::Cut => {
+                if let Some(stamp) =
+                    crate::clipboard::cut_selection(&mut p.grid, &mut p.history, &p.selection)
+                {
+                    let n = stamp.voxel_count();
+                    p.clipboard.stamp = Some(stamp);
+                    p.toasts.info(format!("Cut {n} voxels"));
+                }
+            }
+            MenuAction::Paste => {
+                if let Some(stamp) = p.clipboard.stamp.clone() {
+                    let anchor = crate::clipboard::resolve_paste_anchor(&stamp, None, &p.selection);
+                    let had_mask = p.selection.cells.is_some();
+                    let pasted_set = crate::clipboard::pasted_mask(&stamp, anchor);
+                    match crate::clipboard::paste_stamp(&mut p.grid, &mut p.history, &stamp, anchor)
+                    {
+                        Some(new_aabb) => {
+                            if had_mask {
+                                p.selection.set_cells(pasted_set);
+                            } else {
+                                p.selection.set_aabb(new_aabb);
+                            }
+                            p.toasts
+                                .info(format!("Pasted {} voxels", stamp.voxel_count()));
+                        }
+                        None => p.toasts.error("Paste blocked: would land below floor"),
+                    }
+                }
+            }
             MenuAction::Preferences => {
                 p.prefs_window.open = !p.prefs_window.open;
             }

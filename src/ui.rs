@@ -68,6 +68,7 @@ pub struct UiState<'w> {
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
+    pub clipboard: Res<'w, crate::clipboard::Clipboard>,
 }
 
 pub fn ui_system(
@@ -98,6 +99,7 @@ pub fn ui_system(
         flyby,
         mut color_edit,
         mut updater,
+        clipboard,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -1348,6 +1350,7 @@ pub fn ui_system(
             has_undo: !history.undo.is_empty(),
             has_redo: !history.redo.is_empty(),
             has_selection: selection.aabb.is_some(),
+            has_clipboard: clipboard.has_stamp(),
             dialog_busy: pending.is_active(),
             palettes: &palettes.0,
             palette_choice: palette_choice.0,

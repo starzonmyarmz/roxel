@@ -92,6 +92,9 @@ pub enum CommandAction {
     Redo,
     DeleteSelectionContents,
     ClearSelection,
+    CopySelection,
+    CutSelection,
+    Paste,
 
     SelectTool(Tool),
     SelectShape(ShapePrimitive),
@@ -207,6 +210,7 @@ pub struct CatalogState<'a> {
     pub has_undo: bool,
     pub has_redo: bool,
     pub has_selection: bool,
+    pub has_clipboard: bool,
     pub dialog_busy: bool,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
@@ -372,6 +376,30 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         Some("Esc"),
         state.has_selection,
         CommandAction::ClearSelection,
+    ));
+    out.push(entry(
+        "Copy",
+        Category::Edit,
+        "copy clipboard duplicate",
+        Some("⌘C"),
+        state.has_selection,
+        CommandAction::CopySelection,
+    ));
+    out.push(entry(
+        "Cut",
+        Category::Edit,
+        "cut clipboard",
+        Some("⌘X"),
+        state.has_selection,
+        CommandAction::CutSelection,
+    ));
+    out.push(entry(
+        "Paste",
+        Category::Edit,
+        "paste clipboard insert",
+        Some("⌘V"),
+        state.has_clipboard,
+        CommandAction::Paste,
     ));
 
     // Tools
@@ -1010,6 +1038,7 @@ pub struct DispatchParams<'w> {
     flyby: ResMut<'w, crate::camera::FlybyState>,
     toasts: ResMut<'w, super::Toasts>,
     view_preset: ResMut<'w, PendingViewPreset>,
+    clipboard: ResMut<'w, crate::clipboard::Clipboard>,
 }
 
 pub fn dispatch_command_palette_system(
@@ -1097,6 +1126,41 @@ pub fn dispatch_command_palette_system(
             }
         }
         CommandAction::ClearSelection => p.selection.clear(),
+        CommandAction::CopySelection => {
+            if let Some(stamp) = crate::clipboard::copy_selection(&p.grid, &p.selection) {
+                let n = stamp.voxel_count();
+                p.clipboard.stamp = Some(stamp);
+                p.toasts.info(format!("Copied {n} voxels"));
+            }
+        }
+        CommandAction::CutSelection => {
+            if let Some(stamp) =
+                crate::clipboard::cut_selection(&mut p.grid, &mut p.history, &p.selection)
+            {
+                let n = stamp.voxel_count();
+                p.clipboard.stamp = Some(stamp);
+                p.toasts.info(format!("Cut {n} voxels"));
+            }
+        }
+        CommandAction::Paste => {
+            if let Some(stamp) = p.clipboard.stamp.clone() {
+                let anchor = crate::clipboard::resolve_paste_anchor(&stamp, None, &p.selection);
+                let had_mask = p.selection.cells.is_some();
+                let pasted_set = crate::clipboard::pasted_mask(&stamp, anchor);
+                match crate::clipboard::paste_stamp(&mut p.grid, &mut p.history, &stamp, anchor) {
+                    Some(new_aabb) => {
+                        if had_mask {
+                            p.selection.set_cells(pasted_set);
+                        } else {
+                            p.selection.set_aabb(new_aabb);
+                        }
+                        p.toasts
+                            .info(format!("Pasted {} voxels", stamp.voxel_count()));
+                    }
+                    None => p.toasts.error("Paste blocked: would land below floor"),
+                }
+            }
+        }
         CommandAction::SelectTool(t) => {
             if p.tool.current != t {
                 p.tool.previous = p.tool.current;
@@ -1335,6 +1399,7 @@ mod tests {
             has_undo: true,
             has_redo: false,
             has_selection: false,
+            has_clipboard: false,
             dialog_busy: false,
             palettes,
             palette_choice: 0,
@@ -1402,6 +1467,7 @@ mod tests {
             has_undo: false,
             has_redo: false,
             has_selection: false,
+            has_clipboard: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1428,6 +1494,7 @@ mod tests {
             has_undo: false,
             has_redo: false,
             has_selection: false,
+            has_clipboard: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1458,6 +1525,7 @@ mod tests {
             has_undo: true,
             has_redo: true,
             has_selection: false,
+            has_clipboard: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1482,6 +1550,7 @@ mod tests {
             has_undo: false,
             has_redo: false,
             has_selection: false,
+            has_clipboard: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,

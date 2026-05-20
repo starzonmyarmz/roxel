@@ -67,6 +67,8 @@ The picker itself is a bare `egui::Area::fade_in(false)` with a manually painted
 
 Both paths record exactly one history stroke per commit. Mid-drag, frames re-record the same touched cells repeatedly; `History::record` dedupes by overwriting the existing delta's `after` value so the final stroke contains one entry per cell regardless of how many frames the drag spanned.
 
+Clipboard (`clipboard.rs`) snapshots the active selection's occupied voxels into a `Stamp { cells, origin, aabb }` held in the `Clipboard` resource. `clipboard_key_system` wires Cmd+C / Cmd+X / Cmd+V (egui-keys-gated). Cut runs `copy_selection` + `clear_selection` in one stroke. Paste anchor resolves through `resolve_paste_anchor` with priority: cursor pick (`hit.cell + hit.normal`, so the stamp sits on top of the hovered face like the Brush) → active selection's AABB min → stamp origin (paste-in-place). The command-palette `Paste` action skips the cursor branch (no ray available mid-dispatch) and resolves selection → origin. Paste overwrites destination cells in one history stroke and updates the selection to the pasted region (preserving mask vs AABB shape). Pastes that would land below `y = 0` are refused outright.
+
 Two pieces of stroke state in `PointerState` matter for non-shape tools:
 - `anchor` (`StrokeAnchor`) — locks the build plane axis for the duration of a drag so the picker can't slide onto a perpendicular face mid-stroke.
 - `last_placed: Option<IVec3>` — endpoint for `line3d` (3D Bresenham). Fills gaps when the cursor jumps between frames, and `Shift+click` runs a one-shot `line3d` stroke from `last_placed` to the new target without entering drag mode.
