@@ -4,6 +4,8 @@ use bevy_egui::egui;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::color_space::ColorSpace;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ThemeMode {
     Light,
@@ -153,6 +155,26 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_color_space() {
+        // Older preferences.ron lacking `color_space` must still load with
+        // the default (Hex).
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.color_space, ColorSpace::Hex);
+    }
+
+    #[test]
+    fn preferences_roundtrip_color_space() {
+        let prefs = Preferences {
+            color_space: ColorSpace::Oklch,
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert_eq!(parsed.color_space, ColorSpace::Oklch);
+    }
+
+    #[test]
     fn preferences_loads_after_floor_fields_removed() {
         // Older preferences.ron carrying now-removed fields (`show_floor`,
         // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
@@ -175,6 +197,8 @@ pub struct Preferences {
     pub show_y_axis: bool,
     #[serde(default = "default_show_origin_axes")]
     pub show_origin_axes: bool,
+    #[serde(default)]
+    pub color_space: ColorSpace,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -198,6 +222,7 @@ impl Default for Preferences {
             show_floor_grid: default_show_floor_grid(),
             show_y_axis: default_show_y_axis(),
             show_origin_axes: default_show_origin_axes(),
+            color_space: ColorSpace::default(),
         }
     }
 }

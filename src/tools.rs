@@ -1305,8 +1305,7 @@ mod tests {
     #[test]
     fn constrain_shape_ellipse_matches_rect_square_rule() {
         let c1 = IVec3::new(-2, 0, 5);
-        let out =
-            constrain_shape_corner2(ShapePrimitive::Ellipse, 1, c1, IVec3::new(2, 0, 9));
+        let out = constrain_shape_corner2(ShapePrimitive::Ellipse, 1, c1, IVec3::new(2, 0, 9));
         // du=4, dv=4 → already square; unchanged.
         assert_eq!(out, IVec3::new(2, 0, 9));
     }
