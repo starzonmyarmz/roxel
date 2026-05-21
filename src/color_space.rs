@@ -270,6 +270,47 @@ impl ColorEditBuffer {
         }
     }
 
+    /// Base ArrowUp/Down step for `fields[idx]` in the field's natural units.
+    /// `shift` = 10× the base. OKLCH C uses a finer step (range only 0–0.37);
+    /// every other channel uses 1 (10 with Shift).
+    pub fn field_step(space: ColorSpace, idx: usize, shift: bool) -> f32 {
+        let base = match (space, idx) {
+            (ColorSpace::Oklch, 1) => 0.01,
+            _ => 1.0,
+        };
+        if shift { base * 10.0 } else { base }
+    }
+
+    /// Step `fields[idx]` by `delta` in the field's natural units and
+    /// reformat with the active space's precision. Used by ArrowUp/Down key
+    /// handling on focused inspector inputs (Shift = ×10). Returns `true` if
+    /// the buffer was updated; `false` for malformed input or the Hex field
+    /// (single string, no per-channel stepping).
+    pub fn step_field(&mut self, idx: usize, delta: f32) -> bool {
+        if idx >= 3 {
+            return false;
+        }
+        let Ok(cur) = self.fields[idx].trim().parse::<f32>() else {
+            return false;
+        };
+        let next = cur + delta;
+        self.fields[idx] = match (self.space, idx) {
+            (ColorSpace::Hex, _) => return false,
+            (ColorSpace::Rgb, _) => format!("{}", next.round().clamp(0.0, 255.0) as i32),
+            (ColorSpace::Hsl, 0) | (ColorSpace::Hsb, 0) => {
+                format!("{}", next.round().clamp(0.0, 360.0) as i32)
+            }
+            (ColorSpace::Hsl, _) | (ColorSpace::Hsb, _) => {
+                format!("{:.1}", next.clamp(0.0, 100.0))
+            }
+            (ColorSpace::Oklch, 0) => format!("{:.1}", next.clamp(0.0, 100.0)),
+            (ColorSpace::Oklch, 1) => format!("{:.3}", next.clamp(0.0, 0.37)),
+            (ColorSpace::Oklch, 2) => format!("{}", next.round().clamp(0.0, 360.0) as i32),
+            _ => return false,
+        };
+        true
+    }
+
     /// Try to parse the current field strings into a Color8. Returns `None`
     /// on malformed input — the caller should leave `CurrentColor` alone in
     /// that case.
@@ -422,6 +463,77 @@ mod tests {
         buf.fields[1] = "0".into();
         buf.fields[2] = "0".into();
         assert!(buf.commit().is_none());
+    }
+
+    #[test]
+    fn step_field_rgb_adds_and_clamps() {
+        let mut buf = ColorEditBuffer::default();
+        buf.populate([128, 0, 250, 255], ColorSpace::Rgb);
+        assert!(buf.step_field(0, 1.0));
+        assert_eq!(buf.fields[0], "129");
+        assert!(buf.step_field(0, 10.0));
+        assert_eq!(buf.fields[0], "139");
+        assert!(buf.step_field(2, 10.0));
+        assert_eq!(buf.fields[2], "255");
+        assert!(buf.step_field(1, -1.0));
+        assert_eq!(buf.fields[1], "0");
+    }
+
+    #[test]
+    fn step_field_hsl_hue_integer_saturation_decimal() {
+        let mut buf = ColorEditBuffer::default();
+        buf.populate([255, 0, 0, 255], ColorSpace::Hsl);
+        assert!(buf.step_field(0, 10.0));
+        assert_eq!(buf.fields[0], "10");
+        assert!(buf.step_field(1, 1.0));
+        assert!(buf.fields[1].contains('.'));
+    }
+
+    #[test]
+    fn step_field_oklch_chroma_uses_fine_step() {
+        let mut buf = ColorEditBuffer::default();
+        buf.populate([128, 128, 128, 255], ColorSpace::Oklch);
+        buf.fields[1] = "0.100".into();
+        let s = ColorEditBuffer::field_step(ColorSpace::Oklch, 1, false);
+        assert!((s - 0.01).abs() < 1e-6);
+        assert!(buf.step_field(1, s));
+        assert_eq!(buf.fields[1], "0.110");
+        let s10 = ColorEditBuffer::field_step(ColorSpace::Oklch, 1, true);
+        assert!((s10 - 0.1).abs() < 1e-6);
+        assert!(buf.step_field(1, s10));
+        assert_eq!(buf.fields[1], "0.210");
+    }
+
+    #[test]
+    fn field_step_non_oklch_chroma_is_one() {
+        assert_eq!(ColorEditBuffer::field_step(ColorSpace::Rgb, 0, false), 1.0);
+        assert_eq!(ColorEditBuffer::field_step(ColorSpace::Rgb, 0, true), 10.0);
+        assert_eq!(
+            ColorEditBuffer::field_step(ColorSpace::Oklch, 0, false),
+            1.0
+        );
+        assert_eq!(
+            ColorEditBuffer::field_step(ColorSpace::Oklch, 2, true),
+            10.0
+        );
+    }
+
+    #[test]
+    fn step_field_hex_refuses() {
+        let mut buf = ColorEditBuffer::default();
+        buf.populate([255, 128, 0, 255], ColorSpace::Hex);
+        let before = buf.fields[0].clone();
+        assert!(!buf.step_field(0, 1.0));
+        assert_eq!(buf.fields[0], before);
+    }
+
+    #[test]
+    fn step_field_rejects_garbage_input() {
+        let mut buf = ColorEditBuffer::default();
+        buf.populate([10, 20, 30, 255], ColorSpace::Rgb);
+        buf.fields[0] = "not a number".into();
+        assert!(!buf.step_field(0, 1.0));
+        assert_eq!(buf.fields[0], "not a number");
     }
 
     #[test]

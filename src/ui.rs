@@ -782,7 +782,14 @@ pub fn ui_system(
                                     // Editable per-space field row. Commit on
                                     // lost_focus (covers Enter, Tab, click-away);
                                     // invalid input reverts silently to last valid.
+                                    // Arrow-key stepping commits without
+                                    // repopulating: the 8-bit RGB roundtrip
+                                    // would collapse small steps in HSL/HSB/
+                                    // OKLCH (e.g. +1 hue would re-read as
+                                    // same H after quantization), so keep the
+                                    // buffer authoritative during stepping.
                                     let mut commit_now = false;
+                                    let mut stepped = false;
                                     match active_space {
                                         ColorSpace::Hex => {
                                             let resp = ui.add(
@@ -809,6 +816,27 @@ pub fn ui_system(
                                                         .font(egui::TextStyle::Monospace)
                                                         .desired_width(w),
                                                     );
+                                                    if resp.has_focus() {
+                                                        let (up, down, shift) = ui.input(|i| {
+                                                            (
+                                                                i.key_pressed(egui::Key::ArrowUp),
+                                                                i.key_pressed(egui::Key::ArrowDown),
+                                                                i.modifiers.shift,
+                                                            )
+                                                        });
+                                                        let step =
+                                                            crate::color_space::ColorEditBuffer::field_step(
+                                                                active_space,
+                                                                i,
+                                                                shift,
+                                                            );
+                                                        if up && color_edit.step_field(i, step) {
+                                                            stepped = true;
+                                                        }
+                                                        if down && color_edit.step_field(i, -step) {
+                                                            stepped = true;
+                                                        }
+                                                    }
                                                     if resp.lost_focus() {
                                                         commit_now = true;
                                                     }
@@ -817,6 +845,16 @@ pub fn ui_system(
                                         }
                                     }
 
+                                    if stepped {
+                                        if let Some(rgb) = color_edit.commit() {
+                                            color.0 = [rgb[0], rgb[1], rgb[2], 255];
+                                            // Track source so the mismatch
+                                            // gate above doesn't repopulate
+                                            // and clobber the stepped buffer
+                                            // with a quantised readback.
+                                            color_edit.source = color.0;
+                                        }
+                                    }
                                     if commit_now {
                                         if let Some(rgb) = color_edit.commit() {
                                             color.0 = [rgb[0], rgb[1], rgb[2], 255];
@@ -1533,6 +1571,24 @@ fn space_color_picker(
                     .fixed_decimals(decimals[i])
                     .prefix(format!("{} ", labels[i])),
             );
+            if resp.has_focus() {
+                let (up, down, shift) = ui.input(|inp| {
+                    (
+                        inp.key_pressed(egui::Key::ArrowUp),
+                        inp.key_pressed(egui::Key::ArrowDown),
+                        inp.modifiers.shift,
+                    )
+                });
+                let step = crate::color_space::ColorEditBuffer::field_step(space, i, shift);
+                if up {
+                    triple[i] = (triple[i] + step).clamp(ranges[i].0, ranges[i].1);
+                    changed = true;
+                }
+                if down {
+                    triple[i] = (triple[i] - step).clamp(ranges[i].0, ranges[i].1);
+                    changed = true;
+                }
+            }
             if resp.changed() {
                 changed = true;
             }
