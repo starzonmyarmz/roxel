@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): first-launch coachmark tour, relaunchable from Help menu
+
 ## [0.5.1] - 2026-05-20
 
 - chore: bump to 0.5.1

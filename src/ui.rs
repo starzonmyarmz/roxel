@@ -21,6 +21,7 @@ use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io;
+use crate::onboarding::{Onboarding, OnboardingAnchors};
 use crate::shapes::ShapePrimitive;
 use crate::theme::{
     CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
@@ -69,6 +70,8 @@ pub struct UiState<'w> {
     pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
     pub clipboard: Res<'w, crate::clipboard::Clipboard>,
+    pub onboarding: ResMut<'w, Onboarding>,
+    pub onboarding_anchors: ResMut<'w, OnboardingAnchors>,
 }
 
 pub fn ui_system(
@@ -100,6 +103,9 @@ pub fn ui_system(
         mut color_edit,
         mut updater,
         clipboard,
+        #[cfg_attr(target_os = "macos", allow(unused_variables))]
+        mut onboarding,
+        mut onboarding_anchors,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -165,18 +171,17 @@ pub fn ui_system(
                             .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
                     });
                 }
-                if ui
-                    .add_enabled(
-                        !dialog_busy,
-                        egui::Button::image_and_text(
-                            egui::Image::new(icons::save())
-                                .fit_to_exact_size(icon::md_square())
-                                .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
-                            egui::RichText::new("Save").size(font::BODY),
-                        ),
-                    )
-                    .clicked()
-                {
+                let save_resp = ui.add_enabled(
+                    !dialog_busy,
+                    egui::Button::image_and_text(
+                        egui::Image::new(icons::save())
+                            .fit_to_exact_size(icon::md_square())
+                            .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                        egui::RichText::new("Save").size(font::BODY),
+                    ),
+                );
+                onboarding_anchors.save_button = Some(save_resp.rect);
+                if save_resp.clicked() {
                     dialogs::spawn_save(&mut pending, &current_path);
                 }
                 if ui
@@ -387,6 +392,16 @@ pub fn ui_system(
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("?").size(font::BODY))
+                                .min_size(egui::vec2(24.0, 24.0)),
+                        )
+                        .on_hover_text("Show onboarding tour")
+                        .clicked()
+                    {
+                        onboarding.start();
+                    }
                     if ui
                         .add(egui::Button::new(
                             egui::RichText::new("Preferences…").size(font::BODY),
@@ -673,6 +688,7 @@ pub fn ui_system(
             });
         });
     let left_rect = left_resp.response.rect;
+    onboarding_anchors.tool_rail = Some(left_rect);
     ctx.layer_painter(egui::LayerId::new(
         egui::Order::Middle,
         egui::Id::new("left_panel_edge"),
@@ -1213,6 +1229,7 @@ pub fn ui_system(
                 });
         });
     let right_rect = right_resp.response.rect;
+    onboarding_anchors.color_palette = Some(right_rect);
     ctx.layer_painter(egui::LayerId::new(
         egui::Order::Middle,
         egui::Id::new("right_panel_edge"),

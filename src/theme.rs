@@ -198,6 +198,27 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_onboarding_seen_field() {
+        // Older preferences.ron written before the onboarding tour landed
+        // must still load with `onboarding_seen == false`, so the tour fires
+        // on the user's next launch instead of being silently skipped.
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(!p.onboarding_seen);
+    }
+
+    #[test]
+    fn preferences_roundtrip_onboarding_seen_true() {
+        let prefs = Preferences {
+            onboarding_seen: true,
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert!(parsed.onboarding_seen);
+    }
+
+    #[test]
     fn preferences_loads_after_floor_fields_removed() {
         // Older preferences.ron carrying now-removed fields (`show_floor`,
         // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
@@ -224,6 +245,8 @@ pub struct Preferences {
     pub color_space: ColorSpace,
     #[serde(default)]
     pub last_update_check: Option<SystemTime>,
+    #[serde(default = "default_onboarding_seen")]
+    pub onboarding_seen: bool,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -238,6 +261,9 @@ fn default_show_y_axis() -> bool {
 fn default_show_origin_axes() -> bool {
     true
 }
+fn default_onboarding_seen() -> bool {
+    false
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -249,6 +275,7 @@ impl Default for Preferences {
             show_origin_axes: default_show_origin_axes(),
             color_space: ColorSpace::default(),
             last_update_check: None,
+            onboarding_seen: default_onboarding_seen(),
         }
     }
 }

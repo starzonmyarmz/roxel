@@ -41,6 +41,7 @@ pub enum MenuAction {
     Paste,
     Preferences,
     Changelog,
+    ShowOnboarding,
     CheckForUpdates,
     ShowCommandPalette,
     ViewPreset(CameraPreset),
@@ -354,10 +355,12 @@ fn build_menu() -> MenuStore {
     menu.append(&window).expect("append window submenu");
 
     let help = Submenu::new("Help", true);
+    let tour_item = MenuItem::new("Show Onboarding Tour…", true, None);
     let changelog_item = MenuItem::new("Changelog", true, None);
-    help.append_items(&[&changelog_item])
+    help.append_items(&[&tour_item, &changelog_item])
         .expect("append help menu");
     menu.append(&help).expect("append help submenu");
+    actions.insert(tour_item.id().0.clone(), MenuAction::ShowOnboarding);
     actions.insert(changelog_item.id().0.clone(), MenuAction::Changelog);
 
     menu.init_for_nsapp();
@@ -471,6 +474,7 @@ pub struct MenuActionParams<'w> {
     pub selection: ResMut<'w, crate::select::Selection>,
     pub clipboard: ResMut<'w, crate::clipboard::Clipboard>,
     pub toasts: ResMut<'w, crate::ui::Toasts>,
+    pub onboarding: ResMut<'w, crate::onboarding::Onboarding>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -538,6 +542,9 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.prefs_window.open = !p.prefs_window.open;
             }
             MenuAction::Changelog => open_changelog(),
+            MenuAction::ShowOnboarding => {
+                p.onboarding.start();
+            }
             MenuAction::CheckForUpdates => {
                 crate::updater::start_check(&mut p.updater, true);
             }

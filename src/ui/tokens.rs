@@ -117,6 +117,7 @@ pub mod width {
     pub const MODAL_NEW: f32 = 260.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
+    pub const COACHMARK: f32 = 256.0;
 }
 
 /// Container heights / max-heights.
@@ -196,6 +197,7 @@ mod tests {
             width::MODAL_NEW,
             width::COMMAND_PALETTE,
             width::TOAST,
+            width::COACHMARK,
             height::COMMAND_PALETTE_MAX,
         ];
         for v in scalars {

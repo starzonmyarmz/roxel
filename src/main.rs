@@ -10,6 +10,7 @@ mod lighting;
 #[cfg(target_os = "macos")]
 mod menu;
 mod mesh;
+mod onboarding;
 mod picking;
 mod preview;
 mod select;
@@ -42,6 +43,9 @@ use crate::grid::{
 use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, regenerate_mesh_system};
+use crate::onboarding::{
+    Onboarding, OnboardingAnchors, onboarding_autostart_system, onboarding_overlay_system,
+};
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{
@@ -131,6 +135,8 @@ fn main() {
         .init_resource::<Toasts>()
         .init_resource::<crate::updater::UpdateCheck>()
         .init_resource::<CommandPalette>()
+        .init_resource::<Onboarding>()
+        .init_resource::<OnboardingAnchors>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<OriginAxesGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
@@ -209,6 +215,7 @@ fn main() {
             apply_pending_view_preset_system.after(camera_preset_keys_system),
             crate::updater::startup_check_system,
             crate::updater::poll_update_check_system,
+            onboarding_autostart_system,
         ),
     )
     .add_systems(
@@ -223,6 +230,7 @@ fn main() {
             ui_system,
             update_gizmo_viewport.after(ui_system),
             update_viewport_rect.after(ui_system),
+            onboarding_overlay_system.after(ui_system),
         ),
     );
 
