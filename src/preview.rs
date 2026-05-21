@@ -1,30 +1,47 @@
 use bevy::ecs::system::SystemParam;
+use bevy::gizmos::config::{GizmoConfigGroup, GizmoConfigStore};
 use bevy::prelude::*;
+use bevy::reflect::Reflect;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use bevy_panorbit_camera::PanOrbitCamera;
 
-use crate::grid::{Color8, VoxelGrid};
+use crate::grid::VoxelGrid;
 use crate::mesh::PreviewHide;
 use crate::picking::{cursor_ray, pick};
+use crate::theme::Theme;
 use crate::tools::{CurrentColor, PointerState, Tool, ToolState};
 
-pub fn outline_color_for(c: Color8) -> Color {
-    let r = c[0] as f32 / 255.0;
-    let g = c[1] as f32 / 255.0;
-    let b = c[2] as f32 / 255.0;
-    let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    if lum > 0.55 {
-        Color::srgba(0.0, 0.0, 0.0, 0.22)
-    } else {
-        Color::srgba(1.0, 1.0, 1.0, 0.25)
-    }
+/// Dedicated gizmo group for tool preview outlines (brush ghost, erase/paint
+/// target highlight, shape silhouette). Uses `depth_bias = -1.0` so the outline
+/// always reads on top of adjacent voxel geometry — without this, edges flush
+/// against a neighboring voxel's face get z-occluded and the affordance
+/// disappears.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct PreviewGizmos;
+
+pub fn configure_preview_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<PreviewGizmos>();
+    config.depth_bias = -1.0;
+    config.line.width = 2.5;
+    config.line.perspective = false;
+}
+
+pub fn accent_outline_color(theme: &Theme) -> Color {
+    let c = theme.accent;
+    Color::srgba(
+        c.r() as f32 / 255.0,
+        c.g() as f32 / 255.0,
+        c.b() as f32 / 255.0,
+        1.0,
+    )
 }
 
 #[derive(SystemParam)]
 pub struct StrokeGates<'w> {
     pub pointer: Res<'w, PointerState>,
     pub shape: Res<'w, crate::tools::ShapeState>,
+    pub theme: Res<'w, Theme>,
 }
 
 #[derive(Component)]
@@ -74,8 +91,9 @@ pub fn brush_preview_system(
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
     gizmo_view: crate::ui::GizmoView,
     flyby: Res<crate::camera::FlybyState>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<PreviewGizmos>,
 ) {
+    let theme = *gates.theme;
     let Ok((mut tf, mut vis)) = q.single_mut() else {
         return;
     };
@@ -145,16 +163,24 @@ pub fn brush_preview_system(
         }
         gizmos.cube(
             Transform::from_translation(pos).with_scale(Vec3::splat(1.01)),
-            outline_color_for(c),
+            accent_outline_color(&theme),
         );
         return;
     }
+    let emit_target_outline = |gizmos: &mut Gizmos<PreviewGizmos>, cell: IVec3| {
+        let pos = cell.as_vec3() + Vec3::splat(0.5);
+        gizmos.cube(
+            Transform::from_translation(pos).with_scale(Vec3::splat(1.02)),
+            accent_outline_color(&theme),
+        );
+    };
     match tool.current {
         Tool::Erase => {
             *vis = Visibility::Hidden;
             hide.set_recolor(None);
             if hit.hit_voxel {
                 hide.set(Some(hit.cell));
+                emit_target_outline(&mut gizmos, hit.cell);
             } else {
                 hide.set(None);
             }
@@ -164,6 +190,7 @@ pub fn brush_preview_system(
             hide.set(None);
             if hit.hit_voxel {
                 hide.set_recolor(Some((hit.cell, color.0)));
+                emit_target_outline(&mut gizmos, hit.cell);
             } else {
                 hide.set_recolor(None);
             }
@@ -178,32 +205,29 @@ pub fn brush_preview_system(
 mod tests {
     use super::*;
 
-    fn linear_rgb(c: Color) -> [f32; 3] {
-        let lin = c.to_linear();
-        [lin.red, lin.green, lin.blue]
+    fn srgb_components(c: Color) -> (f32, f32, f32, f32) {
+        let s = c.to_srgba();
+        (s.red, s.green, s.blue, s.alpha)
+    }
+
+    fn assert_matches_accent(theme: &Theme) {
+        let (r, g, b, a) = srgb_components(accent_outline_color(theme));
+        let expected_r = theme.accent.r() as f32 / 255.0;
+        let expected_g = theme.accent.g() as f32 / 255.0;
+        let expected_b = theme.accent.b() as f32 / 255.0;
+        assert!((r - expected_r).abs() < 1e-4, "r {} vs {}", r, expected_r);
+        assert!((g - expected_g).abs() < 1e-4, "g {} vs {}", g, expected_g);
+        assert!((b - expected_b).abs() < 1e-4, "b {} vs {}", b, expected_b);
+        assert!((a - 1.0).abs() < 1e-4, "alpha {} vs 1.0", a);
     }
 
     #[test]
-    fn outline_color_white_voxel_is_dark() {
-        let rgb = linear_rgb(outline_color_for([255, 255, 255, 255]));
-        assert!(rgb[0] < 0.1 && rgb[1] < 0.1 && rgb[2] < 0.1);
+    fn accent_outline_color_matches_dark_theme_accent() {
+        assert_matches_accent(&Theme::dark());
     }
 
     #[test]
-    fn outline_color_black_voxel_is_light() {
-        let rgb = linear_rgb(outline_color_for([0, 0, 0, 255]));
-        assert!(rgb[0] > 0.9 && rgb[1] > 0.9 && rgb[2] > 0.9);
-    }
-
-    #[test]
-    fn outline_color_dark_blue_voxel_is_light() {
-        let rgb = linear_rgb(outline_color_for([20, 30, 200, 255]));
-        assert!(rgb[0] > 0.9 && rgb[1] > 0.9 && rgb[2] > 0.9);
-    }
-
-    #[test]
-    fn outline_color_bright_yellow_voxel_is_dark() {
-        let rgb = linear_rgb(outline_color_for([255, 240, 80, 255]));
-        assert!(rgb[0] < 0.1 && rgb[1] < 0.1 && rgb[2] < 0.1);
+    fn accent_outline_color_matches_light_theme_accent() {
+        assert_matches_accent(&Theme::light());
     }
 }

@@ -18,6 +18,7 @@ Release notes.
 - feat(ui): prefs toggles for status chip, tool labels, and floating menu bar
 - feat(ui): swap embedded Nunito + DM Mono for Inter; monospace now loads from the OS
 - feat(ui): first-launch coachmark tour, relaunchable from Help menu
+- feat(ui): tool preview outlines use theme accent (system blue) on a depth-biased gizmo group; erase + paint now show a target outline
 
 ## [0.5.1] - 2026-05-20
 

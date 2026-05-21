@@ -4,8 +4,9 @@ use bevy::prelude::*;
 
 use std::collections::HashSet;
 
-use crate::preview::outline_color_for;
+use crate::preview::{PreviewGizmos, accent_outline_color};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
+use crate::theme::Theme;
 use crate::tools::{
     CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset,
 };
@@ -60,10 +61,11 @@ pub fn shape_preview_system(
     color: Res<CurrentColor>,
     handles: Res<ShapePreviewHandles>,
     flyby: Res<crate::camera::FlybyState>,
+    theme: Res<Theme>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<PreviewGizmos>,
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
@@ -109,12 +111,12 @@ pub fn shape_preview_system(
         );
     }
 
-    draw_silhouette(&mut gizmos, &cells, outline_color_for(color.0));
+    draw_silhouette(&mut gizmos, &cells, accent_outline_color(&theme));
 
     *vis = Visibility::Visible;
 }
 
-fn draw_silhouette(gizmos: &mut Gizmos, cells: &[IVec3], color: Color) {
+fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: Color) {
     const OFFSETS: [(usize, f32, IVec3); 6] = [
         (0, 1.0, IVec3::X),
         (0, 0.0, IVec3::NEG_X),

@@ -148,6 +148,7 @@ fn main() {
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<OriginAxesGizmos>()
         .init_gizmo_group::<FloorDotsGizmos>()
+        .init_gizmo_group::<crate::preview::PreviewGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
     #[cfg(target_os = "macos")]
@@ -171,6 +172,7 @@ fn main() {
             configure_axis_gizmo,
             configure_origin_axes_gizmos,
             configure_floor_dots_gizmos,
+            crate::preview::configure_preview_gizmos,
             crate::select::configure_selection_gizmos,
         ),
     )
