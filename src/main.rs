@@ -147,6 +147,7 @@ fn main() {
         .init_resource::<UiVisible>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<OriginAxesGizmos>()
+        .init_gizmo_group::<FloorDotsGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
     #[cfg(target_os = "macos")]
@@ -169,6 +170,7 @@ fn main() {
             setup_scene,
             configure_axis_gizmo,
             configure_origin_axes_gizmos,
+            configure_floor_dots_gizmos,
             crate::select::configure_selection_gizmos,
         ),
     )
@@ -195,7 +197,7 @@ fn main() {
                 crate::clipboard::clipboard_key_system,
             ),
             start_snapshot_system
-                .before(floor_grid_system)
+                .before(floor_dots_system)
                 .before(draw_origin_system)
                 .before(crate::select::selection_render_system),
             apply_new_project_system.before(regenerate_mesh_system),
@@ -211,7 +213,7 @@ fn main() {
             zoom_click_system,
             zoom_key_system,
             apply_canvas_bg_system,
-            floor_grid_system,
+            floor_dots_system,
             draw_origin_system,
             perf_warn_system,
             command_palette_shortcut_system,
@@ -239,6 +241,7 @@ fn main() {
             ui_system,
             update_gizmo_viewport.after(ui_system),
             update_viewport_rect.after(ui_system),
+            vignette_system.after(ui_system),
             onboarding_overlay_system.after(ui_system),
         ),
     );
@@ -322,99 +325,107 @@ fn apply_canvas_bg_system(
     }
 }
 
-/// Draws procedural grid lines on the y=0 plane. Two-band LOD:
-/// - radius ≤ `GRID_VOXEL_RADIUS`: per-voxel grid (spacing 1) with heavier
-///   lines every 16.
-/// - radius ≤ `GRID_CHUNK_RADIUS`: spacing-16 grid only.
-/// - beyond: hidden — at that range the cluster itself is the scale.
-fn floor_grid_system(
+/// Quadratic-falloff alpha for a floor dot at integer-cell distance `d` from
+/// camera focus, with window half-extent `half`. Returns 0 outside the window.
+fn floor_dot_alpha(d_sq: f32, half_sq: f32, base: f32) -> f32 {
+    if half_sq <= 0.0 || d_sq >= half_sq {
+        return 0.0;
+    }
+    let t = 1.0 - d_sq / half_sq;
+    base * t * t
+}
+
+/// Dedicated gizmo group for the floor dots. A thick `line_width` paired
+/// with a near-zero tick length is what makes each intersection render as a
+/// round dot — Bevy gizmos only expose line primitives, so this is how we
+/// fake a point sprite without a custom mesh.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct FloorDotsGizmos;
+
+fn configure_floor_dots_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<FloorDotsGizmos>();
+    config.line.width = 3.0;
+    config.line.perspective = false;
+}
+
+/// Draws a per-voxel dot grid on the y=0 plane. Each intersection is a small
+/// `+` cross of two short, thick line segments. Alpha fades quadratically
+/// from the camera focus outward so the rim dissolves into the canvas. Always
+/// renders at voxel spacing (1) regardless of zoom — the per-dot fade is what
+/// keeps far dots from cluttering the canvas, not an LOD spacing change.
+fn floor_dots_system(
     prefs: Res<Preferences>,
     theme: Res<crate::theme::Theme>,
     snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
     cameras: Query<&PanOrbitCamera>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<FloorDotsGizmos>,
 ) {
     if snapshot_active.0 || !prefs.show_floor_grid {
         return;
     }
     let Ok(cam) = cameras.single() else { return };
     let radius = cam.target_radius.max(0.001);
-    if radius > GRID_CHUNK_RADIUS {
-        return;
-    }
     let lift = 0.001;
     let cx = cam.focus.x.round() as i32;
     let cz = cam.focus.z.round() as i32;
-    let make = |a: f32| match theme.mode {
-        crate::theme::ThemeMode::Dark => Color::srgba(1.0, 1.0, 1.0, a),
-        crate::theme::ThemeMode::Light => Color::srgba(0.0, 0.0, 0.0, a),
-    };
-    let (a_minor, a_major) = match theme.mode {
-        crate::theme::ThemeMode::Dark => (0.07, 0.18),
-        crate::theme::ThemeMode::Light => (0.11, 0.26),
-    };
 
-    let half = ((radius * 3.0) as i32).clamp(48, 1024);
+    // Cross ticks compress visually when zoomed out (camera angle flattens
+    // the y=0 plane) so two thick perpendicular segments overlap into a
+    // darker blob. Attenuate base alpha as radius grows so far views feel as
+    // light as close ones.
+    let base_alpha_close = match theme.mode {
+        crate::theme::ThemeMode::Dark => 0.08,
+        crate::theme::ThemeMode::Light => 0.40,
+    };
+    let zoom_atten = (24.0 / radius).clamp(0.35, 1.0);
+    let base_alpha = base_alpha_close * zoom_atten;
+
+    let half = ((radius * 1.5) as i32).clamp(8, 96);
+    let half_sq = (half as f32).powi(2);
+    let (br, bg, bb) = match theme.mode {
+        crate::theme::ThemeMode::Dark => (1.0, 1.0, 1.0),
+        crate::theme::ThemeMode::Light => (0.0, 0.0, 0.0),
+    };
+    // Two perpendicular short, thick segments per intersection. Bevy gizmos
+    // can't render real point sprites, so a small `+` cross + a fat
+    // line_width is the closest approximation that reads as a dot from any
+    // orbit angle (a single tick foreshortens into a hyphen).
+    let tick = 0.05;
+
     let lo_x = cx - half;
     let hi_x = cx + half;
     let lo_z = cz - half;
     let hi_z = cz + half;
 
-    let (spacing, line_color) = if radius <= GRID_VOXEL_RADIUS {
-        (1, make(a_minor))
-    } else {
-        // Chunk-band: only every-16 lines, drawn at the major alpha so the
-        // grid still reads clearly against open canvas at that distance.
-        (16, make(a_major))
-    };
-    let major_color = make(a_major);
-    let start_x = lo_x.div_euclid(spacing) * spacing;
-    let start_z = lo_z.div_euclid(spacing) * spacing;
-
-    let mut i = start_x;
-    while i <= hi_x {
-        let c = if spacing == 1 && i.rem_euclid(16) == 0 {
-            major_color
-        } else {
-            line_color
-        };
-        gizmos.line(
-            Vec3::new(i as f32, lift, lo_z as f32),
-            Vec3::new(i as f32, lift, hi_z as f32),
-            c,
-        );
-        i += spacing;
-    }
-    let mut i = start_z;
-    while i <= hi_z {
-        let c = if spacing == 1 && i.rem_euclid(16) == 0 {
-            major_color
-        } else {
-            line_color
-        };
-        gizmos.line(
-            Vec3::new(lo_x as f32, lift, i as f32),
-            Vec3::new(hi_x as f32, lift, i as f32),
-            c,
-        );
-        i += spacing;
+    let mut x = lo_x;
+    while x <= hi_x {
+        let dx = (x - cx) as f32;
+        let mut z = lo_z;
+        while z <= hi_z {
+            let dz = (z - cz) as f32;
+            let alpha = floor_dot_alpha(dx * dx + dz * dz, half_sq, base_alpha);
+            if alpha > 0.01 {
+                let c = Color::srgba(br, bg, bb, alpha);
+                let p = Vec3::new(x as f32, lift, z as f32);
+                gizmos.line(p - Vec3::X * tick, p + Vec3::X * tick, c);
+                gizmos.line(p - Vec3::Z * tick, p + Vec3::Z * tick, c);
+            }
+            z += 1;
+        }
+        x += 1;
     }
 }
 
-/// Orbit radius past which the per-voxel (spacing-1) grid is dropped — the
-/// individual voxel lines alias into noise beyond this point.
-pub const GRID_VOXEL_RADIUS: f32 = 128.0;
+/// Triad-fade factor. Goes from 1.0 (no nearby voxels — empty scene
+/// wayfinder) to 0.0 (~8 voxels packed around origin — triad would just clash
+/// with the model).
+fn triad_fade(near_count: usize) -> f32 {
+    let t = near_count.min(8) as f32 / 8.0;
+    (1.0 - t).clamp(0.0, 1.0)
+}
 
-/// Orbit radius past which the grid is hidden entirely. Between this and
-/// `GRID_VOXEL_RADIUS` only the every-16 chunk grid is drawn.
-pub const GRID_CHUNK_RADIUS: f32 = 512.0;
-
-/// Draws a small RGB axis triad at world origin so the user can always see
-/// where (0, 0, 0) sits even with no voxels painted. The green Y axis
-/// extends far up into the sky as a vertical anchor when `show_y_axis` is
-/// enabled, so the user never loses track of the origin column.
 /// Dedicated gizmo group for the origin axis triad. Uses `depth_bias = -1.0`
-/// so the lines win against the floor grid (both sit at y≈0) and read clearly
+/// so the lines win against the floor dots (both sit at y≈0) and read clearly
 /// on top.
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct OriginAxesGizmos;
@@ -424,26 +435,76 @@ fn configure_origin_axes_gizmos(mut store: ResMut<GizmoConfigStore>) {
     config.depth_bias = -1.0;
 }
 
+/// Small RGB axis triad at world origin. Fades out as voxels appear inside a
+/// 4-cell cube around origin — it's a wayfinder for the empty-scene start,
+/// not always-on chrome.
 fn draw_origin_system(
     prefs: Res<Preferences>,
     snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
+    grid: Res<VoxelGrid>,
     mut gizmos: Gizmos<OriginAxesGizmos>,
 ) {
     if snapshot_active.0 || !prefs.show_origin_axes {
         return;
     }
-    let len = 1.0;
-    gizmos.line(Vec3::ZERO, Vec3::X * len, Color::srgb(1.0, 0.3, 0.3));
-    gizmos.line(Vec3::ZERO, Vec3::Z * len, Color::srgb(0.3, 0.3, 1.0));
-    if prefs.show_y_axis {
-        gizmos.line(
-            Vec3::ZERO,
-            Vec3::Y * 10_000.0,
-            Color::srgba(0.3, 1.0, 0.3, 0.55),
-        );
-    } else {
-        gizmos.line(Vec3::ZERO, Vec3::Y * len, Color::srgb(0.3, 1.0, 0.3));
+    let near = grid
+        .iter_occupied()
+        .filter(|(p, _)| p.x.abs() <= 4 && p.y <= 4 && p.z.abs() <= 4)
+        .take(8)
+        .count();
+    let fade = triad_fade(near);
+    if fade < 0.05 {
+        return;
     }
+    let len = 1.0;
+    gizmos.line(Vec3::ZERO, Vec3::X * len, Color::srgba(1.0, 0.3, 0.3, fade));
+    gizmos.line(Vec3::ZERO, Vec3::Y * len, Color::srgba(0.3, 1.0, 0.3, fade));
+    gizmos.line(Vec3::ZERO, Vec3::Z * len, Color::srgba(0.3, 0.3, 1.0, fade));
+}
+
+/// Soft radial vignette painted over the 3D canvas. Fakes a fullscreen
+/// gradient with a 5-vertex egui mesh (4 dark corners + transparent center)
+/// so the canvas edges fall into shadow and the eye is drawn toward the
+/// model. Drawn on the egui `Background` layer so it sits below every UI
+/// surface but above the 3D pass. Gated on the same chrome toggle as the dot
+/// grid (`show_floor_grid`) so users can kill all decorative chrome at once.
+fn vignette_system(
+    mut contexts: bevy_egui::EguiContexts,
+    prefs: Res<Preferences>,
+    theme: Res<Theme>,
+    snapshot_active: Res<SnapshotInProgress>,
+) {
+    if snapshot_active.0 || !prefs.show_floor_grid {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    let rect = ctx.available_rect();
+    if rect.width() < 4.0 || rect.height() < 4.0 {
+        return;
+    }
+    let corner_alpha: u8 = match theme.mode {
+        crate::theme::ThemeMode::Dark => 28,
+        crate::theme::ThemeMode::Light => 14,
+    };
+    let corner = bevy_egui::egui::Color32::from_black_alpha(corner_alpha);
+    let center = bevy_egui::egui::Color32::TRANSPARENT;
+    let layer = bevy_egui::egui::LayerId::new(
+        bevy_egui::egui::Order::Background,
+        bevy_egui::egui::Id::new("vignette"),
+    );
+    let painter = ctx.layer_painter(layer);
+
+    let mut mesh = bevy_egui::egui::Mesh::default();
+    mesh.colored_vertex(rect.center(), center);
+    mesh.colored_vertex(rect.left_top(), corner);
+    mesh.colored_vertex(rect.right_top(), corner);
+    mesh.colored_vertex(rect.right_bottom(), corner);
+    mesh.colored_vertex(rect.left_bottom(), corner);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    mesh.add_triangle(0, 3, 4);
+    mesh.add_triangle(0, 4, 1);
+    painter.add(bevy_egui::egui::Shape::mesh(mesh));
 }
 
 /// Per-frame perf-warning latch. Fires a one-shot toast the first time the
@@ -474,5 +535,59 @@ fn font_setup(mut contexts: bevy_egui::EguiContexts, mut done: Local<bool>) {
         install_fonts(ctx);
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
         *done = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn floor_dot_alpha_peaks_at_center_and_zero_at_rim() {
+        let half_sq = 32.0_f32.powi(2);
+        let base = 0.22;
+        assert!((floor_dot_alpha(0.0, half_sq, base) - base).abs() < 1e-6);
+        assert!(floor_dot_alpha(half_sq, half_sq, base).abs() < 1e-6);
+        assert!(floor_dot_alpha(half_sq + 1.0, half_sq, base).abs() < 1e-6);
+    }
+
+    #[test]
+    fn floor_dot_alpha_decays_quadratically() {
+        let half_sq = 100.0_f32;
+        let base = 1.0;
+        let near = floor_dot_alpha(25.0, half_sq, base);
+        let far = floor_dot_alpha(75.0, half_sq, base);
+        assert!(near > far);
+        assert!(near > 0.0 && far > 0.0);
+    }
+
+    #[test]
+    fn floor_dot_alpha_never_negative() {
+        for d in 0..200 {
+            let d = d as f32;
+            let a = floor_dot_alpha(d * d, 50.0 * 50.0, 0.3);
+            assert!(a >= 0.0, "alpha negative at d={d}: {a}");
+        }
+    }
+
+    #[test]
+    fn triad_fade_full_on_empty_scene() {
+        assert!((triad_fade(0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn triad_fade_zero_when_packed() {
+        assert!(triad_fade(8).abs() < 1e-6);
+        assert!(triad_fade(99).abs() < 1e-6);
+    }
+
+    #[test]
+    fn triad_fade_monotonically_decreases() {
+        let mut prev = f32::INFINITY;
+        for n in 0..=8 {
+            let f = triad_fade(n);
+            assert!(f <= prev + 1e-6, "non-monotone at n={n}");
+            prev = f;
+        }
     }
 }

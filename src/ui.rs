@@ -1,7 +1,7 @@
 mod command_palette;
 mod dialogs;
 mod floating;
-mod icons;
+pub(crate) mod icons;
 mod palette;
 pub mod toast;
 pub mod tokens;
@@ -180,7 +180,6 @@ pub fn ui_system(
                         egui::RichText::new("Save").size(font::BODY),
                     ),
                 );
-                onboarding_anchors.save_button = Some(save_resp.rect);
                 if save_resp.clicked() {
                     dialogs::spawn_save(&mut pending, &current_path);
                 }
@@ -1356,8 +1355,6 @@ pub fn ui_system(
                 ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
                 ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_origin_axes, "Show origin axes");
-                ui.add_space(space::XXS);
-                ui.checkbox(&mut prefs.show_y_axis, "Show Y axis line");
                 ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_status_chip, "Show status chip");
                 ui.add_space(space::XXS);

@@ -80,7 +80,7 @@ pub struct CurrentColor(pub Color8);
 
 impl Default for CurrentColor {
     fn default() -> Self {
-        Self([102, 102, 102, 255])
+        Self([200, 200, 200, 255])
     }
 }
 

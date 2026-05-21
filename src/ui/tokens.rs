@@ -71,6 +71,7 @@ pub mod icon {
     pub const SM: f32 = 14.0; // command-palette footer + wide-action icon
     pub const MD: f32 = 16.0; // top-bar, dialog icons
     pub const LG: f32 = 20.0; // left tool rail
+    pub const HERO: f32 = 64.0; // onboarding coachmark hero
 
     pub const fn sm_square() -> Vec2 {
         Vec2::new(SM, SM)
@@ -80,6 +81,9 @@ pub mod icon {
     }
     pub const fn lg_square() -> Vec2 {
         Vec2::new(LG, LG)
+    }
+    pub const fn hero_square() -> Vec2 {
+        Vec2::new(HERO, HERO)
     }
 }
 
@@ -149,6 +153,8 @@ pub mod height {
     /// transparent titlebar + traffic-light buttons when
     /// `fullsize_content_view` is enabled.
     pub const MAC_TITLEBAR_GUTTER: f32 = 28.0;
+    /// Hero illustration band at the top of the onboarding coachmark card.
+    pub const COACHMARK_HERO: f32 = 140.0;
 }
 
 #[cfg(test)]
@@ -188,7 +194,7 @@ mod tests {
         for v in [font::SMALL, font::BODY, font::HEADING] {
             assert_eq!(v as u32 % 2, 0, "font {v} is odd");
         }
-        for v in [icon::SM, icon::MD, icon::LG] {
+        for v in [icon::SM, icon::MD, icon::LG, icon::HERO] {
             assert_eq!(v as u32 % 2, 0, "icon {v} is odd");
         }
     }
@@ -232,6 +238,7 @@ mod tests {
             height::FLOAT_MENU,
             height::STATUS_CHIP,
             height::MAC_TITLEBAR_GUTTER,
+            height::COACHMARK_HERO,
         ];
         for v in scalars {
             assert_eq!(v as u32 % 2, 0, "size scalar {v} is odd");

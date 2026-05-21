@@ -1,7 +1,10 @@
-//! First-launch coachmark tour. Five floating tooltips anchored to real
-//! widgets, advanced via Next/Skip, dismissal persisted in `Preferences`.
-//! Relaunchable from the macOS Help submenu and a `?` button in the non-mac
-//! top bar.
+//! First-launch coachmark tour. Floating cards anchored to real widgets,
+//! advanced via "Next" link / close button, dismissal persisted in
+//! `Preferences`. Relaunchable from the macOS Help submenu and a `?` button
+//! in the non-mac top bar.
+//!
+//! Cards do not highlight their referenced widget or draw arrows — proximity
+//! to the anchor is the only spatial cue.
 //!
 //! Anchor rects are stashed in `OnboardingAnchors` each frame inside
 //! `ui_system`; `Viewport` and `GizmoCube` re-use the existing `ViewportRect`
@@ -15,7 +18,8 @@ use crate::gizmo::GizmoRect;
 use crate::grid::NewProject;
 use crate::theme::{Preferences, PreferencesWindow, Theme, save_preferences};
 use crate::ui::CommandPalette;
-use crate::ui::tokens::{font, gap, pad, radius, space, stroke, width};
+use crate::ui::icons;
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, stroke, width};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum AnchorId {
@@ -23,7 +27,6 @@ pub enum AnchorId {
     ToolRail,
     ColorPalette,
     GizmoCube,
-    SaveButton,
 }
 
 pub struct TourStep {
@@ -52,11 +55,6 @@ pub const TOUR_STEPS: &[TourStep] = &[
         anchor: AnchorId::GizmoCube,
         title: "Reframe the model",
         body: "Click a face of the gizmo to snap the camera. Cmd+0 (Ctrl+0) fits the whole model.",
-    },
-    TourStep {
-        anchor: AnchorId::SaveButton,
-        title: "Save your work",
-        body: "Cmd+S (Ctrl+S) saves a .rox project. You're set — start building.",
     },
 ];
 
@@ -116,7 +114,6 @@ impl Onboarding {
 pub struct OnboardingAnchors {
     pub tool_rail: Option<egui::Rect>,
     pub color_palette: Option<egui::Rect>,
-    pub save_button: Option<egui::Rect>,
 }
 
 fn rect_from_bevy(r: bevy::math::Rect) -> egui::Rect {
@@ -134,57 +131,43 @@ fn resolve_anchor(
         AnchorId::ToolRail => anchors.tool_rail,
         AnchorId::ColorPalette => anchors.color_palette,
         AnchorId::GizmoCube => gizmo.0.map(rect_from_bevy),
-        AnchorId::SaveButton => anchors.save_button.or_else(|| {
-            // macOS / chrome-hidden: no Save button widget — fall back to the
-            // bottom-right of the viewport so the bubble doesn't collide with
-            // the gizmo cube (top-right) or the floating tool island
-            // (right-center).
-            let v = viewport.avail.map(rect_from_bevy)?;
-            let size = egui::vec2(120.0, 32.0);
-            let bottom_right = egui::pos2(v.max.x - 12.0 - size.x, v.max.y - 12.0 - size.y);
-            Some(egui::Rect::from_min_size(bottom_right, size))
-        }),
     }
 }
 
-/// Computes bubble position relative to the anchor, clamped inside `screen`.
-/// Bubble extends downward and rightward from the returned `pos2`.
-fn bubble_position(
+/// Computes card position relative to the anchor, clamped inside `screen`.
+/// Card extends downward and rightward from the returned `pos2`.
+fn card_position(
     anchor: AnchorId,
     anchor_rect: egui::Rect,
-    bubble_size: egui::Vec2,
+    card_size: egui::Vec2,
     screen: egui::Rect,
 ) -> egui::Pos2 {
-    let pad = 12.0;
+    let pad = space::MD;
     let raw = match anchor {
         AnchorId::ToolRail => egui::pos2(
-            anchor_rect.left() - bubble_size.x - pad,
-            anchor_rect.center().y - bubble_size.y * 0.5,
+            anchor_rect.left() - card_size.x - pad,
+            anchor_rect.center().y - card_size.y * 0.5,
         ),
         AnchorId::ColorPalette => egui::pos2(
             anchor_rect.right() + pad,
-            anchor_rect.center().y - bubble_size.y * 0.5,
+            anchor_rect.center().y - card_size.y * 0.5,
         ),
         AnchorId::GizmoCube => egui::pos2(
-            anchor_rect.center().x - bubble_size.x * 0.5,
+            anchor_rect.center().x - card_size.x * 0.5,
             anchor_rect.bottom() + pad,
         ),
-        AnchorId::SaveButton => egui::pos2(
-            anchor_rect.center().x - bubble_size.x * 0.5,
-            anchor_rect.top() - bubble_size.y - pad,
-        ),
         AnchorId::Viewport => egui::pos2(
-            anchor_rect.center().x - bubble_size.x * 0.5,
-            anchor_rect.center().y - bubble_size.y * 0.5,
+            anchor_rect.center().x - card_size.x * 0.5,
+            anchor_rect.center().y - card_size.y * 0.5,
         ),
     };
     let min_x = raw.x.clamp(
         screen.min.x + pad,
-        (screen.max.x - bubble_size.x - pad).max(screen.min.x + pad),
+        (screen.max.x - card_size.x - pad).max(screen.min.x + pad),
     );
     let min_y = raw.y.clamp(
         screen.min.y + pad,
-        (screen.max.y - bubble_size.y - pad).max(screen.min.y + pad),
+        (screen.max.y - card_size.y - pad).max(screen.min.y + pad),
     );
     egui::pos2(min_x, min_y)
 }
@@ -197,6 +180,15 @@ fn modal_blocks_tour(
     cmd_palette: &CommandPalette,
 ) -> bool {
     prefs_window.open || new_project.dialog_open || cmd_palette.open
+}
+
+fn hero_icon(anchor: AnchorId) -> egui::ImageSource<'static> {
+    match anchor {
+        AnchorId::Viewport => icons::square(),
+        AnchorId::ToolRail => icons::brush(),
+        AnchorId::ColorPalette => icons::pipette(),
+        AnchorId::GizmoCube => icons::box_select(),
+    }
 }
 
 pub fn onboarding_overlay_system(
@@ -254,138 +246,153 @@ pub fn onboarding_overlay_system(
     let total = TOUR_STEPS.len();
     let is_last = step_idx + 1 == total;
 
-    // First-pass: measure the bubble with an offscreen layout so we can place
-    // the real one. Egui doesn't expose an explicit measure pass, so we use a
-    // generous fixed width and a height estimate.
-    let est_height = 96.0;
-    let bubble_size = egui::vec2(width::COACHMARK + pad::BUTTON.x * 2.0, est_height);
-    let bubble_pos = bubble_position(step.anchor, anchor_rect, bubble_size, screen);
+    let card_w = width::COACHMARK;
+    let est_body_h = 140.0;
+    let card_size = egui::vec2(card_w, height::COACHMARK_HERO + est_body_h);
+    let card_pos = card_position(step.anchor, anchor_rect, card_size, screen);
 
     let mut next_clicked = false;
-    let mut skip_clicked = false;
-    let area_id = egui::Id::new("onboarding_bubble");
-    let area_resp = egui::Area::new(area_id)
+    let mut close_clicked = false;
+    let area_id = egui::Id::new("onboarding_card");
+    egui::Area::new(area_id)
         .order(egui::Order::Foreground)
         .fade_in(false)
-        .fixed_pos(bubble_pos)
+        .fixed_pos(card_pos)
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style())
                 .fill(theme.panel)
-                .stroke(egui::Stroke::new(stroke::ACCENT, theme.accent))
-                .corner_radius(egui::CornerRadius::same(radius::MD))
-                .inner_margin(egui::Margin::symmetric(
-                    pad::BUTTON.x as i8,
-                    pad::BUTTON.y as i8 + 4,
-                ))
+                .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+                .corner_radius(egui::CornerRadius::same(radius::LG))
+                .inner_margin(egui::Margin::ZERO)
                 .show(ui, |ui| {
-                    ui.set_max_width(width::COACHMARK);
-                    ui.label(
-                        egui::RichText::new(step.title)
-                            .size(font::BODY)
-                            .strong()
-                            .color(theme.text),
+                    ui.set_width(card_w);
+
+                    // Hero band — accent-tinted fill + large step icon.
+                    let (hero_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(card_w, height::COACHMARK_HERO),
+                        egui::Sense::hover(),
                     );
-                    ui.add_space(space::XS);
-                    ui.label(
-                        egui::RichText::new(step.body)
-                            .size(font::SMALL)
-                            .color(theme.text_dim),
+                    let painter = ui.painter_at(hero_rect);
+                    // Top-rounded fill only — bottom corners square so the
+                    // hero meets the body cleanly.
+                    let hero_radius = egui::CornerRadius {
+                        nw: radius::LG,
+                        ne: radius::LG,
+                        sw: 0,
+                        se: 0,
+                    };
+                    painter.rect_filled(hero_rect, hero_radius, theme.accent_dim);
+                    // Soft inner highlight: top-half slightly lighter to give
+                    // depth without a literal gradient (egui has no gradient
+                    // primitive — two stacked rects approximate it).
+                    let top_half = egui::Rect::from_min_max(
+                        hero_rect.min,
+                        egui::pos2(hero_rect.max.x, hero_rect.center().y),
                     );
-                    ui.add_space(space::SM);
-                    ui.horizontal(|ui| {
+                    painter.rect_filled(
+                        top_half,
+                        egui::CornerRadius {
+                            nw: radius::LG,
+                            ne: radius::LG,
+                            sw: 0,
+                            se: 0,
+                        },
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14),
+                    );
+
+                    // Centered hero icon, tinted accent.
+                    let icon_size = icon::hero_square();
+                    let icon_rect = egui::Rect::from_center_size(hero_rect.center(), icon_size);
+                    egui::Image::new(hero_icon(step.anchor))
+                        .tint(theme.accent)
+                        .paint_at(ui, icon_rect);
+
+                    // Close X overlay — top-right of hero.
+                    let close_size = egui::vec2(28.0, 28.0);
+                    let close_pos = egui::pos2(
+                        hero_rect.max.x - close_size.x - space::SM,
+                        hero_rect.min.y + space::SM,
+                    );
+                    let close_rect = egui::Rect::from_min_size(close_pos, close_size);
+                    let close_resp =
+                        ui.interact(close_rect, area_id.with("close"), egui::Sense::click());
+                    let close_bg = if close_resp.hovered() {
+                        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 96)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 56)
+                    };
+                    ui.painter()
+                        .circle_filled(close_rect.center(), close_size.x * 0.5, close_bg);
+                    let x_size = egui::vec2(icon::SM, icon::SM);
+                    let x_rect = egui::Rect::from_center_size(close_rect.center(), x_size);
+                    egui::Image::new(icons::x())
+                        .tint(theme.text)
+                        .paint_at(ui, x_rect);
+                    if close_resp.clicked() {
+                        close_clicked = true;
+                    }
+
+                    // Body region.
+                    let body_margin =
+                        egui::Margin::symmetric(pad::DIALOG.x as i8, pad::DIALOG.y as i8 + 4);
+                    egui::Frame::NONE.inner_margin(body_margin).show(ui, |ui| {
                         ui.spacing_mut().item_spacing = gap::DEFAULT;
                         ui.label(
-                            egui::RichText::new(format!("{}/{}", step_idx + 1, total))
-                                .size(font::SMALL)
+                            egui::RichText::new(step.title)
+                                .size(font::HEADING)
+                                .strong()
+                                .color(theme.text),
+                        );
+                        ui.add_space(space::XS);
+                        ui.label(
+                            egui::RichText::new(step.body)
+                                .size(font::BODY)
                                 .color(theme.text_dim),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let next_label = if is_last { "Finish" } else { "Next" };
-                            if ui.button(next_label).clicked() {
-                                next_clicked = true;
+                        ui.add_space(space::MD);
+
+                        // Footer: pagination dots (left) + Next/Done link (right).
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = gap::TIGHT;
+                            let dot_d = 6.0;
+                            let dot_size = egui::vec2(dot_d, dot_d);
+                            for i in 0..total {
+                                let (rect, _) =
+                                    ui.allocate_exact_size(dot_size, egui::Sense::hover());
+                                let fill = if i == step_idx {
+                                    theme.accent
+                                } else {
+                                    theme.border
+                                };
+                                ui.painter().circle_filled(rect.center(), dot_d * 0.5, fill);
                             }
-                            if !is_last && ui.button("Skip tour").clicked() {
-                                skip_clicked = true;
-                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let label = if is_last { "Done" } else { "Next" };
+                                    let link = egui::RichText::new(label)
+                                        .size(font::BODY)
+                                        .strong()
+                                        .color(theme.accent);
+                                    if ui
+                                        .add(egui::Label::new(link).sense(egui::Sense::click()))
+                                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                        .clicked()
+                                    {
+                                        next_clicked = true;
+                                    }
+                                },
+                            );
                         });
                     });
                 });
         });
 
-    // Connector overlay: highlight ring + short line + arrowhead. Drawn on
-    // the Foreground layer so it sits above panels but below the bubble area
-    // (which is also Foreground but added last).
-    let bubble_rect = area_resp.response.rect;
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Foreground,
-        egui::Id::new("onboarding_connector"),
-    ));
-    painter.rect_stroke(
-        anchor_rect.expand(2.0),
-        egui::CornerRadius::same(radius::MD),
-        egui::Stroke::new(stroke::ACCENT, theme.accent),
-        egui::StrokeKind::Outside,
-    );
-    if let Some((from, to)) = nearest_edge_segment(bubble_rect, anchor_rect) {
-        painter.line_segment(
-            [from, to],
-            egui::Stroke::new(stroke::HAIR + 1.0, theme.accent),
-        );
-        // Tiny arrowhead at the anchor end.
-        let dir = (to - from).normalized();
-        let perp = egui::vec2(-dir.y, dir.x);
-        let tip = to;
-        let base = to - dir * 6.0;
-        let a = base + perp * 4.0;
-        let b = base - perp * 4.0;
-        painter.add(egui::Shape::convex_polygon(
-            vec![tip, a, b],
-            theme.accent,
-            egui::Stroke::NONE,
-        ));
-    }
-
     if next_clicked {
         onboarding.next();
-    } else if skip_clicked {
+    } else if close_clicked {
         onboarding.skip();
     }
-}
-
-/// Returns the shortest segment between the closest edge midpoints of two
-/// non-overlapping rects. Returns `None` when the rects overlap (no useful
-/// connector to draw).
-fn nearest_edge_segment(
-    bubble: egui::Rect,
-    anchor: egui::Rect,
-) -> Option<(egui::Pos2, egui::Pos2)> {
-    if bubble.intersects(anchor) {
-        return None;
-    }
-    let bubble_pts = [
-        egui::pos2(bubble.center().x, bubble.top()),
-        egui::pos2(bubble.center().x, bubble.bottom()),
-        egui::pos2(bubble.left(), bubble.center().y),
-        egui::pos2(bubble.right(), bubble.center().y),
-    ];
-    let anchor_pts = [
-        egui::pos2(anchor.center().x, anchor.top()),
-        egui::pos2(anchor.center().x, anchor.bottom()),
-        egui::pos2(anchor.left(), anchor.center().y),
-        egui::pos2(anchor.right(), anchor.center().y),
-    ];
-    let mut best = None;
-    let mut best_d = f32::INFINITY;
-    for &b in &bubble_pts {
-        for &a in &anchor_pts {
-            let d = (b - a).length();
-            if d < best_d {
-                best_d = d;
-                best = Some((b, a));
-            }
-        }
-    }
-    best
 }
 
 /// Runs in `Update` and starts the tour exactly once per launch when prefs
@@ -490,8 +497,8 @@ mod tests {
     }
 
     #[test]
-    fn tour_steps_count_is_five() {
-        assert_eq!(TOUR_STEPS.len(), 5);
+    fn tour_steps_count_is_four() {
+        assert_eq!(TOUR_STEPS.len(), 4);
     }
 
     #[test]
@@ -522,23 +529,5 @@ mod tests {
                 assert_ne!(ids[i], ids[j], "duplicate anchor at steps {i} and {j}");
             }
         }
-    }
-
-    #[test]
-    fn nearest_edge_segment_returns_none_when_overlapping() {
-        let a = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 100.0));
-        let b = egui::Rect::from_min_size(egui::pos2(50.0, 50.0), egui::vec2(100.0, 100.0));
-        assert!(nearest_edge_segment(a, b).is_none());
-    }
-
-    #[test]
-    fn nearest_edge_segment_picks_facing_edges() {
-        // Bubble to the right of the anchor — connector should run from the
-        // bubble's left edge to the anchor's right edge.
-        let anchor = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(40.0, 40.0));
-        let bubble = egui::Rect::from_min_size(egui::pos2(80.0, 0.0), egui::vec2(40.0, 40.0));
-        let (from, to) = nearest_edge_segment(bubble, anchor).expect("non-overlapping");
-        assert_eq!(from, egui::pos2(bubble.left(), bubble.center().y));
-        assert_eq!(to, egui::pos2(anchor.right(), anchor.center().y));
     }
 }

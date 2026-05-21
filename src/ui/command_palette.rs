@@ -119,7 +119,6 @@ pub enum CommandAction {
 
     SetThemePref(ThemePref),
     ToggleShowFloorGrid,
-    ToggleShowYAxis,
     ToggleShowOriginAxes,
 }
 
@@ -646,18 +645,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         None,
         true,
         CommandAction::ToggleShowFloorGrid,
-    ));
-    out.push(entry(
-        if state.prefs.show_y_axis {
-            "Hide Y axis line"
-        } else {
-            "Show Y axis line"
-        },
-        Category::Preferences,
-        "vertical origin sky line toggle",
-        None,
-        true,
-        CommandAction::ToggleShowYAxis,
     ));
     out.push(entry(
         if state.prefs.show_origin_axes {
@@ -1297,10 +1284,6 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ToggleShowFloorGrid => {
             p.prefs.show_floor_grid = !p.prefs.show_floor_grid;
-            crate::theme::save_preferences(&p.prefs);
-        }
-        CommandAction::ToggleShowYAxis => {
-            p.prefs.show_y_axis = !p.prefs.show_y_axis;
             crate::theme::save_preferences(&p.prefs);
         }
         CommandAction::ToggleShowOriginAxes => {

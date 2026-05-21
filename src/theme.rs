@@ -35,8 +35,8 @@ impl Theme {
             panel: egui::Color32::from_rgb(26, 28, 34),
             surface: egui::Color32::from_rgb(38, 42, 50),
             surface_hover: egui::Color32::from_rgb(54, 60, 72),
-            accent: egui::Color32::from_rgb(110, 165, 255),
-            accent_dim: egui::Color32::from_rgb(60, 95, 155),
+            accent: egui::Color32::from_rgb(10, 132, 255),
+            accent_dim: egui::Color32::from_rgb(10, 74, 140),
             text: egui::Color32::from_rgb(220, 225, 235),
             text_dim: egui::Color32::from_rgb(150, 158, 172),
             border: egui::Color32::from_rgb(44, 48, 58),
@@ -50,11 +50,11 @@ impl Theme {
             panel: egui::Color32::from_rgb(255, 255, 255),
             surface: egui::Color32::from_rgb(240, 242, 246),
             surface_hover: egui::Color32::from_rgb(228, 232, 240),
-            accent: egui::Color32::from_rgb(60, 110, 220),
-            accent_dim: egui::Color32::from_rgb(140, 175, 230),
+            accent: egui::Color32::from_rgb(0, 122, 255),
+            accent_dim: egui::Color32::from_rgb(179, 212, 255),
             text: egui::Color32::from_rgb(32, 36, 44),
             text_dim: egui::Color32::from_rgb(110, 120, 135),
-            border: egui::Color32::from_rgb(228, 232, 240),
+            border: egui::Color32::from_rgb(210, 215, 225),
             faint: egui::Color32::from_rgb(248, 249, 251),
             mode: ThemeMode::Light,
         }
@@ -93,7 +93,6 @@ mod tests {
         assert_eq!(p.theme, ThemePref::System);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor_grid);
-        assert!(p.show_y_axis);
         assert!(p.show_origin_axes);
     }
 
@@ -138,7 +137,6 @@ mod tests {
         assert_eq!(p.theme, ThemePref::Dark);
         assert_eq!(p.canvas_bg, CanvasBgPref::MatchTheme);
         assert!(p.show_floor_grid);
-        assert!(p.show_y_axis);
         assert!(p.show_origin_axes);
     }
 
@@ -159,7 +157,8 @@ mod tests {
     fn preferences_loads_without_color_space() {
         // Older preferences.ron lacking `color_space` must still load with
         // the default (Hex).
-        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true)";
+        let ron =
+            "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true)";
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert_eq!(p.color_space, ColorSpace::Hex);
     }
@@ -179,7 +178,7 @@ mod tests {
     fn preferences_loads_without_last_update_check() {
         // Older preferences.ron lacking `last_update_check` must still load with
         // None so the updater treats it as never-checked.
-        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert!(p.last_update_check.is_none());
     }
@@ -202,7 +201,7 @@ mod tests {
         // Older preferences.ron written before the onboarding tour landed
         // must still load with `onboarding_seen == false`, so the tour fires
         // on the user's next launch instead of being silently skipped.
-        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert!(!p.onboarding_seen);
     }
@@ -222,7 +221,7 @@ mod tests {
     fn preferences_loads_without_floating_ui_fields() {
         // preferences.ron written before the floating-UI redesign must still
         // load with the new fields populated from their defaults.
-        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
         let p: Preferences = ron::from_str(ron).expect("parse");
         assert!(p.show_status_chip);
         assert!(!p.show_tool_labels);
@@ -254,6 +253,18 @@ mod tests {
         assert_eq!(p.theme, ThemePref::Dark);
         assert!(p.show_floor_grid);
     }
+
+    #[test]
+    fn preferences_loads_after_show_y_axis_field_removed() {
+        // `show_y_axis` was dropped when the long Y-axis sky line was retired.
+        // Older preferences.ron carrying the field must still load (serde
+        // silently drops unknown struct fields).
+        let ron = "(theme: Dark, show_floor_grid: true, show_y_axis: true, show_origin_axes: true)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.theme, ThemePref::Dark);
+        assert!(p.show_floor_grid);
+        assert!(p.show_origin_axes);
+    }
 }
 
 #[derive(Resource, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -263,8 +274,6 @@ pub struct Preferences {
     pub canvas_bg: CanvasBgPref,
     #[serde(default = "default_show_floor_grid")]
     pub show_floor_grid: bool,
-    #[serde(default = "default_show_y_axis")]
-    pub show_y_axis: bool,
     #[serde(default = "default_show_origin_axes")]
     pub show_origin_axes: bool,
     #[serde(default)]
@@ -285,9 +294,6 @@ fn default_canvas_bg() -> CanvasBgPref {
     CanvasBgPref::MatchTheme
 }
 fn default_show_floor_grid() -> bool {
-    true
-}
-fn default_show_y_axis() -> bool {
     true
 }
 fn default_show_origin_axes() -> bool {
@@ -312,7 +318,6 @@ impl Default for Preferences {
             theme: ThemePref::default(),
             canvas_bg: default_canvas_bg(),
             show_floor_grid: default_show_floor_grid(),
-            show_y_axis: default_show_y_axis(),
             show_origin_axes: default_show_origin_axes(),
             color_space: ColorSpace::default(),
             last_update_check: None,
