@@ -28,7 +28,7 @@ use crate::onboarding::{Onboarding, OnboardingAnchors};
 use crate::shapes::ShapePrimitive;
 use crate::theme::{
     CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
-    save_preferences,
+    canvas_match_color, save_preferences,
 };
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 #[cfg(not(target_os = "macos"))]
@@ -1336,7 +1336,7 @@ pub fn ui_system(
                     if ui.radio(is_custom, "Custom").clicked() {
                         let seed = match prefs.canvas_bg {
                             CanvasBgPref::Custom(rgb) => rgb,
-                            CanvasBgPref::MatchTheme => [theme.bg.r(), theme.bg.g(), theme.bg.b()],
+                            CanvasBgPref::MatchTheme => canvas_match_color(theme.mode),
                         };
                         prefs.canvas_bg = CanvasBgPref::Custom(seed);
                     }

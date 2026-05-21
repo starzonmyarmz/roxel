@@ -5,15 +5,16 @@
 //! they nest cleanly beside any registered side panel.
 
 use crate::theme::Theme;
-use crate::ui::tokens::{pad, radius, space, stroke};
+use crate::ui::tokens::{pad, radius, space};
 use bevy_egui::egui;
 
-/// Frame used for every floating surface. Panel fill, hairline border, rounded
-/// to [`radius::PILL`] so corners read the same on every floating element.
+/// Frame used for every floating surface. Panel fill, rounded to
+/// [`radius::PILL`] so corners read the same on every floating element. No
+/// border — the soft drop shadow is what lifts the surface off the canvas.
 pub fn pill_frame(theme: &Theme) -> egui::Frame {
     egui::Frame::default()
         .fill(theme.panel)
-        .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+        .stroke(egui::Stroke::NONE)
         .corner_radius(egui::CornerRadius::same(radius::PILL))
         .inner_margin(egui::Margin::symmetric(
             pad::DEFAULT.x as i8,

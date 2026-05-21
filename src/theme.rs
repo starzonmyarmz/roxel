@@ -482,10 +482,13 @@ fn load_first_existing(paths: &[&str]) -> Option<Vec<u8>> {
 }
 
 fn load_system_monospace() -> Option<Vec<u8>> {
+    // Monaco reads with a slightly heavier stroke than SFNSMono.ttf (which is
+    // the Light weight on macOS and looks anemic at body sizes), so prefer it
+    // for inspector readouts. Fall back to SFNSMono if Monaco is missing.
     #[cfg(target_os = "macos")]
     let paths: &[&str] = &[
-        "/System/Library/Fonts/SFNSMono.ttf",
         "/System/Library/Fonts/Monaco.ttf",
+        "/System/Library/Fonts/SFNSMono.ttf",
     ];
     #[cfg(target_os = "windows")]
     let paths: &[&str] = &[
