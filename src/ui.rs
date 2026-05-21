@@ -1,9 +1,11 @@
 mod command_palette;
 mod dialogs;
+mod floating;
 mod icons;
 mod palette;
 pub mod toast;
 pub mod tokens;
+mod visibility;
 mod widgets;
 
 pub use command_palette::{
@@ -15,6 +17,7 @@ pub use dialogs::{
 };
 pub use palette::{Palette, PaletteChoice, Palettes};
 pub use toast::{Toasts, toast_lifetime_system};
+pub use visibility::{UiVisible, tab_toggle_system};
 
 use crate::color_space::ColorSpace;
 use crate::gizmo::{GizmoDrag, GizmoRect};
@@ -30,7 +33,7 @@ use crate::theme::{
 use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
-use crate::ui::tokens::{font, gap, radius, space, stroke, swatch, width};
+use crate::ui::tokens::{font, gap, height, radius, space, stroke, swatch, width};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -72,6 +75,7 @@ pub struct UiState<'w> {
     pub clipboard: Res<'w, crate::clipboard::Clipboard>,
     pub onboarding: ResMut<'w, Onboarding>,
     pub onboarding_anchors: ResMut<'w, OnboardingAnchors>,
+    pub ui_visible: Res<'w, UiVisible>,
 }
 
 pub fn ui_system(
@@ -106,6 +110,7 @@ pub fn ui_system(
         #[cfg_attr(target_os = "macos", allow(unused_variables))]
         mut onboarding,
         mut onboarding_anchors,
+        ui_visible,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -132,17 +137,12 @@ pub fn ui_system(
     #[allow(non_snake_case)]
     let BORDER = theme.border;
 
-    // ---------- Top bar ----------
-    // On macOS the native menu bar (see `menu.rs`) replaces these controls.
+    // ---------- Floating menu pill ----------
+    // On macOS the native menu bar (see `menu.rs`) replaces these controls; on
+    // Win/Linux the pill sits at top-center and is gated by the user pref.
     #[cfg(not(target_os = "macos"))]
-    egui::TopBottomPanel::top("top_bar")
-        .frame(
-            egui::Frame::default()
-                .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 8))
-                .stroke(egui::Stroke::new(stroke::HAIR, BORDER)),
-        )
-        .show(ctx, |ui| {
+    if ui_visible.0 && prefs.show_floating_menu_bar {
+        floating::pill_menu(ctx, &theme, |ui| {
             ui.horizontal(|ui| {
                 if widgets::icon_button(ui, &theme, icons::file_plus(), "New")
                     .on_hover_text("Start a new project")
@@ -443,802 +443,838 @@ pub fn ui_system(
                 });
             });
         });
+    }
 
-    // ---------- Bottom status bar ----------
-    egui::TopBottomPanel::bottom("status_bar")
-        .frame(
-            egui::Frame::default()
-                .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 4))
-                .stroke(egui::Stroke::new(stroke::HAIR, BORDER)),
-        )
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let stats_reserve = 280.0;
-                let hint_w = (ui.available_width() - stats_reserve).max(0.0);
-                ui.allocate_ui_with_layout(
-                    egui::vec2(hint_w, ui.available_height()),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(widgets::tool_hint(tool.current))
-                                    .color(theme.text_dim)
-                                    .size(font::SMALL),
-                            )
-                            .selectable(false)
-                            .truncate(),
-                        );
-                    },
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let design_label = match grid.bounding_box() {
-                        Some((min, max)) => {
-                            let extent = max - min + bevy::math::IVec3::ONE;
-                            format!("Size {}×{}×{}", extent.x, extent.y, extent.z)
-                        }
-                        None => "Size —".to_string(),
-                    };
-                    widgets::status_label(ui, &theme, &design_label);
-                    ui.add_space(space::MD);
-                    widgets::status_label(
-                        ui,
-                        &theme,
-                        &format!(
-                            "{n} voxel{s}",
-                            n = grid.count(),
-                            s = if grid.count() == 1 { "" } else { "s" }
-                        ),
-                    );
-                    if let Some(cam) = zoom.cameras.iter().next() {
-                        let actual = cam.radius.unwrap_or(cam.target_radius);
-                        let r = actual.round().max(0.0) as i32;
-                        ui.add_space(space::MD);
-                        widgets::status_label(
-                            ui,
-                            &theme,
-                            &format!("Zoom {r} voxel{}", if r == 1 { "" } else { "s" }),
-                        );
-                    }
-                });
-            });
-        });
-
-    // ---------- Left tool rail ----------
-    let left_resp = egui::SidePanel::left("tools")
-        .resizable(false)
-        .exact_width(56.0)
-        .frame(
-            egui::Frame::default()
-                .fill(PANEL)
-                .inner_margin(egui::Margin::symmetric(8, 10)),
-        )
-        .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Brush,
-                    icons::tool(Tool::Brush),
-                    "Brush",
-                    "B",
-                );
+    // ---------- Floating tool island ----------
+    if ui_visible.0 {
+        let show_labels = prefs.show_tool_labels;
+        let label_dim = theme.text_dim;
+        let push_label = |ui: &mut egui::Ui, text: &str| {
+            if show_labels {
                 ui.add_space(space::XXS);
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Erase,
-                    icons::tool(Tool::Erase),
-                    "Erase",
-                    "E",
-                );
-                ui.add_space(space::XXS);
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Paint,
-                    icons::tool(Tool::Paint),
-                    "Paint",
-                    "P",
-                );
-                ui.add_space(space::XXS);
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Eyedropper,
-                    icons::tool(Tool::Eyedropper),
-                    "Pick",
-                    "I",
-                );
-                ui.add_space(space::XXS);
-                let shape_resp = widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Shape,
-                    icons::shape_primitive(shape_options.primitive),
-                    "Shape",
-                    "S",
-                );
-                // Long-press opens the picker. Quick click just selects the tool
-                // and never paints the popup. State (press_start, opened) lives
-                // in egui memory because `is_pointer_button_down_on` returns false
-                // on the release frame — we still want one final paint then so an
-                // option's release-over check can fire.
-                const LONG_PRESS_SECS: f64 = 0.18;
-                let mem_id = shape_resp.id.with("press_hold");
-                let (mut press_start, mut opened) = ui
-                    .ctx()
-                    .memory(|m| m.data.get_temp::<(f64, bool)>(mem_id))
-                    .unwrap_or((f64::NAN, false));
-                let is_down = shape_resp.is_pointer_button_down_on();
-                let now = ui.input(|i| i.time);
-                if is_down {
-                    if press_start.is_nan() {
-                        press_start = now;
-                    }
-                    if !opened && now - press_start >= LONG_PRESS_SECS {
-                        opened = true;
-                    }
+                ui.label(egui::RichText::new(text).size(font::SMALL).color(label_dim));
+            }
+        };
+        let island_resp = floating::tool_island(ctx, &theme, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Brush,
+                icons::tool(Tool::Brush),
+                "Brush",
+                "B",
+            );
+            push_label(ui, "Brush");
+            ui.add_space(space::SX);
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Erase,
+                icons::tool(Tool::Erase),
+                "Erase",
+                "E",
+            );
+            push_label(ui, "Erase");
+            ui.add_space(space::SX);
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Paint,
+                icons::tool(Tool::Paint),
+                "Paint",
+                "P",
+            );
+            push_label(ui, "Paint");
+            ui.add_space(space::SX);
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Eyedropper,
+                icons::tool(Tool::Eyedropper),
+                "Pick",
+                "I",
+            );
+            push_label(ui, "Pick");
+            ui.add_space(space::SX);
+            let shape_resp = widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Shape,
+                icons::shape_primitive(shape_options.primitive),
+                "Shape",
+                "S",
+            );
+            push_label(ui, "Shape");
+            // Long-press opens the picker. Quick click just selects the tool
+            // and never paints the popup. State (press_start, opened) lives
+            // in egui memory because `is_pointer_button_down_on` returns false
+            // on the release frame — we still want one final paint then so an
+            // option's release-over check can fire.
+            const LONG_PRESS_SECS: f64 = 0.18;
+            let mem_id = shape_resp.id.with("press_hold");
+            let (mut press_start, mut opened) = ui
+                .ctx()
+                .memory(|m| m.data.get_temp::<(f64, bool)>(mem_id))
+                .unwrap_or((f64::NAN, false));
+            let is_down = shape_resp.is_pointer_button_down_on();
+            let now = ui.input(|i| i.time);
+            if is_down {
+                if press_start.is_nan() {
+                    press_start = now;
                 }
-                let popup_open = opened;
-                let released = ui.input(|i| i.pointer.any_released());
-                let next = if released || !is_down && !opened {
-                    (f64::NAN, false)
-                } else {
-                    (press_start, opened)
-                };
-                ui.ctx().memory_mut(|m| m.data.insert_temp(mem_id, next));
-                if popup_open {
-                    // Use bare `Area` (not `Popup`) so we can disable the default
-                    // fade-in. Buttons are painted manually so the hover fill
-                    // tracks `contains_pointer()` even while LMB is held — egui's
-                    // standard hover styling only fires when the button itself
-                    // was the press target.
-                    let area_id = shape_resp.id.with("shape_picker_area");
-                    let anchor = shape_resp.rect.right_top() + egui::vec2(space::SM, 0.0);
-                    egui::Area::new(area_id)
-                        .order(egui::Order::Foreground)
-                        .fade_in(false)
-                        .fixed_pos(anchor)
-                        .show(ui.ctx(), |ui| {
-                            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                ui.spacing_mut().item_spacing = gap::TIGHT;
-                                ui.horizontal(|ui| {
-                                    let cell = swatch::TOOL;
-                                    for (prim, label) in [
-                                        (ShapePrimitive::Rectangle, "Rectangle"),
-                                        (ShapePrimitive::Ellipse, "Ellipse"),
-                                        (ShapePrimitive::Line, "Line"),
-                                    ] {
-                                        let selected = shape_options.primitive == prim;
-                                        let (rect, r) =
-                                            ui.allocate_exact_size(cell, egui::Sense::click());
-                                        let over = r.contains_pointer();
-                                        let fill = if selected {
-                                            theme.accent
-                                        } else if over {
-                                            theme.surface_hover
-                                        } else {
-                                            theme.surface
-                                        };
-                                        let edge = if selected {
-                                            egui::Stroke::NONE
-                                        } else {
-                                            egui::Stroke::new(stroke::HAIR, theme.border)
-                                        };
-                                        ui.painter().rect(
-                                            rect,
-                                            egui::CornerRadius::same(radius::SM),
-                                            fill,
-                                            edge,
-                                            egui::StrokeKind::Inside,
-                                        );
-                                        let icon_size = crate::ui::tokens::icon::md_square();
-                                        let icon_rect =
-                                            egui::Rect::from_center_size(rect.center(), icon_size);
-                                        let tint = if selected {
-                                            egui::Color32::WHITE
-                                        } else {
-                                            theme.text
-                                        };
-                                        egui::Image::new(icons::shape_primitive(prim))
-                                            .fit_to_exact_size(icon_size)
-                                            .tint(tint)
-                                            .paint_at(ui, icon_rect);
-                                        let r = r.on_hover_text(label);
-                                        let released_on = ui.input(|i| i.pointer.any_released())
-                                            && r.contains_pointer();
-                                        if r.clicked() || released_on {
-                                            shape_options.primitive = prim;
-                                            if tool.current != Tool::Shape {
-                                                tool.previous = tool.current;
-                                                tool.current = Tool::Shape;
-                                            }
-                                        }
-                                    }
-                                });
-                            });
-                        });
+                if !opened && now - press_start >= LONG_PRESS_SECS {
+                    opened = true;
                 }
-                ui.add_space(space::XXS);
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Select,
-                    icons::tool(Tool::Select),
-                    "Marquee select",
-                    "M",
-                );
-                ui.add_space(space::XXS);
-                widgets::tool_button(
-                    ui,
-                    &theme,
-                    &mut tool,
-                    Tool::Move,
-                    icons::tool(Tool::Move),
-                    "Move",
-                    "V",
-                );
-            });
-        });
-    let left_rect = left_resp.response.rect;
-    onboarding_anchors.tool_rail = Some(left_rect);
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("left_panel_edge"),
-    ))
-    .vline(
-        left_rect.right(),
-        left_rect.y_range(),
-        egui::Stroke::new(stroke::HAIR, BORDER),
-    );
-
-    // ---------- Right inspector ----------
-    let right_resp = egui::SidePanel::right("right_panel")
-        .resizable(true)
-        .default_width(width::SIDE_PANEL)
-        .min_width(width::SIDE_PANEL)
-        .max_width(468.0)
-        .frame(
-            egui::Frame::default()
-                .fill(PANEL)
-                .inner_margin(egui::Margin {
-                    left: 12,
-                    right: 0,
-                    top: 12,
-                    bottom: 12,
-                }),
-        )
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    let inner_frame = egui::Frame::default().inner_margin(egui::Margin {
-                        left: 0,
-                        right: 12,
-                        top: 0,
-                        bottom: 0,
-                    });
-                    inner_frame.show(ui, |ui| {
-                        // Color section
-                        widgets::section(ui, &theme, "Color", |ui| {
-                            let srgba = egui::Color32::from_rgba_unmultiplied(
-                                color.0[0], color.0[1], color.0[2], color.0[3],
-                            );
-                            let swatch_w = ui.available_width();
-                            let swatch_resp = widgets::swatch_button(
-                                ui,
-                                &theme,
-                                srgba,
-                                egui::vec2(swatch_w, swatch::HERO_HEIGHT),
-                                radius::MD,
-                                false,
-                            )
-                            .on_hover_text("Click to edit color");
-                            let active_space = prefs.color_space;
-                            egui::Popup::menu(&swatch_resp)
-                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                                .show(|ui| {
-                                    space_color_picker(ui, &mut color, active_space);
-                                });
-                            ui.add_space(space::XS);
-
-                            // Repopulate edit buffer if foreground or active
-                            // space changed since last frame. Without this
-                            // gate, every keystroke would round-trip through
-                            // Color8 and drop precision (greys lose hue,
-                            // OKLCH chroma quantises).
-                            if color_edit.source != color.0 || color_edit.space != active_space {
-                                color_edit.populate(color.0, active_space);
-                            }
-
-                            // Space dropdown — compact, right-aligned.
-                            let labels: Vec<String> = ColorSpace::ALL
-                                .iter()
-                                .map(|s| s.label().to_string())
-                                .collect();
-                            let current_idx = ColorSpace::ALL
-                                .iter()
-                                .position(|s| *s == active_space)
-                                .unwrap_or(0);
-                            let dd_w = 96.0;
+            }
+            let popup_open = opened;
+            let released = ui.input(|i| i.pointer.any_released());
+            let next = if released || !is_down && !opened {
+                (f64::NAN, false)
+            } else {
+                (press_start, opened)
+            };
+            ui.ctx().memory_mut(|m| m.data.insert_temp(mem_id, next));
+            if popup_open {
+                // Use bare `Area` (not `Popup`) so we can disable the default
+                // fade-in. Buttons are painted manually so the hover fill
+                // tracks `contains_pointer()` even while LMB is held — egui's
+                // standard hover styling only fires when the button itself
+                // was the press target.
+                let area_id = shape_resp.id.with("shape_picker_area");
+                let anchor = shape_resp.rect.left_top() - egui::vec2(space::SM, 0.0);
+                egui::Area::new(area_id)
+                    .order(egui::Order::Foreground)
+                    .fade_in(false)
+                    .fixed_pos(anchor)
+                    .pivot(egui::Align2::RIGHT_TOP)
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.spacing_mut().item_spacing = gap::TIGHT;
                             ui.horizontal(|ui| {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if let Some(i) = widgets::select_dropdown(
-                                            ui,
-                                            &theme,
-                                            "color_space_combo",
-                                            dd_w,
-                                            active_space.label(),
-                                            &labels,
-                                            current_idx,
-                                        ) {
-                                            let next = ColorSpace::ALL[i];
-                                            if next != prefs.color_space {
-                                                prefs.color_space = next;
-                                                color_edit.populate(color.0, next);
-                                                save_preferences(&prefs);
-                                            }
-                                        }
-                                    },
-                                );
-                            });
-
-                            ui.add_space(space::XS);
-
-                            // Editable per-space field row. Commit on
-                            // lost_focus (covers Enter, Tab, click-away);
-                            // invalid input reverts silently to last valid.
-                            let mut commit_now = false;
-                            match active_space {
-                                ColorSpace::Hex => {
-                                    let resp = ui.add(
-                                        egui::TextEdit::singleline(&mut color_edit.fields[0])
-                                            .font(egui::TextStyle::Monospace)
-                                            .desired_width(ui.available_width()),
+                                let cell = swatch::TOOL;
+                                for (prim, label) in [
+                                    (ShapePrimitive::Rectangle, "Rectangle"),
+                                    (ShapePrimitive::Ellipse, "Ellipse"),
+                                    (ShapePrimitive::Line, "Line"),
+                                ] {
+                                    let selected = shape_options.primitive == prim;
+                                    let (rect, r) =
+                                        ui.allocate_exact_size(cell, egui::Sense::click());
+                                    let over = r.contains_pointer();
+                                    let fill = if selected {
+                                        theme.accent
+                                    } else if over {
+                                        theme.surface_hover
+                                    } else {
+                                        theme.surface
+                                    };
+                                    let edge = if selected {
+                                        egui::Stroke::NONE
+                                    } else {
+                                        egui::Stroke::new(stroke::HAIR, theme.border)
+                                    };
+                                    ui.painter().rect(
+                                        rect,
+                                        egui::CornerRadius::same(radius::SM),
+                                        fill,
+                                        edge,
+                                        egui::StrokeKind::Inside,
                                     );
-                                    if resp.lost_focus() {
-                                        commit_now = true;
+                                    let icon_size = crate::ui::tokens::icon::md_square();
+                                    let icon_rect =
+                                        egui::Rect::from_center_size(rect.center(), icon_size);
+                                    let tint = if selected {
+                                        egui::Color32::WHITE
+                                    } else {
+                                        theme.text
+                                    };
+                                    egui::Image::new(icons::shape_primitive(prim))
+                                        .fit_to_exact_size(icon_size)
+                                        .tint(tint)
+                                        .paint_at(ui, icon_rect);
+                                    let r = r.on_hover_text(label);
+                                    let released_on = ui.input(|i| i.pointer.any_released())
+                                        && r.contains_pointer();
+                                    if r.clicked() || released_on {
+                                        shape_options.primitive = prim;
+                                        if tool.current != Tool::Shape {
+                                            tool.previous = tool.current;
+                                            tool.current = Tool::Shape;
+                                        }
                                     }
                                 }
-                                _ => {
+                            });
+                        });
+                    });
+            }
+            ui.add_space(space::SX);
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Select,
+                icons::tool(Tool::Select),
+                "Marquee select",
+                "M",
+            );
+            push_label(ui, "Select");
+            ui.add_space(space::SX);
+            widgets::tool_button(
+                ui,
+                &theme,
+                &mut tool,
+                Tool::Move,
+                icons::tool(Tool::Move),
+                "Move",
+                "V",
+            );
+            push_label(ui, "Move");
+        });
+        onboarding_anchors.tool_rail = Some(island_resp.rect);
+    }
+
+    // ---------- Left inspector panel ----------
+    let mac_gutter: i8 = if cfg!(target_os = "macos") {
+        height::MAC_TITLEBAR_GUTTER as i8
+    } else {
+        0
+    };
+    let inspector_top: i8 = 12 + mac_gutter;
+    let inspector_resp = if ui_visible.0 {
+        Some(
+            egui::SidePanel::left("inspector_panel")
+                .resizable(true)
+                .show_separator_line(false)
+                .default_width(width::SIDE_PANEL)
+                .min_width(width::SIDE_PANEL)
+                .max_width(468.0)
+                .frame(
+                    egui::Frame::default()
+                        .fill(PANEL)
+                        .inner_margin(egui::Margin {
+                            left: 12,
+                            right: 0,
+                            top: inspector_top,
+                            bottom: 12,
+                        }),
+                )
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            let inner_frame = egui::Frame::default().inner_margin(egui::Margin {
+                                left: 0,
+                                right: 12,
+                                top: 0,
+                                bottom: 0,
+                            });
+                            inner_frame.show(ui, |ui| {
+                                // Status section (design size, voxel count, zoom)
+                                if prefs.show_status_chip {
+                                    widgets::section(ui, &theme, "Status", |ui| {
+                                        ui.spacing_mut().item_spacing.y = space::XXS;
+                                        let design_label = match grid.bounding_box() {
+                                            Some((min, max)) => {
+                                                let extent = max - min + bevy::math::IVec3::ONE;
+                                                format!("{}×{}×{}", extent.x, extent.y, extent.z)
+                                            }
+                                            None => "—".to_string(),
+                                        };
+                                        widgets::stat_row(ui, &theme, "Size", design_label);
+                                        widgets::stat_row(
+                                            ui,
+                                            &theme,
+                                            "Voxels",
+                                            grid.count().to_string(),
+                                        );
+                                        if let Some(cam) = zoom.cameras.iter().next() {
+                                            let actual = cam.radius.unwrap_or(cam.target_radius);
+                                            let r = actual.round().max(0.0) as i32;
+                                            widgets::stat_row(
+                                                ui,
+                                                &theme,
+                                                "Zoom",
+                                                format!(
+                                                    "{r} voxel{}",
+                                                    if r == 1 { "" } else { "s" }
+                                                ),
+                                            );
+                                        }
+                                    });
+                                }
+                                // Color section
+                                widgets::section(ui, &theme, "Color", |ui| {
+                                    let srgba = egui::Color32::from_rgba_unmultiplied(
+                                        color.0[0], color.0[1], color.0[2], color.0[3],
+                                    );
+                                    let swatch_w = ui.available_width();
+                                    let swatch_resp = widgets::swatch_button(
+                                        ui,
+                                        &theme,
+                                        srgba,
+                                        egui::vec2(swatch_w, swatch::HERO_HEIGHT),
+                                        radius::MD,
+                                        false,
+                                    )
+                                    .on_hover_text("Click to edit color");
+                                    let active_space = prefs.color_space;
+                                    egui::Popup::menu(&swatch_resp)
+                                        .close_behavior(
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                        )
+                                        .show(|ui| {
+                                            space_color_picker(ui, &mut color, active_space);
+                                        });
+                                    ui.add_space(space::XS);
+
+                                    // Repopulate edit buffer if foreground or active
+                                    // space changed since last frame. Without this
+                                    // gate, every keystroke would round-trip through
+                                    // Color8 and drop precision (greys lose hue,
+                                    // OKLCH chroma quantises).
+                                    if color_edit.source != color.0
+                                        || color_edit.space != active_space
+                                    {
+                                        color_edit.populate(color.0, active_space);
+                                    }
+
+                                    // Space dropdown — compact, right-aligned.
+                                    let labels: Vec<String> = ColorSpace::ALL
+                                        .iter()
+                                        .map(|s| s.label().to_string())
+                                        .collect();
+                                    let current_idx = ColorSpace::ALL
+                                        .iter()
+                                        .position(|s| *s == active_space)
+                                        .unwrap_or(0);
+                                    let dd_w = 96.0;
                                     ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                        let total = ui.available_width();
-                                        let w = ((total - 8.0) / 3.0).max(40.0);
-                                        for i in 0..3 {
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if let Some(i) = widgets::select_dropdown(
+                                                    ui,
+                                                    &theme,
+                                                    "color_space_combo",
+                                                    dd_w,
+                                                    active_space.label(),
+                                                    &labels,
+                                                    current_idx,
+                                                ) {
+                                                    let next = ColorSpace::ALL[i];
+                                                    if next != prefs.color_space {
+                                                        prefs.color_space = next;
+                                                        color_edit.populate(color.0, next);
+                                                        save_preferences(&prefs);
+                                                    }
+                                                }
+                                            },
+                                        );
+                                    });
+
+                                    ui.add_space(space::XS);
+
+                                    // Editable per-space field row. Commit on
+                                    // lost_focus (covers Enter, Tab, click-away);
+                                    // invalid input reverts silently to last valid.
+                                    let mut commit_now = false;
+                                    match active_space {
+                                        ColorSpace::Hex => {
                                             let resp = ui.add(
                                                 egui::TextEdit::singleline(
-                                                    &mut color_edit.fields[i],
+                                                    &mut color_edit.fields[0],
                                                 )
                                                 .font(egui::TextStyle::Monospace)
-                                                .desired_width(w),
+                                                .desired_width(ui.available_width()),
                                             );
                                             if resp.lost_focus() {
                                                 commit_now = true;
                                             }
                                         }
-                                    });
-                                }
-                            }
-
-                            if commit_now {
-                                if let Some(rgb) = color_edit.commit() {
-                                    color.0 = [rgb[0], rgb[1], rgb[2], 255];
-                                }
-                                color_edit.populate(color.0, active_space);
-                            }
-                        });
-
-                        if palette_choice.0 >= palettes.0.len() {
-                            palette_choice.0 = 0;
-                        }
-                        let dialog_busy = pending.is_active();
-
-                        // Palette section
-                        widgets::section(ui, &theme, "Palette", |ui| {
-                            let mut active_idx = palette_choice.0;
-                            let mut active_is_builtin = palettes.0[active_idx].builtin;
-
-                            // Buffer so widget frames don't overflow and auto-grow the SidePanel.
-                            let row_w = (ui.available_width() - 2.0).max(80.0);
-                            let names: Vec<String> =
-                                palettes.0.iter().map(|p| p.name.clone()).collect();
-                            if let Some(i) = widgets::select_dropdown(
-                                ui,
-                                &theme,
-                                "palette_combo",
-                                row_w,
-                                &palettes.0[active_idx].name,
-                                &names,
-                                active_idx,
-                            ) {
-                                palette_choice.0 = i;
-                            }
-
-                            if palette_rename.editing == Some(active_idx) && !active_is_builtin {
-                                ui.add_space(space::XS);
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                    let resp = ui.add(
-                                        egui::TextEdit::singleline(&mut palette_rename.buf)
-                                            .desired_width((row_w - 76.0).max(60.0)),
-                                    );
-                                    if !resp.has_focus() && !resp.lost_focus() {
-                                        resp.request_focus();
-                                    }
-                                    let commit =
-                                        widgets::icon_only_button(ui, &theme, icons::check(), true)
-                                            .on_hover_text("Save name")
-                                            .clicked()
-                                            || (resp.lost_focus()
-                                                && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                                    let cancel =
-                                        widgets::icon_only_button(ui, &theme, icons::x(), true)
-                                            .on_hover_text("Cancel")
-                                            .clicked()
-                                            || ui.input(|i| i.key_pressed(egui::Key::Escape));
-                                    if commit {
-                                        let trimmed = palette_rename.buf.trim();
-                                        if !trimmed.is_empty() {
-                                            palettes.0[active_idx].name = trimmed.to_string();
-                                            io::palettes::save(&palettes.0);
+                                        _ => {
+                                            ui.horizontal(|ui| {
+                                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
+                                                let total = ui.available_width();
+                                                let w = ((total - 8.0) / 3.0).max(40.0);
+                                                for i in 0..3 {
+                                                    let resp = ui.add(
+                                                        egui::TextEdit::singleline(
+                                                            &mut color_edit.fields[i],
+                                                        )
+                                                        .font(egui::TextStyle::Monospace)
+                                                        .desired_width(w),
+                                                    );
+                                                    if resp.lost_focus() {
+                                                        commit_now = true;
+                                                    }
+                                                }
+                                            });
                                         }
-                                        palette_rename.editing = None;
-                                        palette_rename.buf.clear();
-                                    } else if cancel {
-                                        palette_rename.editing = None;
-                                        palette_rename.buf.clear();
+                                    }
+
+                                    if commit_now {
+                                        if let Some(rgb) = color_edit.commit() {
+                                            color.0 = [rgb[0], rgb[1], rgb[2], 255];
+                                        }
+                                        color_edit.populate(color.0, active_space);
                                     }
                                 });
-                            }
 
-                            ui.add_space(space::SX);
-                            // Toolbar: palette mgmt left, .ase IO right
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                if widgets::icon_only_button(ui, &theme, icons::plus(), true)
-                                    .on_hover_text("New palette")
-                                    .clicked()
-                                {
-                                    let name = palette::next_palette_name(&palettes.0);
-                                    palettes.0.push(Palette {
-                                        name,
-                                        colors: Vec::new(),
-                                        builtin: false,
-                                    });
-                                    palette_choice.0 = palettes.0.len() - 1;
-                                    palette_rename.editing = Some(palette_choice.0);
-                                    palette_rename.buf = palettes.0[palette_choice.0].name.clone();
-                                    io::palettes::save(&palettes.0);
+                                if palette_choice.0 >= palettes.0.len() {
+                                    palette_choice.0 = 0;
                                 }
-                                if widgets::icon_only_button(ui, &theme, icons::copy(), true)
-                                    .on_hover_text("Duplicate palette")
-                                    .clicked()
-                                {
-                                    let src = &palettes.0[active_idx];
-                                    let base = if src.builtin {
-                                        src.name.clone()
-                                    } else {
-                                        format!("{} copy", src.name)
-                                    };
-                                    let name = palette::unique_palette_name(&palettes.0, &base);
-                                    let copy = Palette {
-                                        name,
-                                        colors: src.colors.clone(),
-                                        builtin: false,
-                                    };
-                                    palettes.0.push(copy);
-                                    palette_choice.0 = palettes.0.len() - 1;
-                                    io::palettes::save(&palettes.0);
-                                }
-                                if widgets::icon_only_button(
-                                    ui,
-                                    &theme,
-                                    icons::pencil(),
-                                    !active_is_builtin,
-                                )
-                                .on_hover_text(if active_is_builtin {
-                                    "Built-in palettes are read-only"
-                                } else {
-                                    "Rename palette"
-                                })
-                                .clicked()
-                                {
-                                    palette_rename.editing = Some(active_idx);
-                                    palette_rename.buf = palettes.0[active_idx].name.clone();
-                                }
-                                let has_user = palettes.0.iter().filter(|p| !p.builtin).count() > 0;
-                                let del_enabled = !active_is_builtin && has_user;
-                                if widgets::icon_only_button(
-                                    ui,
-                                    &theme,
-                                    icons::trash(),
-                                    del_enabled,
-                                )
-                                .on_hover_text(if active_is_builtin {
-                                    "Built-in palettes can't be deleted"
-                                } else {
-                                    "Delete palette"
-                                })
-                                .clicked()
-                                {
-                                    palettes.0.remove(active_idx);
-                                    if palette_choice.0 >= palettes.0.len() {
-                                        palette_choice.0 = palettes.0.len().saturating_sub(1);
+                                let dialog_busy = pending.is_active();
+
+                                // Palette section
+                                widgets::section(ui, &theme, "Palette", |ui| {
+                                    let mut active_idx = palette_choice.0;
+                                    let mut active_is_builtin = palettes.0[active_idx].builtin;
+
+                                    // Buffer so widget frames don't overflow and auto-grow the SidePanel.
+                                    let row_w = (ui.available_width() - 2.0).max(80.0);
+                                    let names: Vec<String> =
+                                        palettes.0.iter().map(|p| p.name.clone()).collect();
+                                    if let Some(i) = widgets::select_dropdown(
+                                        ui,
+                                        &theme,
+                                        "palette_combo",
+                                        row_w,
+                                        &palettes.0[active_idx].name,
+                                        &names,
+                                        active_idx,
+                                    ) {
+                                        palette_choice.0 = i;
                                     }
-                                    palette_rename.editing = None;
-                                    io::palettes::save(&palettes.0);
-                                }
 
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
+                                    if palette_rename.editing == Some(active_idx)
+                                        && !active_is_builtin
+                                    {
+                                        ui.add_space(space::XS);
+                                        ui.horizontal(|ui| {
+                                            ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
+                                            let resp = ui.add(
+                                                egui::TextEdit::singleline(&mut palette_rename.buf)
+                                                    .desired_width((row_w - 76.0).max(60.0)),
+                                            );
+                                            if !resp.has_focus() && !resp.lost_focus() {
+                                                resp.request_focus();
+                                            }
+                                            let commit = widgets::icon_only_button(
+                                                ui,
+                                                &theme,
+                                                icons::check(),
+                                                true,
+                                            )
+                                            .on_hover_text("Save name")
+                                            .clicked()
+                                                || (resp.lost_focus()
+                                                    && ui.input(|i| {
+                                                        i.key_pressed(egui::Key::Enter)
+                                                    }));
+                                            let cancel = widgets::icon_only_button(
+                                                ui,
+                                                &theme,
+                                                icons::x(),
+                                                true,
+                                            )
+                                            .on_hover_text("Cancel")
+                                            .clicked()
+                                                || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                                            if commit {
+                                                let trimmed = palette_rename.buf.trim();
+                                                if !trimmed.is_empty() {
+                                                    palettes.0[active_idx].name =
+                                                        trimmed.to_string();
+                                                    io::palettes::save(&palettes.0);
+                                                }
+                                                palette_rename.editing = None;
+                                                palette_rename.buf.clear();
+                                            } else if cancel {
+                                                palette_rename.editing = None;
+                                                palette_rename.buf.clear();
+                                            }
+                                        });
+                                    }
+
+                                    ui.add_space(space::SX);
+                                    // Toolbar: palette mgmt left, .ase IO right
+                                    ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                        let safe_idx = palette_choice
-                                            .0
-                                            .min(palettes.0.len().saturating_sub(1));
-                                        let current = &palettes.0[safe_idx];
-                                        let export_name = current.name.clone();
-                                        let export_colors = current.colors.clone();
-                                        let default_filename = format!(
-                                            "{}.ase",
-                                            palette::sanitize_filename(&current.name)
+                                        if widgets::icon_only_button(
+                                            ui,
+                                            &theme,
+                                            icons::plus(),
+                                            true,
+                                        )
+                                        .on_hover_text("New palette")
+                                        .clicked()
+                                        {
+                                            let name = palette::next_palette_name(&palettes.0);
+                                            palettes.0.push(Palette {
+                                                name,
+                                                colors: Vec::new(),
+                                                builtin: false,
+                                            });
+                                            palette_choice.0 = palettes.0.len() - 1;
+                                            palette_rename.editing = Some(palette_choice.0);
+                                            palette_rename.buf =
+                                                palettes.0[palette_choice.0].name.clone();
+                                            io::palettes::save(&palettes.0);
+                                        }
+                                        if widgets::icon_only_button(
+                                            ui,
+                                            &theme,
+                                            icons::copy(),
+                                            true,
+                                        )
+                                        .on_hover_text("Duplicate palette")
+                                        .clicked()
+                                        {
+                                            let src = &palettes.0[active_idx];
+                                            let base = if src.builtin {
+                                                src.name.clone()
+                                            } else {
+                                                format!("{} copy", src.name)
+                                            };
+                                            let name =
+                                                palette::unique_palette_name(&palettes.0, &base);
+                                            let copy = Palette {
+                                                name,
+                                                colors: src.colors.clone(),
+                                                builtin: false,
+                                            };
+                                            palettes.0.push(copy);
+                                            palette_choice.0 = palettes.0.len() - 1;
+                                            io::palettes::save(&palettes.0);
+                                        }
+                                        if widgets::icon_only_button(
+                                            ui,
+                                            &theme,
+                                            icons::pencil(),
+                                            !active_is_builtin,
+                                        )
+                                        .on_hover_text(if active_is_builtin {
+                                            "Built-in palettes are read-only"
+                                        } else {
+                                            "Rename palette"
+                                        })
+                                        .clicked()
+                                        {
+                                            palette_rename.editing = Some(active_idx);
+                                            palette_rename.buf =
+                                                palettes.0[active_idx].name.clone();
+                                        }
+                                        let has_user =
+                                            palettes.0.iter().filter(|p| !p.builtin).count() > 0;
+                                        let del_enabled = !active_is_builtin && has_user;
+                                        if widgets::icon_only_button(
+                                            ui,
+                                            &theme,
+                                            icons::trash(),
+                                            del_enabled,
+                                        )
+                                        .on_hover_text(if active_is_builtin {
+                                            "Built-in palettes can't be deleted"
+                                        } else {
+                                            "Delete palette"
+                                        })
+                                        .clicked()
+                                        {
+                                            palettes.0.remove(active_idx);
+                                            if palette_choice.0 >= palettes.0.len() {
+                                                palette_choice.0 =
+                                                    palettes.0.len().saturating_sub(1);
+                                            }
+                                            palette_rename.editing = None;
+                                            io::palettes::save(&palettes.0);
+                                        }
+
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
+                                                let safe_idx = palette_choice
+                                                    .0
+                                                    .min(palettes.0.len().saturating_sub(1));
+                                                let current = &palettes.0[safe_idx];
+                                                let export_name = current.name.clone();
+                                                let export_colors = current.colors.clone();
+                                                let default_filename = format!(
+                                                    "{}.ase",
+                                                    palette::sanitize_filename(&current.name)
+                                                );
+                                                if widgets::icon_only_button(
+                                                    ui,
+                                                    &theme,
+                                                    icons::download(),
+                                                    !dialog_busy,
+                                                )
+                                                .on_hover_text("Export .ase…")
+                                                .clicked()
+                                                {
+                                                    pending.spawn(async move {
+                                                        rfd::AsyncFileDialog::new()
+                                                            .add_filter(
+                                                                "Adobe Swatch Exchange",
+                                                                &["ase"],
+                                                            )
+                                                            .set_file_name(&default_filename)
+                                                            .save_file()
+                                                            .await
+                                                            .map(|f| {
+                                                                DialogResult::ExportAse(
+                                                                    f.path().to_path_buf(),
+                                                                    export_name,
+                                                                    export_colors,
+                                                                )
+                                                            })
+                                                    });
+                                                }
+                                                if widgets::icon_only_button(
+                                                    ui,
+                                                    &theme,
+                                                    icons::upload(),
+                                                    !dialog_busy,
+                                                )
+                                                .on_hover_text("Import .ase…")
+                                                .clicked()
+                                                {
+                                                    pending.spawn(async move {
+                                                        rfd::AsyncFileDialog::new()
+                                                            .add_filter(
+                                                                "Adobe Swatch Exchange",
+                                                                &["ase"],
+                                                            )
+                                                            .pick_file()
+                                                            .await
+                                                            .map(|f| {
+                                                                DialogResult::ImportAse(
+                                                                    f.path().to_path_buf(),
+                                                                )
+                                                            })
+                                                    });
+                                                }
+                                            },
                                         );
-                                        if widgets::icon_only_button(
+                                    });
+
+                                    // Refresh — toolbar may have added/removed palettes.
+                                    active_idx =
+                                        palette_choice.0.min(palettes.0.len().saturating_sub(1));
+                                    palette_choice.0 = active_idx;
+                                    active_is_builtin = palettes.0[active_idx].builtin;
+
+                                    if !active_is_builtin {
+                                        ui.add_space(space::SX);
+                                        let add_enabled =
+                                            !palettes.0[active_idx].colors.contains(&color.0);
+                                        if widgets::wide_action_button(
                                             ui,
                                             &theme,
-                                            icons::download(),
-                                            !dialog_busy,
+                                            icons::plus(),
+                                            "Add current color",
+                                            row_w,
+                                            add_enabled,
                                         )
-                                        .on_hover_text("Export .ase…")
+                                        .on_hover_text(if !add_enabled {
+                                            "Color already in palette"
+                                        } else {
+                                            "Add current color as a swatch"
+                                        })
                                         .clicked()
                                         {
-                                            pending.spawn(async move {
-                                                rfd::AsyncFileDialog::new()
-                                                    .add_filter("Adobe Swatch Exchange", &["ase"])
-                                                    .set_file_name(&default_filename)
-                                                    .save_file()
-                                                    .await
-                                                    .map(|f| {
-                                                        DialogResult::ExportAse(
-                                                            f.path().to_path_buf(),
-                                                            export_name,
-                                                            export_colors,
-                                                        )
-                                                    })
-                                            });
+                                            palettes.0[active_idx].colors.push(color.0);
+                                            io::palettes::save(&palettes.0);
                                         }
-                                        if widgets::icon_only_button(
+                                    }
+
+                                    ui.add_space(space::SM);
+                                    let mut reorder: Option<(usize, usize)> = None;
+                                    let mut remove_idx: Option<usize> = None;
+                                    let active_palette = palettes.0[active_idx].colors.clone();
+                                    let editable = !active_is_builtin;
+                                    if active_palette.is_empty() {
+                                        widgets::hint_label(
                                             ui,
                                             &theme,
-                                            icons::upload(),
-                                            !dialog_busy,
-                                        )
-                                        .on_hover_text("Import .ase…")
-                                        .clicked()
-                                        {
-                                            pending.spawn(async move {
-                                                rfd::AsyncFileDialog::new()
-                                                    .add_filter("Adobe Swatch Exchange", &["ase"])
-                                                    .pick_file()
-                                                    .await
-                                                    .map(|f| {
-                                                        DialogResult::ImportAse(
-                                                            f.path().to_path_buf(),
-                                                        )
-                                                    })
-                                            });
-                                        }
-                                    },
-                                );
-                            });
-
-                            // Refresh — toolbar may have added/removed palettes.
-                            active_idx = palette_choice.0.min(palettes.0.len().saturating_sub(1));
-                            palette_choice.0 = active_idx;
-                            active_is_builtin = palettes.0[active_idx].builtin;
-
-                            if !active_is_builtin {
-                                ui.add_space(space::SX);
-                                let add_enabled = !palettes.0[active_idx].colors.contains(&color.0);
-                                if widgets::wide_action_button(
-                                    ui,
-                                    &theme,
-                                    icons::plus(),
-                                    "Add current color",
-                                    row_w,
-                                    add_enabled,
-                                )
-                                .on_hover_text(if !add_enabled {
-                                    "Color already in palette"
-                                } else {
-                                    "Add current color as a swatch"
-                                })
-                                .clicked()
-                                {
-                                    palettes.0[active_idx].colors.push(color.0);
-                                    io::palettes::save(&palettes.0);
-                                }
-                            }
-
-                            ui.add_space(space::SM);
-                            let mut reorder: Option<(usize, usize)> = None;
-                            let mut remove_idx: Option<usize> = None;
-                            let active_palette = palettes.0[active_idx].colors.clone();
-                            let editable = !active_is_builtin;
-                            if active_palette.is_empty() {
-                                widgets::hint_label(
-                                    ui,
-                                    &theme,
-                                    if editable {
-                                        "No swatches yet — add the current color above"
+                                            if editable {
+                                                "No swatches yet — add the current color above"
+                                            } else {
+                                                "Built-in palette — duplicate to add swatches"
+                                            },
+                                        );
                                     } else {
-                                        "Built-in palette — duplicate to add swatches"
-                                    },
-                                );
-                            } else {
-                                widgets::swatch_grid(ui, |ui| {
-                                    for (si, c) in active_palette.iter().enumerate() {
-                                        let col = egui::Color32::from_rgba_unmultiplied(
-                                            c[0], c[1], c[2], 255,
+                                        widgets::swatch_grid(ui, |ui| {
+                                            for (si, c) in active_palette.iter().enumerate() {
+                                                let col = egui::Color32::from_rgba_unmultiplied(
+                                                    c[0], c[1], c[2], 255,
+                                                );
+                                                let is_current = color.0 == *c;
+                                                let swatch_id =
+                                                    egui::Id::new(("swatch", active_idx, si));
+                                                let mut clicked = false;
+                                                let resp = if editable {
+                                                    ui.dnd_drag_source(swatch_id, si, |ui| {
+                                                        let r = widgets::swatch_button(
+                                                            ui,
+                                                            &theme,
+                                                            col,
+                                                            swatch::PALETTE,
+                                                            radius::XS,
+                                                            is_current,
+                                                        );
+                                                        clicked = r.clicked();
+                                                        r
+                                                    })
+                                                    .response
+                                                } else {
+                                                    let r = widgets::swatch_button(
+                                                        ui,
+                                                        &theme,
+                                                        col,
+                                                        swatch::PALETTE,
+                                                        radius::XS,
+                                                        is_current,
+                                                    );
+                                                    clicked = r.clicked();
+                                                    r
+                                                };
+                                                if clicked {
+                                                    color.0 = *c;
+                                                }
+                                                if editable {
+                                                    egui::Popup::context_menu(&resp).show(|ui| {
+                                                        if ui.button("Remove").clicked() {
+                                                            remove_idx = Some(si);
+                                                            ui.close();
+                                                        }
+                                                    });
+                                                }
+                                                resp.clone().on_hover_text(format!(
+                                                    "{}{}",
+                                                    widgets::hex_string([c[0], c[1], c[2]]),
+                                                    if editable {
+                                                        "  (drag to reorder, right-click to remove)"
+                                                    } else {
+                                                        ""
+                                                    },
+                                                ));
+                                                if editable {
+                                                    if let (Some(payload), true) = (
+                                                        resp.dnd_release_payload::<usize>(),
+                                                        resp.dnd_hover_payload::<usize>().is_some()
+                                                            || resp
+                                                                .dnd_release_payload::<usize>()
+                                                                .is_some(),
+                                                    ) {
+                                                        let from = *payload;
+                                                        if from != si {
+                                                            reorder = Some((from, si));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
+                                    if let Some(i) = remove_idx {
+                                        palettes.0[active_idx].colors.remove(i);
+                                        io::palettes::save(&palettes.0);
+                                    }
+                                    if let Some((from, to)) = reorder {
+                                        let colors = &mut palettes.0[active_idx].colors;
+                                        if from < colors.len() && to < colors.len() {
+                                            let c = colors.remove(from);
+                                            colors.insert(to, c);
+                                            io::palettes::save(&palettes.0);
+                                        }
+                                    }
+                                    if active_is_builtin && !active_palette.is_empty() {
+                                        ui.add_space(space::SX);
+                                        widgets::hint_label(
+                                            ui,
+                                            &theme,
+                                            "Built-in palette — duplicate to add swatches",
                                         );
-                                        let is_current = color.0 == *c;
-                                        let swatch_id = egui::Id::new(("swatch", active_idx, si));
-                                        let mut clicked = false;
-                                        let resp = if editable {
-                                            ui.dnd_drag_source(swatch_id, si, |ui| {
-                                                let r = widgets::swatch_button(
+                                    }
+                                });
+
+                                // Recent section
+                                widgets::section(ui, &theme, "Recent", |ui| {
+                                    if recent.0.is_empty() {
+                                        widgets::hint_label(ui, &theme, "No recent colors");
+                                    } else {
+                                        widgets::swatch_grid(ui, |ui| {
+                                            for c in &recent.0 {
+                                                let col = egui::Color32::from_rgba_unmultiplied(
+                                                    c[0], c[1], c[2], 255,
+                                                );
+                                                let is_current = color.0 == *c;
+                                                let resp = widgets::swatch_button(
                                                     ui,
                                                     &theme,
                                                     col,
-                                                    swatch::PALETTE,
+                                                    swatch::RECENT,
                                                     radius::XS,
                                                     is_current,
                                                 );
-                                                clicked = r.clicked();
-                                                r
-                                            })
-                                            .response
-                                        } else {
-                                            let r = widgets::swatch_button(
-                                                ui,
-                                                &theme,
-                                                col,
-                                                swatch::PALETTE,
-                                                radius::XS,
-                                                is_current,
-                                            );
-                                            clicked = r.clicked();
-                                            r
-                                        };
-                                        if clicked {
-                                            color.0 = *c;
-                                        }
-                                        if editable {
-                                            egui::Popup::context_menu(&resp).show(|ui| {
-                                                if ui.button("Remove").clicked() {
-                                                    remove_idx = Some(si);
-                                                    ui.close();
+                                                if resp.clicked() {
+                                                    color.0 = *c;
                                                 }
-                                            });
-                                        }
-                                        resp.clone().on_hover_text(format!(
-                                            "{}{}",
-                                            widgets::hex_string([c[0], c[1], c[2]]),
-                                            if editable {
-                                                "  (drag to reorder, right-click to remove)"
-                                            } else {
-                                                ""
-                                            },
-                                        ));
-                                        if editable {
-                                            if let (Some(payload), true) = (
-                                                resp.dnd_release_payload::<usize>(),
-                                                resp.dnd_hover_payload::<usize>().is_some()
-                                                    || resp
-                                                        .dnd_release_payload::<usize>()
-                                                        .is_some(),
-                                            ) {
-                                                let from = *payload;
-                                                if from != si {
-                                                    reorder = Some((from, si));
-                                                }
+                                                resp.on_hover_text(widgets::hex_string([
+                                                    c[0], c[1], c[2],
+                                                ]));
                                             }
-                                        }
+                                        });
                                     }
                                 });
-                            }
-                            if let Some(i) = remove_idx {
-                                palettes.0[active_idx].colors.remove(i);
-                                io::palettes::save(&palettes.0);
-                            }
-                            if let Some((from, to)) = reorder {
-                                let colors = &mut palettes.0[active_idx].colors;
-                                if from < colors.len() && to < colors.len() {
-                                    let c = colors.remove(from);
-                                    colors.insert(to, c);
-                                    io::palettes::save(&palettes.0);
-                                }
-                            }
-                            if active_is_builtin && !active_palette.is_empty() {
-                                ui.add_space(space::SX);
-                                widgets::hint_label(
-                                    ui,
-                                    &theme,
-                                    "Built-in palette — duplicate to add swatches",
-                                );
-                            }
-                        });
 
-                        // Recent section
-                        widgets::section(ui, &theme, "Recent", |ui| {
-                            if recent.0.is_empty() {
-                                widgets::hint_label(ui, &theme, "No recent colors");
-                            } else {
-                                widgets::swatch_grid(ui, |ui| {
-                                    for c in &recent.0 {
-                                        let col = egui::Color32::from_rgba_unmultiplied(
-                                            c[0], c[1], c[2], 255,
-                                        );
-                                        let is_current = color.0 == *c;
-                                        let resp = widgets::swatch_button(
+                                // Selection section — only when there's an active region.
+                                if let Some(aabb) = selection.aabb {
+                                    widgets::section(ui, &theme, "Selection", |ui| {
+                                        let extents = aabb.extents();
+                                        widgets::stat_row(
                                             ui,
                                             &theme,
-                                            col,
-                                            swatch::RECENT,
-                                            radius::XS,
-                                            is_current,
+                                            "Bounds",
+                                            format!(
+                                                "{} × {} × {}",
+                                                extents.x, extents.y, extents.z
+                                            ),
                                         );
-                                        if resp.clicked() {
-                                            color.0 = *c;
-                                        }
-                                        resp.on_hover_text(widgets::hex_string([c[0], c[1], c[2]]));
-                                    }
-                                });
-                            }
-                        });
-
-                        // Selection section — only when there's an active region.
-                        if let Some(aabb) = selection.aabb {
-                            widgets::section(ui, &theme, "Selection", |ui| {
-                                let extents = aabb.extents();
-                                widgets::stat_row(
-                                    ui,
-                                    &theme,
-                                    "Bounds",
-                                    format!("{} × {} × {}", extents.x, extents.y, extents.z),
-                                );
-                                widgets::stat_row(
-                                    ui,
-                                    &theme,
-                                    "Voxels",
-                                    selection.voxel_count(&grid).to_string(),
-                                );
+                                        widgets::stat_row(
+                                            ui,
+                                            &theme,
+                                            "Voxels",
+                                            selection.voxel_count(&grid).to_string(),
+                                        );
+                                    });
+                                }
                             });
-                        }
-                    });
-                });
-        });
-    let right_rect = right_resp.response.rect;
-    onboarding_anchors.color_palette = Some(right_rect);
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("right_panel_edge"),
-    ))
-    .vline(
-        right_rect.left(),
-        right_rect.y_range(),
-        egui::Stroke::new(stroke::HAIR, BORDER),
-    );
+                        });
+                }),
+        )
+    } else {
+        None
+    };
+    if let Some(resp) = inspector_resp {
+        let rect = resp.response.rect;
+        onboarding_anchors.color_palette = Some(rect);
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("inspector_panel_edge"),
+        ));
+        painter.vline(
+            painter.round_to_pixel_center(rect.right()),
+            rect.y_range(),
+            egui::Stroke::new(stroke::HAIR, BORDER),
+        );
+    }
 
     // Reflect tool in cursor when pointer is over the viewport.
     if !ctx.is_pointer_over_area() {
@@ -1322,6 +1358,15 @@ pub fn ui_system(
                 ui.checkbox(&mut prefs.show_origin_axes, "Show origin axes");
                 ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_y_axis, "Show Y axis line");
+                ui.add_space(space::XXS);
+                ui.checkbox(&mut prefs.show_status_chip, "Show status chip");
+                ui.add_space(space::XXS);
+                ui.checkbox(&mut prefs.show_tool_labels, "Show tool labels");
+                #[cfg(not(target_os = "macos"))]
+                {
+                    ui.add_space(space::XXS);
+                    ui.checkbox(&mut prefs.show_floating_menu_bar, "Show floating menu bar");
+                }
             });
         });
         if !open_flag {

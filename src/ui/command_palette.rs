@@ -5,7 +5,7 @@ use crate::camera::{
 use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
-use crate::theme::{NUNITO_700_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref};
+use crate::theme::{INTER_SEMIBOLD_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
@@ -815,7 +815,7 @@ pub fn draw(
 
     egui::Window::new(
         egui::RichText::new("Command palette")
-            .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
+            .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
             .size(font::BODY),
     )
     .collapsible(false)

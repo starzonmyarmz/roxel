@@ -108,7 +108,7 @@ mod tests {
         let dark = resolve_canvas_color(&prefs, &Theme::dark());
         assert_eq!(dark, [0x1C, 0x1C, 0x1E]);
         let light = resolve_canvas_color(&prefs, &Theme::light());
-        assert_eq!(light, [0xFC, 0xFC, 0xFD]);
+        assert_eq!(light, [0xF2, 0xF3, 0xF6]);
     }
 
     #[test]
@@ -219,6 +219,32 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_floating_ui_fields() {
+        // preferences.ron written before the floating-UI redesign must still
+        // load with the new fields populated from their defaults.
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_y_axis: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(p.show_status_chip);
+        assert!(!p.show_tool_labels);
+        assert_eq!(p.show_floating_menu_bar, !cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn preferences_roundtrip_floating_ui_fields() {
+        let prefs = Preferences {
+            show_status_chip: false,
+            show_tool_labels: true,
+            show_floating_menu_bar: true,
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert!(!parsed.show_status_chip);
+        assert!(parsed.show_tool_labels);
+        assert!(parsed.show_floating_menu_bar);
+    }
+
+    #[test]
     fn preferences_loads_after_floor_fields_removed() {
         // Older preferences.ron carrying now-removed fields (`show_floor`,
         // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
@@ -247,6 +273,12 @@ pub struct Preferences {
     pub last_update_check: Option<SystemTime>,
     #[serde(default = "default_onboarding_seen")]
     pub onboarding_seen: bool,
+    #[serde(default = "default_show_status_chip")]
+    pub show_status_chip: bool,
+    #[serde(default = "default_show_tool_labels")]
+    pub show_tool_labels: bool,
+    #[serde(default = "default_show_floating_menu_bar")]
+    pub show_floating_menu_bar: bool,
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -264,6 +296,15 @@ fn default_show_origin_axes() -> bool {
 fn default_onboarding_seen() -> bool {
     false
 }
+fn default_show_status_chip() -> bool {
+    true
+}
+fn default_show_tool_labels() -> bool {
+    false
+}
+fn default_show_floating_menu_bar() -> bool {
+    !cfg!(target_os = "macos")
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -276,6 +317,9 @@ impl Default for Preferences {
             color_space: ColorSpace::default(),
             last_update_check: None,
             onboarding_seen: default_onboarding_seen(),
+            show_status_chip: default_show_status_chip(),
+            show_tool_labels: default_show_tool_labels(),
+            show_floating_menu_bar: default_show_floating_menu_bar(),
         }
     }
 }
@@ -300,7 +344,7 @@ pub enum CanvasBgPref {
 pub fn canvas_match_color(mode: ThemeMode) -> [u8; 3] {
     match mode {
         ThemeMode::Dark => [0x1C, 0x1C, 0x1E],
-        ThemeMode::Light => [0xFC, 0xFC, 0xFD],
+        ThemeMode::Light => [0xF2, 0xF3, 0xF6],
     }
 }
 
@@ -378,57 +422,81 @@ pub fn refresh_theme_system(
     *theme = resolve_theme(prefs.theme);
 }
 
-const NUNITO_400: &[u8] = include_bytes!("../assets/Nunito-400.ttf");
-const NUNITO_500: &[u8] = include_bytes!("../assets/Nunito-500.ttf");
-const NUNITO_600: &[u8] = include_bytes!("../assets/Nunito-600.ttf");
-const NUNITO_700: &[u8] = include_bytes!("../assets/Nunito-700.ttf");
-const DM_MONO_400: &[u8] = include_bytes!("../assets/DMMono-400.ttf");
+const INTER_MEDIUM: &[u8] = include_bytes!("../assets/Inter-Medium.ttf");
+const INTER_SEMIBOLD: &[u8] = include_bytes!("../assets/Inter-SemiBold.ttf");
 
-pub const NUNITO_500_FAMILY: &str = "Nunito500";
-pub const NUNITO_600_FAMILY: &str = "Nunito600";
-pub const NUNITO_700_FAMILY: &str = "Nunito700";
+pub const INTER_SEMIBOLD_FAMILY: &str = "InterSemiBold";
 
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    let nunito_400_name = "Nunito400".to_string();
-    let dm_mono_name = "DMMono400".to_string();
+    let inter_medium = "InterMedium".to_string();
+    fonts.font_data.insert(
+        inter_medium.clone(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_MEDIUM)),
+    );
+    fonts.font_data.insert(
+        INTER_SEMIBOLD_FAMILY.to_string(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_SEMIBOLD)),
+    );
 
-    for (name, bytes) in [
-        (nunito_400_name.clone(), NUNITO_400),
-        (NUNITO_500_FAMILY.to_string(), NUNITO_500),
-        (NUNITO_600_FAMILY.to_string(), NUNITO_600),
-        (NUNITO_700_FAMILY.to_string(), NUNITO_700),
-        (dm_mono_name.clone(), DM_MONO_400),
-    ] {
-        fonts.font_data.insert(
-            name.clone(),
-            std::sync::Arc::new(egui::FontData::from_static(bytes)),
-        );
-    }
-
-    // Proportional default → Nunito 400.
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, nunito_400_name);
+        .insert(0, inter_medium);
 
-    // Monospace default → DM Mono 400.
-    fonts
-        .families
-        .entry(egui::FontFamily::Monospace)
-        .or_default()
-        .insert(0, dm_mono_name);
+    fonts.families.insert(
+        egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()),
+        vec![INTER_SEMIBOLD_FAMILY.to_string()],
+    );
 
-    // Named families for heavier weights (use via FontFamily::Name).
-    for fam in [NUNITO_500_FAMILY, NUNITO_600_FAMILY, NUNITO_700_FAMILY] {
+    if let Some(bytes) = load_system_monospace() {
+        let name = "system_mono".to_string();
+        fonts.font_data.insert(
+            name.clone(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
         fonts
             .families
-            .insert(egui::FontFamily::Name(fam.into()), vec![fam.to_string()]);
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, name);
     }
 
     ctx.set_fonts(fonts);
+}
+
+fn load_first_existing(paths: &[&str]) -> Option<Vec<u8>> {
+    for p in paths {
+        if let Ok(bytes) = std::fs::read(p) {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+fn load_system_monospace() -> Option<Vec<u8>> {
+    #[cfg(target_os = "macos")]
+    let paths: &[&str] = &[
+        "/System/Library/Fonts/SFNSMono.ttf",
+        "/System/Library/Fonts/Monaco.ttf",
+    ];
+    #[cfg(target_os = "windows")]
+    let paths: &[&str] = &[
+        "C:\\Windows\\Fonts\\consola.ttf",
+        "C:\\Windows\\Fonts\\cour.ttf",
+    ];
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let paths: &[&str] = &[
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
+        "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    ];
+    load_first_existing(paths)
 }
 
 pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
@@ -501,10 +569,11 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     style.interaction.selectable_labels = false;
 
     use egui::{FontFamily, FontId, TextStyle};
-    let bold = FontFamily::Name(NUNITO_700_FAMILY.into());
-    style
-        .text_styles
-        .insert(TextStyle::Heading, FontId::new(font::HEADING, bold.clone()));
+    let semibold = FontFamily::Name(INTER_SEMIBOLD_FAMILY.into());
+    style.text_styles.insert(
+        TextStyle::Heading,
+        FontId::new(font::HEADING, semibold.clone()),
+    );
     style.text_styles.insert(
         TextStyle::Body,
         FontId::new(font::BODY, FontFamily::Proportional),

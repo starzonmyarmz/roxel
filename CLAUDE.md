@@ -121,17 +121,27 @@ The menu mirrors `ui.rs`'s File/Edit buttons — when adding a new dialog-driven
 
 ### UI structure
 
-`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out four panels: top bar (file/edit + Preferences button on the right), bottom status bar (right-aligned: `Design WxHxD` from `grid.bounding_box()` — em-dash when empty — plus voxel count and `Zoom N voxels` from the orbit radius), left tool rail, right inspector (color swatch + popup picker, palette selector with built-ins + user palettes + add/new/dup/rename/delete + drag-reorder, `.ase` import/export, recent colors, shape options, scene stats). The active palette lives in `Palettes` (resource) indexed by `PaletteChoice`; both are `init_resource`'d / `insert_resource`'d (`Palettes::with_user_loaded`) in `main.rs`.
+`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out one anchored panel plus two floating surfaces over the canvas:
 
-Sections in the inspector are flat: bold title, then content, then a thin full-width divider — no card frames. The divider spans the full panel width by painting at `ui.clip_rect().x_range()` rather than `ui.available_width()`. Side-panel left/right edges are drawn as a single 0.5-px vline via `ctx.layer_painter(LayerId::new(Order::Middle, …))` so popups (Foreground) draw over them; the panel `egui::Frame` itself has no stroke.
+- **Left inspector** (`SidePanel::left`) — color swatch + popup picker, palette selector with built-ins + user palettes + add/new/dup/rename/delete + drag-reorder, `.ase` import/export, recent colors, shape options, scene stats. Top section "Status" shows `Size W×H×D` / `Voxels N` / `Zoom N voxels` (gated on `prefs.show_status_chip`) — replaces the old bottom status bar. The panel has no separator line; the right edge is implicit because nothing else is anchored there.
+- **Floating tool island** (`ui/floating.rs::tool_island`) — pinned to right-center via `egui::Area` with pivot `RIGHT_CENTER` against `ctx.available_rect()`. Icon-only by default; `prefs.show_tool_labels` adds a dim caption under each tool button. The long-press shape picker now opens to the **left** of its anchor (`Align2::RIGHT_TOP`) since the rail itself is on the right edge.
+- **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center File/Edit controls, Win/Linux only and gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu (see `menu.rs`).
+
+Both floating surfaces share `pill_frame` (panel fill, hairline border, `radius::PILL` corners, soft drop shadow) and `floating_area` (Foreground order, fixed-pos + pivot anchor). `space::FLOAT_GAP` is the canvas-edge inset.
+
+**Focus mode**: `ui/visibility.rs` exposes `UiVisible` (Resource) and `tab_toggle_system`. Pressing `` ` `` (Backquote) flips `UiVisible.0`, hiding the inspector + both floating surfaces so the canvas takes the full window. Toasts and modals still render so error feedback is never trapped behind the toggle. Backquote was chosen over Tab to avoid colliding with egui's built-in focus-traversal. Gated on `ctx.wants_keyboard_input()` so the key types literally into focused text fields.
+
+**macOS titlebar integration**: the primary window enables `titlebar_transparent`, `titlebar_show_title = false`, and `fullsize_content_view`. The inspector panel reserves `height::MAC_TITLEBAR_GUTTER = 28` px of top inner padding on macOS so contents don't slide under the traffic-light buttons. Win/Linux runs with a normal titlebar and no gutter.
+
+Sections in the inspector are flat: bold title, then content, then a thin full-width divider — no card frames. The divider spans the full panel width by painting at `ui.clip_rect().x_range()` rather than `ui.available_width()`, with `painter.round_to_pixel_center(...)` on the y-coord so the hairline crisps on Retina.
 
 `tool_button`, the big color swatch, palette swatches, and recent swatches use `egui::Button` wrapped in a `ui.scope` that zeroes `spacing.button_padding` and `spacing.interact_size`. This keeps them at their exact requested size while letting egui's AA tessellator render the rounded fills cleanly (the manual-painter version produced jaggies on Retina displays).
 
-Egui labels disable text selection except on numeric values in the stats panel (so users can copy a count or hex without dragging the whole label).
+Egui labels disable text selection except on numeric values in the Status section (so users can copy a count or hex without dragging the whole label).
 
 ### Design tokens
 
-Every spacing, padding, corner radius, font size, icon size, swatch size, stroke width, fixed widget size, container width, and container height in the UI must resolve to a value in `src/ui/tokens.rs` — not an inline literal. Submodules: `font` (SMALL/BODY/HEADING, no font under 12 pt), `radius` (XS/SM/MD/LG as `u8` for `CornerRadius::same`), `space` (scalar `f32` for `ui.add_space`), `gap` (Vec2 for `item_spacing`), `pad` (Vec2 for `button_padding`), `icon` (square sizes + `*_square()` helpers), `swatch` (recent/palette/hero), `stroke` (HAIR/NORMAL/ACCENT), `size` (fixed widget sizes — rule height, icon-button min, dropdown / action-row / command-palette row heights, toast accent bar, prefs label), `width` (container widths — top-bar menu, side panel, modal widths, command palette, toast), `height` (container max heights).
+Every spacing, padding, corner radius, font size, icon size, swatch size, stroke width, fixed widget size, container width, and container height in the UI must resolve to a value in `src/ui/tokens.rs` — not an inline literal. Submodules: `font` (SMALL/BODY/HEADING, no font under 12 pt), `radius` (XS/SM/MD/LG/PILL as `u8` for `CornerRadius::same` — `PILL = 18` is the floating-surface radius), `space` (scalar `f32` for `ui.add_space`; `FLOAT_GAP` is the canvas-edge inset for floating surfaces), `gap` (Vec2 for `item_spacing`), `pad` (Vec2 for `button_padding`), `icon` (square sizes + `*_square()` helpers), `swatch` (recent/palette/hero), `stroke` (HAIR/NORMAL/ACCENT), `size` (fixed widget sizes — rule height, icon-button min, dropdown / action-row / command-palette row heights, toast accent bar, prefs label), `width` (container widths — pill menu, side panel, modal widths, command palette, toast, plus floating-surface sizing tokens `FLOAT_MENU` / `STATUS_CHIP_MIN` / `TOOL_ISLAND`), `height` (container max heights — `FLOAT_MENU`, `STATUS_CHIP`, and `MAC_TITLEBAR_GUTTER` for the transparent-titlebar inset).
 
 All values land on a 4-px grid and are even. The token guard tests in `tokens::tests` enforce this — if you add a new constant, keep it even and ≥ 12 pt for fonts, or extend the guards explicitly. **Never inline a literal radius, padding, gap, or font size in a UI call site.** If no token fits, add one rather than hardcoding. Colors stay in `Theme` (`theme.rs`) — they swap with theme mode, so they don't belong with the static tokens.
 
@@ -139,9 +149,9 @@ All values land on a 4-px grid and are even. The token guard tests in `tokens::t
 
 Reusable egui widget helpers live in `src/ui/widgets.rs`:
 
-- Structural: `section` (titled block + full-width divider), `prefs_row` (settings-modal label + content row), `modal_window` (centred themed `egui::Window` builder used by Preferences + New-project), `swatch_grid` (zero-padding `horizontal_wrapped` for swatch rows), `vertical_rule`.
-- Buttons: `tool_button` (left rail), `icon_button` (top bar text + icon), `icon_only_button` (palette toolbar), `wide_action_button` ("Add current color" style full-width row), `dialog_button` (modal Create/Cancel rows; `primary` = accent fill), `chip_button` (generic selectable toggle, used by Theme: System/Light/Dark), `swatch_button` (foreground/palette/recent colour squares).
-- Labels: `stat_row` (label + right-aligned monospace value), `hint_label` (dim italic body text), `status_label` (status-bar readout), `hex_label` / `hex_string` (canonical `#RRGGBB` rendering), `tool_label` (`Tool` → display string), `plane_color_row` (radio + custom-colour pref row).
+- Structural: `section` (titled block + full-width divider), `prefs_row` (settings-modal label + content row), `modal_window` (centred themed `egui::Window` builder used by Preferences + New-project), `swatch_grid` (zero-padding `horizontal_wrapped` for swatch rows), `vertical_rule`. Floating-surface helpers (`pill_frame`, `floating_area`, `tool_island`, `pill_menu`) live in `ui/floating.rs` — reach for those when adding canvas-overlay UI rather than registering a new `SidePanel`.
+- Buttons: `tool_button` (floating tool island), `icon_button` (pill menu text + icon), `icon_only_button` (palette toolbar), `wide_action_button` ("Add current color" style full-width row), `dialog_button` (modal Create/Cancel rows; `primary` = accent fill), `chip_button` (generic selectable toggle, used by Theme: System/Light/Dark), `swatch_button` (foreground/palette/recent colour squares).
+- Labels: `stat_row` (label + right-aligned monospace value, used by Status section), `hint_label` (dim italic body text), `status_label` (dim readout — kept for future use after the bottom bar was retired), `hex_label` / `hex_string` (canonical `#RRGGBB` rendering), `tool_label` (`Tool` → display string), `plane_color_row` (radio + custom-colour pref row).
 
 **Prefer these over hand-rolling new one-off styles.** When adding UI, reach for an existing helper first. Only introduce a new inline pattern if no helper fits and the shape is genuinely single-use; if a second call site appears, promote it to `widgets.rs` rather than copying. Helpers own the `ui.scope` + `spacing_mut` boilerplate, the themed strokes/fills, the corner radii, and the title font selection — duplicating those inline drifts the look over time. The same rule applies to modal frames (`modal_window`) and section dividers (`section`): never reach for `egui::Window::new` or hand-painted hlines directly.
 
@@ -149,7 +159,7 @@ Reusable egui widget helpers live in `src/ui/widgets.rs`:
 
 User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a `Resource` holding a capped `VecDeque<Toast>` (max 4 visible, oldest evicted). Call sites use `toasts.success(msg)` / `toasts.error(msg)` / `toasts.info(msg)`; `toast_lifetime_system` ticks each toast's `remaining` field down by `time.delta_secs()` and removes expired ones. Success TTL is 3.5 s, error 6 s (errors linger for readability).
 
-`draw_toasts` runs last in `ui_system` and anchors the stack to **bottom-center of the canvas** (`ctx.available_rect()` after all panels have been registered), pivot `CENTER_BOTTOM`, so newest toast sits closest to the action and the stack grows upward without colliding with the status bar.
+`draw_toasts` runs last in `ui_system` and anchors the stack to **bottom-center of the canvas** (`ctx.available_rect()` after all panels have been registered), pivot `CENTER_BOTTOM`, so newest toast sits closest to the action and grows upward into the open canvas. Toasts always render, even in focus mode (Backquote), so I/O errors are never trapped behind the toggle.
 
 **Never reintroduce `eprintln!` for user-facing I/O errors.** All save/open/export/import paths in `ui/dialogs.rs` (and `snapshot.rs`'s PNG observer) emit toasts; terminal output is invisible to packaged-app users. Internal diagnostics (dropped-voxel counts, multi-model warnings) can still go to stderr — those aren't actionable.
 
@@ -159,11 +169,14 @@ User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a
 
 `Preferences` (`theme.rs`) carries:
 - `theme: ThemePref { Light, Dark, System }`
-- `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly.
+- `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly. Light = `#F2F3F6`, Dark = `#1C1C1E`.
 - `show_floor_grid: bool` (default true) — Minecraft-style grid lines on the y=0 plane.
 - `show_origin_axes: bool` (default true) — RGB axis triad at world origin (red X, green Y, blue Z). When false, the entire triad is hidden including the long Y extension.
 - `show_y_axis: bool` (default true) — extends the green Y-axis up into the sky as a vertical origin anchor. Gated by `show_origin_axes`.
 - `color_space: ColorSpace` (default `Hex`) — active readout/edit space in the inspector Color section. Variants: `Hex`, `Rgb`, `Hsl`, `Hsb`, `Oklch`. Conversions live in `src/color_space.rs`; sRGB 8-bit storage round-trips losslessly through all variants within ±1/255 (OKLCH reuses `mesh::srgb_to_linear` / `linear_to_srgb`). The editable inspector fields are backed by the `ColorEditBuffer` resource — string slots repopulated whenever `CurrentColor` or the active space changes, so keystrokes don't round-trip through `Color8` mid-edit (which would drop hue on greys and quantise OKLCH chroma). Commit on `lost_focus` (Enter / Tab / click-away); invalid input silently reverts.
+- `show_status_chip: bool` (default true) — show the Status section (Size / Voxels / Zoom) at the top of the inspector. Off = recover the vertical space.
+- `show_tool_labels: bool` (default false) — dim caption under each tool button in the floating island.
+- `show_floating_menu_bar: bool` (default `!cfg!(target_os = "macos")`) — show the top-center pill menu on Win/Linux. macOS users get the native menu either way; the field still exists on macOS for cross-platform pref-file portability.
 
 Every field after `theme` is `#[serde(default = "...")]` (or `#[serde(default)]` if the field's type carries `Default`) so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_after_floor_fields_removed` guards this.
 
@@ -177,14 +190,16 @@ There is no floor plane. `floor_grid_system` (`main.rs`) draws the y=0 grid as i
 
 ### Fonts
 
-`install_fonts` (`theme.rs`) registers five static TTFs embedded via `include_bytes!`:
+`install_fonts` (`theme.rs`) registers two static TTFs embedded via `include_bytes!`:
 
-- Nunito 400 / 500 / 600 / 700 (proportional default = 400; named families `Nunito500` / `Nunito600` / `Nunito700` for explicit weights)
-- DM Mono 400 (monospace default; used by `.monospace()` RichText for hex codes and stat values)
+- Inter Medium (proportional default; named family `"InterMedium"`)
+- Inter SemiBold (named family `INTER_SEMIBOLD_FAMILY = "InterSemiBold"`, used for headings, section titles, and the command-palette title)
 
-For real bold (not faux), reference `egui::FontFamily::Name(NUNITO_700_FAMILY.into())` instead of `.strong()` — `.strong()` only adds an extra stroke pass, it doesn't switch font family.
+Monospace is **not embedded** — `load_system_monospace` reads the platform's stock mono font from disk (`SFNSMono` / `Monaco` on macOS, `consola` / `cour` on Windows, DejaVu / Ubuntu / Liberation on Linux) and registers the first one that exists as the egui monospace family. If none exist, egui falls back to its built-in mono. Used by `.monospace()` RichText for hex codes and stat values.
 
-**Critical scheduling**: `font_setup` runs in `PreUpdate` between `EguiPreUpdateSet::InitContexts` and `EguiPreUpdateSet::BeginPass`. `Context::set_fonts` only takes effect on the next `begin_pass`, so if fonts are installed inside `EguiPrimaryContextPass` (which is after `begin_pass`), the first frame will panic with `"FontFamily::Name(\"Nunito700\") is not bound to any fonts"`.
+For real bold (not faux), reference `egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())` instead of `.strong()` — `.strong()` only adds an extra stroke pass, it doesn't switch font family.
+
+**Critical scheduling**: `font_setup` runs in `PreUpdate` between `EguiPreUpdateSet::InitContexts` and `EguiPreUpdateSet::BeginPass`. `Context::set_fonts` only takes effect on the next `begin_pass`, so if fonts are installed inside `EguiPrimaryContextPass` (which is after `begin_pass`), the first frame will panic with `"FontFamily::Name(\"InterSemiBold\") is not bound to any fonts"`.
 
 ### App icon
 

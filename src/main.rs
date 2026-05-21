@@ -62,8 +62,9 @@ use crate::tools::{
 };
 use crate::ui::{
     CommandPalette, CurrentProjectPath, PaletteChoice, Palettes, PendingDialog, PendingImport,
-    RecentFiles, Toasts, command_palette_shortcut_system, dispatch_command_palette_system,
-    poll_dialogs_system, toast_lifetime_system, ui_system,
+    RecentFiles, Toasts, UiVisible, command_palette_shortcut_system,
+    dispatch_command_palette_system, poll_dialogs_system, tab_toggle_system, toast_lifetime_system,
+    ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 
@@ -82,6 +83,12 @@ fn main() {
             primary_window: Some(Window {
                 title: "Roxel".into(),
                 resolution: (1280u32, 800u32).into(),
+                #[cfg(target_os = "macos")]
+                titlebar_transparent: true,
+                #[cfg(target_os = "macos")]
+                titlebar_show_title: false,
+                #[cfg(target_os = "macos")]
+                fullsize_content_view: true,
                 ..default()
             }),
             ..default()
@@ -137,6 +144,7 @@ fn main() {
         .init_resource::<CommandPalette>()
         .init_resource::<Onboarding>()
         .init_resource::<OnboardingAnchors>()
+        .init_resource::<UiVisible>()
         .init_gizmo_group::<AxisGizmoGroup>()
         .init_gizmo_group::<OriginAxesGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
@@ -224,6 +232,7 @@ fn main() {
             .after(bevy_egui::EguiPreUpdateSet::InitContexts)
             .before(bevy_egui::EguiPreUpdateSet::BeginPass),
     )
+    .add_systems(Update, tab_toggle_system)
     .add_systems(
         bevy_egui::EguiPrimaryContextPass,
         (

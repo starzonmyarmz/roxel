@@ -21,6 +21,7 @@ pub mod radius {
     pub const SM: u8 = 6; // buttons, tool buttons, command palette rows
     pub const MD: u8 = 8; // menus, popups, hero swatch
     pub const LG: u8 = 12; // modal windows
+    pub const PILL: u8 = 18; // floating pill menu, status chip
 }
 
 /// Scalar gaps for `ui.add_space(...)`. Even values; `XS`/`SM`/`MD`/`LG` sit
@@ -36,6 +37,9 @@ pub mod space {
     pub const MD: f32 = 12.0;
     #[allow(dead_code)] // reserved for layout tuning
     pub const LG: f32 = 16.0;
+    /// Margin between canvas edge and a floating UI element (pill menu, tool
+    /// island, status chip).
+    pub const FLOAT_GAP: f32 = 16.0;
     /// Horizontal indent that aligns a row under `size::PREFS_LABEL`.
     /// Equals `size::PREFS_LABEL.x + XS`.
     pub const PREFS_INDENT: f32 = 76.0;
@@ -112,17 +116,39 @@ pub mod size {
 pub mod width {
     #[cfg_attr(target_os = "macos", allow(dead_code))] // native muda menu on mac
     pub const TOP_BAR_MENU: f32 = 180.0; // Import / Export submenus
-    pub const SIDE_PANEL: f32 = 244.0; // right inspector
+    pub const SIDE_PANEL: f32 = 244.0; // left inspector
     pub const MODAL_PREFS: f32 = 340.0;
     pub const MODAL_NEW: f32 = 260.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
     pub const COACHMARK: f32 = 256.0;
+    /// Maximum width of the floating pill menu on Win/Linux. The pill sizes
+    /// itself to its content; this is just an upper bound for layout.
+    #[allow(dead_code)] // reserved for tighter pill layouts
+    pub const FLOAT_MENU: f32 = 320.0;
+    /// Minimum width of the bottom-right status chip. Lets short scenes
+    /// (`0×0×0`) still read as a pill instead of squishing to a circle.
+    #[allow(dead_code)] // reserved if the status chip layout returns
+    pub const STATUS_CHIP_MIN: f32 = 220.0;
+    /// Outer width of the floating tool island (icon-only mode). Labels mode
+    /// expands via egui wrap; no separate token.
+    #[allow(dead_code)] // referenced once egui exposes a fixed-width island layout
+    pub const TOOL_ISLAND: f32 = 56.0;
 }
 
 /// Container heights / max-heights.
 pub mod height {
     pub const COMMAND_PALETTE_MAX: f32 = 360.0;
+    /// Height of the floating pill menu row.
+    #[allow(dead_code)] // reserved for pill-height tuning
+    pub const FLOAT_MENU: f32 = 36.0;
+    /// Height of the floating status chip.
+    #[allow(dead_code)] // reserved for chip-height tuning
+    pub const STATUS_CHIP: f32 = 32.0;
+    /// Reserved vertical space at the top of the macOS window for the
+    /// transparent titlebar + traffic-light buttons when
+    /// `fullsize_content_view` is enabled.
+    pub const MAC_TITLEBAR_GUTTER: f32 = 28.0;
 }
 
 #[cfg(test)]
@@ -138,7 +164,7 @@ mod tests {
 
     #[test]
     fn all_radii_even() {
-        for r in [radius::XS, radius::SM, radius::MD, radius::LG] {
+        for r in [radius::XS, radius::SM, radius::MD, radius::LG, radius::PILL] {
             assert_eq!(r % 2, 0, "radius {r} is odd");
         }
     }
@@ -153,6 +179,7 @@ mod tests {
             space::FOOTER_GROUP,
             space::MD,
             space::LG,
+            space::FLOAT_GAP,
             space::PREFS_INDENT,
         ] {
             assert_eq!(v as u32 % 2, 0, "space {v} is odd");
@@ -198,7 +225,13 @@ mod tests {
             width::COMMAND_PALETTE,
             width::TOAST,
             width::COACHMARK,
+            width::FLOAT_MENU,
+            width::STATUS_CHIP_MIN,
+            width::TOOL_ISLAND,
             height::COMMAND_PALETTE_MAX,
+            height::FLOAT_MENU,
+            height::STATUS_CHIP,
+            height::MAC_TITLEBAR_GUTTER,
         ];
         for v in scalars {
             assert_eq!(v as u32 % 2, 0, "size scalar {v} is odd");
@@ -215,6 +248,7 @@ mod tests {
         assert!(radius::XS < radius::SM);
         assert!(radius::SM < radius::MD);
         assert!(radius::MD < radius::LG);
+        assert!(radius::LG < radius::PILL);
     }
 
     #[test]
@@ -225,6 +259,7 @@ mod tests {
         assert!(space::SM < space::FOOTER_GROUP);
         assert!(space::FOOTER_GROUP < space::MD);
         assert!(space::MD < space::LG);
+        assert!(space::LG <= space::FLOAT_GAP);
     }
 
     #[test]

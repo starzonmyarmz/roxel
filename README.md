@@ -21,6 +21,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Import / export Adobe Swatch Exchange `.ase` palettes
 - In-app toast notifications for save / load / import / export results
 - Light / Dark / System themes with separate canvas and floor color preferences, plus optional Minecraft-style floor grid lines and a permanent RGB axis triad at world origin
+- Canvas-first UI: a single left inspector with floating tool island and (on Win/Linux) a top-center menu pill, all hideable for focus mode
 
 ## Install
 
@@ -71,6 +72,7 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 | `Cmd/Ctrl + 0`           | Frame view on the voxel cluster (panel-aware)                  |
 | `Cmd/Ctrl + Z`           | Undo                                                           |
 | `Cmd/Ctrl + Shift + Z`   | Redo                                                           |
+| `` ` ``                  | Focus mode — toggle inspector + floating chrome                |
 
 Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
 

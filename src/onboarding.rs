@@ -135,16 +135,14 @@ fn resolve_anchor(
         AnchorId::ColorPalette => anchors.color_palette,
         AnchorId::GizmoCube => gizmo.0.map(rect_from_bevy),
         AnchorId::SaveButton => anchors.save_button.or_else(|| {
-            // macOS: no Save button widget — fall back to the top-right of the
-            // viewport so the keyboard-shortcut copy still has somewhere
-            // visually anchored to read from.
+            // macOS / chrome-hidden: no Save button widget — fall back to the
+            // bottom-right of the viewport so the bubble doesn't collide with
+            // the gizmo cube (top-right) or the floating tool island
+            // (right-center).
             let v = viewport.avail.map(rect_from_bevy)?;
             let size = egui::vec2(120.0, 32.0);
-            let top_right = egui::pos2(v.max.x - 12.0, v.min.y + 12.0);
-            Some(egui::Rect::from_min_size(
-                top_right - egui::vec2(size.x, 0.0),
-                size,
-            ))
+            let bottom_right = egui::pos2(v.max.x - 12.0 - size.x, v.max.y - 12.0 - size.y);
+            Some(egui::Rect::from_min_size(bottom_right, size))
         }),
     }
 }
@@ -160,11 +158,11 @@ fn bubble_position(
     let pad = 12.0;
     let raw = match anchor {
         AnchorId::ToolRail => egui::pos2(
-            anchor_rect.right() + pad,
+            anchor_rect.left() - bubble_size.x - pad,
             anchor_rect.center().y - bubble_size.y * 0.5,
         ),
         AnchorId::ColorPalette => egui::pos2(
-            anchor_rect.left() - bubble_size.x - pad,
+            anchor_rect.right() + pad,
             anchor_rect.center().y - bubble_size.y * 0.5,
         ),
         AnchorId::GizmoCube => egui::pos2(
@@ -173,7 +171,7 @@ fn bubble_position(
         ),
         AnchorId::SaveButton => egui::pos2(
             anchor_rect.center().x - bubble_size.x * 0.5,
-            anchor_rect.bottom() + pad,
+            anchor_rect.top() - bubble_size.y - pad,
         ),
         AnchorId::Viewport => egui::pos2(
             anchor_rect.center().x - bubble_size.x * 0.5,

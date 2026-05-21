@@ -1,5 +1,5 @@
 use super::icons;
-use crate::theme::{NUNITO_700_FAMILY, Theme};
+use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
 use crate::ui::tokens::{font, gap, icon, pad, radius, size, space, stroke};
 use bevy_egui::egui;
@@ -17,6 +17,7 @@ pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
     );
 }
 
+#[allow(dead_code)] // referenced only by tests; live tool hint now lives in tooltips
 pub fn tool_hint(t: Tool) -> &'static str {
     match t {
         Tool::Brush => "Click or drag to add voxels. Shift+click for line.",
@@ -162,7 +163,7 @@ pub fn section<R>(
         egui::RichText::new(title)
             .color(theme.text)
             .size(font::BODY)
-            .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into())),
+            .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())),
     );
     ui.add_space(space::SM);
     let r = add(ui);
@@ -170,9 +171,10 @@ pub fn section<R>(
     let sep_rect = ui
         .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
         .0;
-    ui.painter().hline(
+    let painter = ui.painter();
+    painter.hline(
         ui.clip_rect().x_range(),
-        sep_rect.center().y,
+        painter.round_to_pixel_center(sep_rect.center().y),
         egui::Stroke::new(stroke::HAIR, theme.border),
     );
     ui.add_space(space::MD);
@@ -213,7 +215,9 @@ pub fn hint_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     );
 }
 
-/// Dim readout label, non-selectable. Used in status bar.
+/// Dim readout label, non-selectable. Used in former status bar; preserved
+/// for reuse in future read-only readouts.
+#[allow(dead_code)] // reserved
 pub fn status_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     ui.add(
         egui::Label::new(
@@ -298,7 +302,7 @@ pub fn swatch_grid<R>(
     })
 }
 
-/// Themed centred-modal `egui::Window` builder. Nunito-700 14 pt title,
+/// Themed centred-modal `egui::Window` builder. Bold 14 pt title,
 /// non-collapsible, non-resizable, panel-fill frame with 0.5 border and
 /// rounded corners. Caller adds `.show(ctx, |ui| { ... })`.
 pub fn modal_window<'a>(
@@ -309,7 +313,7 @@ pub fn modal_window<'a>(
 ) -> egui::Window<'a> {
     egui::Window::new(
         egui::RichText::new(title)
-            .family(egui::FontFamily::Name(NUNITO_700_FAMILY.into()))
+            .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
             .size(font::BODY),
     )
     .collapsible(false)
