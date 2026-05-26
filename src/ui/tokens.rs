@@ -167,7 +167,6 @@ pub mod size {
     pub const ACTION_ROW_HEIGHT: f32 = 26.0; // wide_action_button, select_row
     pub const DROPDOWN_HEIGHT: f32 = 28.0;
     pub const PREFS_LABEL: Vec2 = Vec2::new(72.0, 20.0);
-    pub const TOAST_ACCENT: Vec2 = Vec2::new(4.0, 20.0); // toast left accent bar
     pub const CMD_PALETTE_ROW: f32 = 30.0;
 }
 
@@ -323,7 +322,7 @@ mod tests {
         for v in scalars {
             assert_eq!(v as u32 % 2, 0, "size scalar {v} is odd");
         }
-        let vecs = [size::ICON_BUTTON, size::PREFS_LABEL, size::TOAST_ACCENT];
+        let vecs = [size::ICON_BUTTON, size::PREFS_LABEL];
         for v in vecs {
             assert_eq!(v.x as u32 % 2, 0, "size vec x={} is odd", v.x);
             assert_eq!(v.y as u32 % 2, 0, "size vec y={} is odd", v.y);

@@ -1,5 +1,6 @@
 use crate::theme::Theme;
-use crate::ui::tokens::{font, radius, size, stroke, width};
+use crate::ui::icons;
+use crate::ui::tokens::{font, icon, radius, shadow, space, width};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use std::collections::VecDeque;
@@ -80,28 +81,33 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
         .pivot(egui::Align2::CENTER_BOTTOM)
         .show(ctx, |ui| {
             ui.set_max_width(width::TOAST);
-            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.spacing_mut().item_spacing.y = space::SX;
             for t in toasts.0.iter() {
-                let accent = match t.kind {
-                    ToastKind::Success => egui::Color32::from_rgb(76, 175, 102),
-                    ToastKind::Error => egui::Color32::from_rgb(220, 90, 90),
-                    ToastKind::Info => theme.accent,
+                let (accent, icon_src) = match t.kind {
+                    ToastKind::Success => (egui::Color32::from_rgb(76, 175, 102), icons::check()),
+                    ToastKind::Error => (egui::Color32::from_rgb(220, 90, 90), icons::x()),
+                    ToastKind::Info => (theme.accent, icons::circle()),
                 };
                 let fade = (t.remaining / FADE_WINDOW).clamp(0.0, 1.0);
-                let fill = lerp_color(theme.surface, theme.panel, fade);
+                // Tint background: take the kind's accent, fade to 14% alpha
+                // against the panel. Reads as a coloured surface, not a card
+                // with a side bar. End-of-life fade lerps the tint back toward
+                // panel so the toast dissolves rather than snapping out.
+                let tinted = blend_alpha(accent, theme.panel, 36);
+                let fill = lerp_color(tinted, theme.panel, fade);
                 egui::Frame::default()
                     .fill(fill)
-                    .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+                    .stroke(egui::Stroke::NONE)
+                    .shadow(shadow::mid())
                     .corner_radius(egui::CornerRadius::same(radius::MD))
-                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .inner_margin(egui::Margin::symmetric(14, 10))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            let (rect, _) =
-                                ui.allocate_exact_size(size::TOAST_ACCENT, egui::Sense::hover());
-                            ui.painter().rect_filled(
-                                rect,
-                                egui::CornerRadius::same(radius::XS),
-                                accent,
+                            ui.spacing_mut().item_spacing.x = space::SM;
+                            ui.add(
+                                egui::Image::new(icon_src)
+                                    .fit_to_exact_size(icon::md_square())
+                                    .tint(accent),
                             );
                             ui.add(
                                 egui::Label::new(
@@ -115,6 +121,22 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                     });
             }
         });
+}
+
+/// Blend `fg` over `bg` at alpha (0..255). Used so the toast accent reads as a
+/// translucent tint on the panel without relying on egui's alpha-compositing
+/// for the underlying drop shadow (which clips at the frame edge).
+fn blend_alpha(fg: egui::Color32, bg: egui::Color32, alpha: u8) -> egui::Color32 {
+    let a = alpha as u16;
+    let inv = 255 - a;
+    let mix = |f: u8, b: u8| -> u8 {
+        (((f as u16) * a + (b as u16) * inv + 127) / 255).clamp(0, 255) as u8
+    };
+    egui::Color32::from_rgb(
+        mix(fg.r(), bg.r()),
+        mix(fg.g(), bg.g()),
+        mix(fg.b(), bg.b()),
+    )
 }
 
 fn lerp_color(from: egui::Color32, to: egui::Color32, t: f32) -> egui::Color32 {
