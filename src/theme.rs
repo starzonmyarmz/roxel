@@ -30,17 +30,22 @@ pub struct Theme {
 
 impl Theme {
     pub const fn dark() -> Self {
+        // Neutral greys — no chroma in the UI panel so the iOS-blue voxels
+        // and the violet brand accent both read cleanly against the surface.
         Self {
-            bg: egui::Color32::from_rgb(0x19, 0x1A, 0x2E),
-            panel: egui::Color32::from_rgb(26, 28, 34),
-            surface: egui::Color32::from_rgb(38, 42, 50),
-            surface_hover: egui::Color32::from_rgb(54, 60, 72),
-            accent: egui::Color32::from_rgb(10, 132, 255),
-            accent_dim: egui::Color32::from_rgb(10, 74, 140),
+            bg: egui::Color32::from_rgb(0x14, 0x14, 0x16),
+            panel: egui::Color32::from_rgb(0x1A, 0x1B, 0x1E),
+            surface: egui::Color32::from_rgb(0x26, 0x27, 0x2B),
+            surface_hover: egui::Color32::from_rgb(0x33, 0x34, 0x39),
+            // Brand violet (Retcon/Spline-adjacent). Distinct from iOS blue so
+            // selected swatches/tools don't compete with the system accent
+            // mac users may have wired up elsewhere.
+            accent: egui::Color32::from_rgb(0x7C, 0x5C, 0xFF),
+            accent_dim: egui::Color32::from_rgb(0x3B, 0x2D, 0x7A),
             text: egui::Color32::from_rgb(220, 225, 235),
             text_dim: egui::Color32::from_rgb(150, 158, 172),
-            border: egui::Color32::from_rgb(44, 48, 58),
-            faint: egui::Color32::from_rgb(32, 35, 42),
+            border: egui::Color32::from_rgb(0x2C, 0x2D, 0x32),
+            faint: egui::Color32::from_rgb(0x1F, 0x20, 0x23),
             mode: ThemeMode::Dark,
         }
     }
@@ -50,8 +55,8 @@ impl Theme {
             panel: egui::Color32::from_rgb(255, 255, 255),
             surface: egui::Color32::from_rgb(240, 242, 246),
             surface_hover: egui::Color32::from_rgb(228, 232, 240),
-            accent: egui::Color32::from_rgb(0, 122, 255),
-            accent_dim: egui::Color32::from_rgb(179, 212, 255),
+            accent: egui::Color32::from_rgb(0x6B, 0x47, 0xFF),
+            accent_dim: egui::Color32::from_rgb(0xC8, 0xBA, 0xFF),
             text: egui::Color32::from_rgb(32, 36, 44),
             text_dim: egui::Color32::from_rgb(110, 120, 135),
             border: egui::Color32::from_rgb(210, 215, 225),
@@ -72,8 +77,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dark_bg_is_191a2e() {
-        assert_eq!(Theme::dark().bg, egui::Color32::from_rgb(0x19, 0x1A, 0x2E));
+    fn dark_panel_is_neutral_grey() {
+        // R/G/B within 4/255 = effectively neutral. Hardcoding the exact hex
+        // here would lock the palette; the property worth guarding is "no
+        // chroma in the panel surface" so voxel hues stay true and the brand
+        // accent reads against a neutral background.
+        let p = Theme::dark().panel;
+        let max = p.r().max(p.g()).max(p.b());
+        let min = p.r().min(p.g()).min(p.b());
+        assert!(
+            max - min <= 4,
+            "dark panel not neutral: r={} g={} b={}",
+            p.r(),
+            p.g(),
+            p.b()
+        );
     }
 
     #[test]
@@ -508,7 +526,7 @@ fn load_system_monospace() -> Option<Vec<u8>> {
 }
 
 pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
-    use crate::ui::tokens::{font, gap, pad, radius, stroke};
+    use crate::ui::tokens::{font, gap, pad, radius, shadow, stroke};
 
     let mut visuals = match theme.mode {
         ThemeMode::Dark => egui::Visuals::dark(),
@@ -556,14 +574,11 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     visuals.hyperlink_color = theme.accent;
     visuals.window_corner_radius = egui::CornerRadius::same(radius::LG);
     visuals.menu_corner_radius = egui::CornerRadius::same(radius::MD);
-    visuals.window_stroke = egui::Stroke::new(stroke::NORMAL, theme.border);
-    visuals.window_shadow = egui::epaint::Shadow {
-        offset: [0, 4],
-        blur: 12,
-        spread: 0,
-        color: egui::Color32::from_black_alpha(120),
-    };
-    visuals.popup_shadow = visuals.window_shadow;
+    // Elevation language: shadows carry depth, no hairline border on floating
+    // surfaces. Modals + popups sit at the highest tier; menus at mid.
+    visuals.window_stroke = egui::Stroke::NONE;
+    visuals.window_shadow = shadow::high();
+    visuals.popup_shadow = shadow::mid();
 
     ctx.set_visuals(visuals);
 

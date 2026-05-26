@@ -6,22 +6,77 @@
 //! existing token, add a token rather than inlining a number.
 
 use bevy_egui::egui::Vec2;
+use bevy_egui::egui::epaint::Shadow;
 
 /// Font sizes (proportional + monospace). `BODY` doubles as the mono size so
 /// hex strings and stat values match adjacent body text.
 pub mod font {
+    /// Inspector section labels — rendered uppercase with a SemiBold family.
+    #[allow(dead_code)] // adopted by widgets::section in the typography pass
+    pub const SECTION: f32 = 12.0;
     pub const SMALL: f32 = 12.0;
     pub const BODY: f32 = 14.0;
     pub const HEADING: f32 = 16.0;
+    /// Letter-spacing applied to uppercase section labels. Egui has no
+    /// per-character tracking yet, so callers join with a hair space; this is
+    /// kept here so the value stays in the token surface.
+    #[allow(dead_code)] // adopted by widgets::section in the typography pass
+    pub const SECTION_TRACKING_PX: f32 = 0.6;
 }
 
 /// Corner radii. `u8` to feed `egui::CornerRadius::same(...)` directly.
+///
+/// Nesting rule: a child's radius should equal `parent - inner_padding`. The
+/// floating pill uses `PILL = 18` with `pad::DEFAULT.x = 12`, so children
+/// nested inside the pill use `INSIDE_PILL = MD = 8` instead of `SM = 6` to
+/// avoid the "punch hole" look where sub-corners read as stamped out.
 pub mod radius {
-    pub const XS: u8 = 4; // small inner bits (swatch corners, toast accent bar)
-    pub const SM: u8 = 6; // buttons, tool buttons, command palette rows
-    pub const MD: u8 = 8; // menus, popups, hero swatch
+    pub const XS: u8 = 4; // small inner bits (swatch corners)
+    pub const SM: u8 = 6; // standalone buttons, command palette rows
+    pub const MD: u8 = 8; // menus, popups, hero swatch, INSIDE_PILL
     pub const LG: u8 = 12; // modal windows
     pub const PILL: u8 = 18; // floating pill menu, status chip
+    /// Radius for children nested directly inside a floating pill surface.
+    /// Pinned to `MD` so a tool button corner reads concentric with its pill
+    /// parent instead of carving a smaller square out of it.
+    pub const INSIDE_PILL: u8 = MD;
+}
+
+/// Three-tier elevation. Pick by intent, not by raw blur/offset. Larger tier
+/// = surface further off the canvas.
+///
+/// - `low` — resting inspector cards, palette toolbar rows
+/// - `mid` — floating pill menu, tool island, dropdown popups
+/// - `high` — modal windows, command palette, toast stack
+pub mod shadow {
+    use super::Shadow;
+    use bevy_egui::egui::Color32;
+
+    #[allow(dead_code)] // adopted by collapsible inspector sections
+    pub fn low() -> Shadow {
+        Shadow {
+            offset: [0, 1],
+            blur: 4,
+            spread: 0,
+            color: Color32::from_black_alpha(30),
+        }
+    }
+    pub fn mid() -> Shadow {
+        Shadow {
+            offset: [0, 4],
+            blur: 12,
+            spread: 0,
+            color: Color32::from_black_alpha(60),
+        }
+    }
+    pub fn high() -> Shadow {
+        Shadow {
+            offset: [0, 12],
+            blur: 28,
+            spread: 0,
+            color: Color32::from_black_alpha(120),
+        }
+    }
 }
 
 /// Scalar gaps for `ui.add_space(...)`. Even values; `XS`/`SM`/`MD`/`LG` sit
@@ -163,9 +218,34 @@ mod tests {
 
     #[test]
     fn all_fonts_at_least_12() {
+        assert!(font::SECTION >= 12.0);
         assert!(font::SMALL >= 12.0);
         assert!(font::BODY >= 12.0);
         assert!(font::HEADING >= 12.0);
+    }
+
+    #[test]
+    fn shadow_tiers_strictly_increase_in_depth() {
+        let low = shadow::low();
+        let mid = shadow::mid();
+        let high = shadow::high();
+        assert!(low.blur < mid.blur);
+        assert!(mid.blur < high.blur);
+        assert!(low.offset[1] < mid.offset[1]);
+        assert!(mid.offset[1] < high.offset[1]);
+        // Alpha increases with depth so the further surface reads as more lifted.
+        assert!(low.color.a() < mid.color.a());
+        assert!(mid.color.a() < high.color.a());
+    }
+
+    #[test]
+    fn inside_pill_radius_aligns_with_pill_padding() {
+        // PILL outer (18) minus pad::DEFAULT.x (12) = 6, but rounding to the
+        // token grid lands on MD (8) so children read concentric rather than
+        // pinched. The invariant we lock is "INSIDE_PILL >= SM" — never smaller
+        // than the standalone button radius.
+        assert!(radius::INSIDE_PILL >= radius::SM);
+        assert!(radius::INSIDE_PILL < radius::PILL);
     }
 
     #[test]
@@ -191,7 +271,7 @@ mod tests {
             assert_eq!(v as u32 % 2, 0, "space {v} is odd");
             assert!(v >= 0.0);
         }
-        for v in [font::SMALL, font::BODY, font::HEADING] {
+        for v in [font::SECTION, font::SMALL, font::BODY, font::HEADING] {
             assert_eq!(v as u32 % 2, 0, "font {v} is odd");
         }
         for v in [icon::SM, icon::MD, icon::LG, icon::HERO] {

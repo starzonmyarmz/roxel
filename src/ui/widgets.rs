@@ -82,7 +82,7 @@ pub fn tool_button(
                 [40.0, 40.0],
                 egui::Button::image(icon_img)
                     .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(radius::SM)),
+                    .corner_radius(egui::CornerRadius::same(radius::INSIDE_PILL)),
             )
         })
         .inner;

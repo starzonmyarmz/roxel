@@ -5,7 +5,7 @@
 //! they nest cleanly beside any registered side panel.
 
 use crate::theme::Theme;
-use crate::ui::tokens::{pad, radius, space};
+use crate::ui::tokens::{pad, radius, shadow, space};
 use bevy_egui::egui;
 
 /// Frame used for every floating surface. Panel fill, rounded to
@@ -20,12 +20,7 @@ pub fn pill_frame(theme: &Theme) -> egui::Frame {
             pad::DEFAULT.x as i8,
             pad::DEFAULT.y as i8,
         ))
-        .shadow(egui::epaint::Shadow {
-            offset: [0, 4],
-            blur: 12,
-            spread: 0,
-            color: egui::Color32::from_black_alpha(60),
-        })
+        .shadow(shadow::mid())
 }
 
 /// Render a floating area pinned to `anchor` with the given pivot. Used by
