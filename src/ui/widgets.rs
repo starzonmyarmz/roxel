@@ -40,47 +40,45 @@ pub fn tool_button(
     shortcut: &str,
 ) -> egui::Response {
     let active = tool.current == kind;
+    let button_size = egui::vec2(40.0, 40.0);
+
+    // Static three-state palette — no animation. The animated version stuttered
+    // on hover (the visible fill alternated between two greys mid-hover), so
+    // motion is reverted in favour of a snappy, predictable hover.
     let sh = theme.surface_hover;
     let bg = theme.bg;
-    let blend = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
-    let hover_fill = egui::Color32::from_rgb(
-        blend(bg.r(), sh.r()),
-        blend(bg.g(), sh.g()),
-        blend(bg.b(), sh.b()),
+    let blend_u8 = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
+    let neutral_hover = egui::Color32::from_rgb(
+        blend_u8(bg.r(), sh.r()),
+        blend_u8(bg.g(), sh.g()),
+        blend_u8(bg.b(), sh.b()),
     );
-    // Selected tool reads in accent — fill + tinted icon — so the active state
-    // pops as identity colour, not just "another grey button." Hover state on
-    // an inactive tool stays neutral so the rail still scans evenly.
-    let resting = if active {
-        theme.accent
+
+    let (inactive_fill, hovered_fill, icon_tint) = if active {
+        (theme.accent, theme.accent, egui::Color32::WHITE)
     } else {
-        egui::Color32::TRANSPARENT
+        (egui::Color32::TRANSPARENT, neutral_hover, theme.text)
     };
-    let hovered = if active { theme.accent } else { hover_fill };
-    let icon_tint = if active {
-        egui::Color32::WHITE
-    } else {
-        theme.text
-    };
+
     let icon_img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::lg_square())
         .tint(icon_tint);
-    let button_size = egui::vec2(40.0, 40.0);
+
     let resp = ui
         .scope(|ui| {
             ui.spacing_mut().button_padding = pad::NONE;
             ui.spacing_mut().interact_size = gap::NONE;
             let w = ui.visuals_mut();
-            w.widgets.inactive.bg_fill = resting;
-            w.widgets.inactive.weak_bg_fill = resting;
+            w.widgets.inactive.bg_fill = inactive_fill;
+            w.widgets.inactive.weak_bg_fill = inactive_fill;
             w.widgets.inactive.bg_stroke = egui::Stroke::NONE;
             w.widgets.inactive.expansion = 0.0;
-            w.widgets.hovered.bg_fill = hovered;
-            w.widgets.hovered.weak_bg_fill = hovered;
+            w.widgets.hovered.bg_fill = hovered_fill;
+            w.widgets.hovered.weak_bg_fill = hovered_fill;
             w.widgets.hovered.bg_stroke = egui::Stroke::NONE;
             w.widgets.hovered.expansion = 0.0;
-            w.widgets.active.bg_fill = hovered;
-            w.widgets.active.weak_bg_fill = hovered;
+            w.widgets.active.bg_fill = hovered_fill;
+            w.widgets.active.weak_bg_fill = hovered_fill;
             w.widgets.active.bg_stroke = egui::Stroke::NONE;
             w.widgets.active.expansion = 0.0;
             ui.add_sized(
@@ -91,39 +89,12 @@ pub fn tool_button(
             )
         })
         .inner;
-    // Translucent halo around the active tool button — three concentric rings
-    // outside the rect with falling alpha approximate an outer glow, since
-    // egui has no blurred-stroke primitive.
-    if active {
-        paint_tool_button_halo(ui, resp.rect, theme.accent);
-    }
+
     if resp.clicked() && tool.current != kind {
         tool.previous = tool.current;
         tool.current = kind;
     }
     resp.on_hover_text(format!("{label}  ({shortcut})"))
-}
-
-/// Outer accent halo painted behind the selected tool button. Three 1-px
-/// strokes outside the button rect at falling alpha approximate a soft glow
-/// without a blurred-stroke primitive.
-fn paint_tool_button_halo(ui: &egui::Ui, rect: egui::Rect, accent: egui::Color32) {
-    let painter = ui.painter();
-    let cr = egui::CornerRadius::same(radius::INSIDE_PILL);
-    for (i, alpha) in [110, 60, 26].iter().enumerate() {
-        let grow = (i as f32 + 1.0) * 1.5;
-        let ring_rect = rect.expand(grow);
-        let ring_cr = egui::CornerRadius::same((radius::INSIDE_PILL + grow as u8).min(255));
-        let _ = cr;
-        let mut col = accent;
-        col = egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), *alpha);
-        painter.rect_stroke(
-            ring_rect,
-            ring_cr,
-            egui::Stroke::new(1.0, col),
-            egui::StrokeKind::Outside,
-        );
-    }
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -264,11 +235,11 @@ fn section_header(
         egui::pos2(rect.right() - chev_size.x * 0.5, rect.center().y),
         chev_size,
     );
-    let angle = if collapsed {
-        -std::f32::consts::FRAC_PI_2
-    } else {
-        0.0
-    };
+    // Animate rotation so collapse/expand reads as a swing, not a snap.
+    let collapse_t = ui
+        .ctx()
+        .animate_bool_with_time(resp.id.with("collapsed"), collapsed, 0.12);
+    let angle = -std::f32::consts::FRAC_PI_2 * collapse_t;
     egui::Image::new(crate::ui::icons::chevron_down())
         .fit_to_exact_size(chev_size)
         .tint(label_color)

@@ -17,10 +17,15 @@ Release notes.
 - feat(ui): canvas-first redesign — floating right-edge tool island, top-center menu pill (Win/Linux), single left inspector with Status section replacing the bottom bar
 - feat(ui): focus mode — Backquote (\`) toggles inspector + floating chrome
 - feat(ui): macOS transparent titlebar with fullsize content view
-- feat(ui): prefs toggles for status chip, tool labels, and floating menu bar
 - feat(ui): swap embedded Nunito + DM Mono for Inter; monospace now loads from the OS
 - feat(ui): first-launch coachmark tour, relaunchable from Help menu
-- feat(ui): tool preview outlines use theme accent (system blue) on a depth-biased gizmo group; erase + paint now show a target outline
+- feat(ui): three-tier shadow elevation (low/mid/high) + neutral grey panel; drops the bluish UI surface so voxel hues read true
+- feat(ui): brand teal accent (`#4FCEC5`, sourced from the Roxel logo crystal) replaces system blue across selection, hover, and active states
+- feat(ui): uppercase + tracked section headers, clickable to fold/unfold per section
+- feat(ui): shadow-only modals, command palette, and onboarding cards (no hairline border); larger modal title
+- feat(ui): tinted toasts with a leading kind icon, no side accent bar
+- feat(ui): tool button paints accent fill + white icon when selected, no border or outer ring
+- refactor(ui): drop `show_status_chip` and `show_tool_labels` prefs — commit to icon-only tool island and always-visible status section
 
 ## [0.5.1] - 2026-05-20
 
