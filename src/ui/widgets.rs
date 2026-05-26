@@ -48,19 +48,24 @@ pub fn tool_button(
         blend(bg.g(), sh.g()),
         blend(bg.b(), sh.b()),
     );
+    // Selected tool reads in accent — fill + tinted icon — so the active state
+    // pops as identity colour, not just "another grey button." Hover state on
+    // an inactive tool stays neutral so the rail still scans evenly.
     let resting = if active {
-        theme.surface_hover
+        theme.accent
     } else {
         egui::Color32::TRANSPARENT
     };
-    let hovered = if active {
-        theme.surface_hover
+    let hovered = if active { theme.accent } else { hover_fill };
+    let icon_tint = if active {
+        egui::Color32::WHITE
     } else {
-        hover_fill
+        theme.text
     };
     let icon_img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::lg_square())
-        .tint(theme.text);
+        .tint(icon_tint);
+    let button_size = egui::vec2(40.0, 40.0);
     let resp = ui
         .scope(|ui| {
             ui.spacing_mut().button_padding = pad::NONE;
@@ -79,18 +84,46 @@ pub fn tool_button(
             w.widgets.active.bg_stroke = egui::Stroke::NONE;
             w.widgets.active.expansion = 0.0;
             ui.add_sized(
-                [40.0, 40.0],
+                button_size,
                 egui::Button::image(icon_img)
                     .stroke(egui::Stroke::NONE)
                     .corner_radius(egui::CornerRadius::same(radius::INSIDE_PILL)),
             )
         })
         .inner;
+    // Translucent halo around the active tool button — three concentric rings
+    // outside the rect with falling alpha approximate an outer glow, since
+    // egui has no blurred-stroke primitive.
+    if active {
+        paint_tool_button_halo(ui, resp.rect, theme.accent);
+    }
     if resp.clicked() && tool.current != kind {
         tool.previous = tool.current;
         tool.current = kind;
     }
     resp.on_hover_text(format!("{label}  ({shortcut})"))
+}
+
+/// Outer accent halo painted behind the selected tool button. Three 1-px
+/// strokes outside the button rect at falling alpha approximate a soft glow
+/// without a blurred-stroke primitive.
+fn paint_tool_button_halo(ui: &egui::Ui, rect: egui::Rect, accent: egui::Color32) {
+    let painter = ui.painter();
+    let cr = egui::CornerRadius::same(radius::INSIDE_PILL);
+    for (i, alpha) in [110, 60, 26].iter().enumerate() {
+        let grow = (i as f32 + 1.0) * 1.5;
+        let ring_rect = rect.expand(grow);
+        let ring_cr = egui::CornerRadius::same((radius::INSIDE_PILL + grow as u8).min(255));
+        let _ = cr;
+        let mut col = accent;
+        col = egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), *alpha);
+        painter.rect_stroke(
+            ring_rect,
+            ring_cr,
+            egui::Stroke::new(1.0, col),
+            egui::StrokeKind::Outside,
+        );
+    }
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
