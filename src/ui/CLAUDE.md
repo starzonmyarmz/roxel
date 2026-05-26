@@ -6,8 +6,8 @@ egui surface and styling: anchored panel + floating surfaces, design tokens, the
 
 `apply_egui_style` runs every frame at top of `ui_system` using current `Theme`. `ui_system` runs in `EguiPrimaryContextPass` (not Update). One anchored panel + two floating surfaces:
 
-- **Left inspector** (`SidePanel::left`) — color swatch + picker, palette selector with add/dup/rename/delete/reorder, `.ase` import/export, recent colors, shape options, scene stats. "Status" top section (Size/Voxels/Zoom) gated on `prefs.show_status_chip`.
-- **Floating tool island** (`ui/floating.rs::tool_island`) — right-center pivot. Icon-only; `prefs.show_tool_labels` adds dim caption. Shape picker opens to the left (`Align2::RIGHT_TOP`).
+- **Left inspector** (`SidePanel::left`) — color swatch + picker, palette selector with add/dup/rename/delete/reorder, `.ase` import/export, recent colors, shape options, scene stats. "Status" top section (Size/Voxels/Zoom) always visible.
+- **Floating tool island** (`ui/floating.rs::tool_island`) — right-center pivot. Icon-only — no captions. Shape picker opens to the left (`Align2::RIGHT_TOP`).
 - **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center, Win/Linux only, gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu.
 
 Both floating surfaces share `pill_frame` + `floating_area`. `space::FLOAT_GAP` is canvas-edge inset.
@@ -57,7 +57,7 @@ User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating oper
 
 `Theme` (`theme.rs`) — Resource with all egui color slots + `mode: ThemeMode::{Light, Dark}`. `Theme::dark()` (bg `#191A2E`) / `Theme::light()`.
 
-`Preferences` (`theme.rs`) — fields: `theme`, `canvas_bg` (`MatchTheme` resolves via `canvas_match_color` to near-neutral grey, not bluish panel bg, so voxel hues read true — Light `#F2F3F6`, Dark `#1C1C1E`), `show_floor_grid` (master canvas chrome toggle: dot grid + vignette), `show_origin_axes` (RGB triad, auto-fades as voxels appear near origin), `color_space` (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch` — conversions in `src/color_space.rs`), `show_status_chip`, `show_tool_labels`, `show_floating_menu_bar` (default `!cfg!(target_os = "macos")`), `last_update_check`, `onboarding_seen`.
+`Preferences` (`theme.rs`) — fields: `theme`, `canvas_bg` (`MatchTheme` resolves via `canvas_match_color` to near-neutral grey, not bluish panel bg, so voxel hues read true — Light `#F2F3F6`, Dark `#1C1C1E`), `show_floor_grid` (master canvas chrome toggle: dot grid + vignette), `show_origin_axes` (RGB triad, auto-fades as voxels appear near origin), `color_space` (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch` — conversions in `src/color_space.rs`), `show_floating_menu_bar` (default `!cfg!(target_os = "macos")`), `last_update_check`, `onboarding_seen`.
 
 Editable color fields backed by `ColorEditBuffer` (`color_space.rs`) — string slots repopulated when `CurrentColor` or active space changes, so keystrokes don't roundtrip through `Color8` mid-edit (which would drop hue on greys / quantise OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
 

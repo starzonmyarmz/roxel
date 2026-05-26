@@ -237,27 +237,32 @@ mod tests {
 
     #[test]
     fn preferences_loads_without_floating_ui_fields() {
-        // preferences.ron written before the floating-UI redesign must still
-        // load with the new fields populated from their defaults.
+        // preferences.ron written before show_floating_menu_bar landed must
+        // still parse, falling back to the per-platform default.
         let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
         let p: Preferences = ron::from_str(ron).expect("parse");
-        assert!(p.show_status_chip);
-        assert!(!p.show_tool_labels);
         assert_eq!(p.show_floating_menu_bar, !cfg!(target_os = "macos"));
     }
 
     #[test]
-    fn preferences_roundtrip_floating_ui_fields() {
+    fn preferences_drops_removed_show_chip_and_label_fields() {
+        // `show_status_chip` and `show_tool_labels` were retired when the
+        // inspector and tool island committed to a single layout. Older
+        // preferences.ron carrying them must still load (serde drops unknown
+        // fields silently).
+        let ron = "(theme: Dark, show_status_chip: false, show_tool_labels: true)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.theme, ThemePref::Dark);
+    }
+
+    #[test]
+    fn preferences_roundtrip_floating_menu_bar_field() {
         let prefs = Preferences {
-            show_status_chip: false,
-            show_tool_labels: true,
             show_floating_menu_bar: true,
             ..Default::default()
         };
         let s = ron::ser::to_string(&prefs).expect("serialize");
         let parsed: Preferences = ron::from_str(&s).expect("parse");
-        assert!(!parsed.show_status_chip);
-        assert!(parsed.show_tool_labels);
         assert!(parsed.show_floating_menu_bar);
     }
 
@@ -300,10 +305,6 @@ pub struct Preferences {
     pub last_update_check: Option<SystemTime>,
     #[serde(default = "default_onboarding_seen")]
     pub onboarding_seen: bool,
-    #[serde(default = "default_show_status_chip")]
-    pub show_status_chip: bool,
-    #[serde(default = "default_show_tool_labels")]
-    pub show_tool_labels: bool,
     #[serde(default = "default_show_floating_menu_bar")]
     pub show_floating_menu_bar: bool,
 }
@@ -320,12 +321,6 @@ fn default_show_origin_axes() -> bool {
 fn default_onboarding_seen() -> bool {
     false
 }
-fn default_show_status_chip() -> bool {
-    true
-}
-fn default_show_tool_labels() -> bool {
-    false
-}
 fn default_show_floating_menu_bar() -> bool {
     !cfg!(target_os = "macos")
 }
@@ -340,8 +335,6 @@ impl Default for Preferences {
             color_space: ColorSpace::default(),
             last_update_check: None,
             onboarding_seen: default_onboarding_seen(),
-            show_status_chip: default_show_status_chip(),
-            show_tool_labels: default_show_tool_labels(),
             show_floating_menu_bar: default_show_floating_menu_bar(),
         }
     }

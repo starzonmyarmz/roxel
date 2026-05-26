@@ -432,14 +432,6 @@ pub fn ui_system(
 
     // ---------- Floating tool island ----------
     if ui_visible.0 {
-        let show_labels = prefs.show_tool_labels;
-        let label_dim = theme.text_dim;
-        let push_label = |ui: &mut egui::Ui, text: &str| {
-            if show_labels {
-                ui.add_space(space::XXS);
-                ui.label(egui::RichText::new(text).size(font::SMALL).color(label_dim));
-            }
-        };
         let island_resp = floating::tool_island(ctx, &theme, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             widgets::tool_button(
@@ -451,7 +443,6 @@ pub fn ui_system(
                 "Brush",
                 "B",
             );
-            push_label(ui, "Brush");
             ui.add_space(space::SX);
             widgets::tool_button(
                 ui,
@@ -462,7 +453,6 @@ pub fn ui_system(
                 "Erase",
                 "E",
             );
-            push_label(ui, "Erase");
             ui.add_space(space::SX);
             widgets::tool_button(
                 ui,
@@ -473,7 +463,6 @@ pub fn ui_system(
                 "Paint",
                 "P",
             );
-            push_label(ui, "Paint");
             ui.add_space(space::SX);
             widgets::tool_button(
                 ui,
@@ -484,7 +473,6 @@ pub fn ui_system(
                 "Pick",
                 "I",
             );
-            push_label(ui, "Pick");
             ui.add_space(space::SX);
             let shape_resp = widgets::tool_button(
                 ui,
@@ -495,7 +483,6 @@ pub fn ui_system(
                 "Shape",
                 "S",
             );
-            push_label(ui, "Shape");
             // Long-press opens the picker. Quick click just selects the tool
             // and never paints the popup. State (press_start, opened) lives
             // in egui memory because `is_pointer_button_down_on` returns false
@@ -608,7 +595,6 @@ pub fn ui_system(
                 "Marquee select",
                 "M",
             );
-            push_label(ui, "Select");
             ui.add_space(space::SX);
             widgets::tool_button(
                 ui,
@@ -619,7 +605,6 @@ pub fn ui_system(
                 "Move",
                 "V",
             );
-            push_label(ui, "Move");
         });
         onboarding_anchors.tool_rail = Some(island_resp.rect);
     }
@@ -661,38 +646,33 @@ pub fn ui_system(
                             });
                             inner_frame.show(ui, |ui| {
                                 // Status section (design size, voxel count, zoom)
-                                if prefs.show_status_chip {
-                                    widgets::section(ui, &theme, "Status", |ui| {
-                                        ui.spacing_mut().item_spacing.y = space::XXS;
-                                        let design_label = match grid.bounding_box() {
-                                            Some((min, max)) => {
-                                                let extent = max - min + bevy::math::IVec3::ONE;
-                                                format!("{}×{}×{}", extent.x, extent.y, extent.z)
-                                            }
-                                            None => "—".to_string(),
-                                        };
-                                        widgets::stat_row(ui, &theme, "Size", design_label);
+                                widgets::section(ui, &theme, "Status", |ui| {
+                                    ui.spacing_mut().item_spacing.y = space::XXS;
+                                    let design_label = match grid.bounding_box() {
+                                        Some((min, max)) => {
+                                            let extent = max - min + bevy::math::IVec3::ONE;
+                                            format!("{}×{}×{}", extent.x, extent.y, extent.z)
+                                        }
+                                        None => "—".to_string(),
+                                    };
+                                    widgets::stat_row(ui, &theme, "Size", design_label);
+                                    widgets::stat_row(
+                                        ui,
+                                        &theme,
+                                        "Voxels",
+                                        grid.count().to_string(),
+                                    );
+                                    if let Some(cam) = zoom.cameras.iter().next() {
+                                        let actual = cam.radius.unwrap_or(cam.target_radius);
+                                        let r = actual.round().max(0.0) as i32;
                                         widgets::stat_row(
                                             ui,
                                             &theme,
-                                            "Voxels",
-                                            grid.count().to_string(),
+                                            "Zoom",
+                                            format!("{r} voxel{}", if r == 1 { "" } else { "s" }),
                                         );
-                                        if let Some(cam) = zoom.cameras.iter().next() {
-                                            let actual = cam.radius.unwrap_or(cam.target_radius);
-                                            let r = actual.round().max(0.0) as i32;
-                                            widgets::stat_row(
-                                                ui,
-                                                &theme,
-                                                "Zoom",
-                                                format!(
-                                                    "{r} voxel{}",
-                                                    if r == 1 { "" } else { "s" }
-                                                ),
-                                            );
-                                        }
-                                    });
-                                }
+                                    }
+                                });
                                 // Color section
                                 widgets::section(ui, &theme, "Color", |ui| {
                                     let srgba = egui::Color32::from_rgba_unmultiplied(
@@ -1379,10 +1359,6 @@ pub fn ui_system(
                 ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
                 ui.add_space(space::XXS);
                 ui.checkbox(&mut prefs.show_origin_axes, "Show origin axes");
-                ui.add_space(space::XXS);
-                ui.checkbox(&mut prefs.show_status_chip, "Show status chip");
-                ui.add_space(space::XXS);
-                ui.checkbox(&mut prefs.show_tool_labels, "Show tool labels");
                 #[cfg(not(target_os = "macos"))]
                 {
                     ui.add_space(space::XXS);
