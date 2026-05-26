@@ -159,12 +159,7 @@ pub fn section<R>(
     title: &str,
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    ui.label(
-        egui::RichText::new(title)
-            .color(theme.text)
-            .size(font::BODY)
-            .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())),
-    );
+    ui.label(section_header_richtext(theme, title));
     ui.add_space(space::SM);
     let r = add(ui);
     ui.add_space(space::MD);
@@ -179,6 +174,19 @@ pub fn section<R>(
     );
     ui.add_space(space::MD);
     r
+}
+
+/// Uppercase, slightly-tracked section label shared by every inspector
+/// section. Renders at `font::SECTION` (12 pt) in SemiBold and is dimmed
+/// vs body text so headings read as control-surface furniture instead of
+/// blog-post chapter titles. Tracking is faked by interleaving hair spaces
+/// because egui has no per-character letter-spacing knob yet.
+pub fn section_header_richtext(theme: &Theme, title: &str) -> egui::RichText {
+    let spaced: String = title.chars().flat_map(|c| [c, '\u{200A}']).collect();
+    egui::RichText::new(spaced.to_uppercase())
+        .color(theme.text_dim)
+        .size(font::SECTION)
+        .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
 }
 
 pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
