@@ -120,7 +120,7 @@ Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `o
 
 `updater.rs` — background GitHub Releases check via `ureq`. `REPO = "starzonmyarmz/roxel"`, `RATE_LIMIT_SECS = 24h`, `HTTP_TIMEOUT_SECS = 10`. `UpdateCheck(UpdateState)` resource is the state machine (idle/checking/ready/failed). `start_check(state, manual)` spawns the HTTP task on `AsyncComputeTaskPool`; `poll_update_check_system` drains via `block_on(future::poll_once)`. `startup_check_system` honours `preferences.last_update_check` rate limit; manual check from command palette ignores it.
 
-`parse_tag` accepts `v1.2.3` and `1.2.3`. `is_newer` is plain tuple compare. `parse_release_json` is hand-rolled (no `serde_json` for `tag_name` / `html_url` — keeps deps slim). Toast on newer version; `open_url` shells out to `open`/`xdg-open`/`start`.
+`parse_tag` accepts `v1.2.3` and `1.2.3`. `is_newer` is plain tuple compare. `parse_release_json` uses `serde_json` to deserialize `tag_name` + `html_url` (extra GitHub fields ignored). Toast on newer version; `open_url` shells out to `open`/`xdg-open`/`start`.
 
 ## Command-palette dispatch
 

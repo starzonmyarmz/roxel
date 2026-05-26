@@ -46,62 +46,19 @@ pub fn should_check(last: Option<SystemTime>, now: SystemTime, interval: Duratio
     }
 }
 
-pub fn extract_string_field(body: &str, key: &str) -> Option<String> {
-    let pat = format!("\"{key}\"");
-    let bytes = body.as_bytes();
-    let start = body.find(&pat)? + pat.len();
-    let mut i = start;
-    while i < bytes.len() && bytes[i] != b':' {
-        i += 1;
-    }
-    if i >= bytes.len() {
-        return None;
-    }
-    i += 1;
-    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= bytes.len() || bytes[i] != b'"' {
-        return None;
-    }
-    i += 1;
-    let mut out = String::new();
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => {
-                i += 1;
-                if i >= bytes.len() {
-                    return None;
-                }
-                let esc = bytes[i] as char;
-                out.push(match esc {
-                    'n' => '\n',
-                    't' => '\t',
-                    '"' => '"',
-                    '\\' => '\\',
-                    '/' => '/',
-                    _ => esc,
-                });
-                i += 1;
-            }
-            b'"' => return Some(out),
-            c => {
-                out.push(c as char);
-                i += 1;
-            }
-        }
-    }
-    None
+#[derive(serde::Deserialize)]
+struct ReleaseJson {
+    tag_name: String,
+    html_url: String,
 }
 
 pub fn parse_release_json(body: &str) -> Option<Release> {
-    let tag = extract_string_field(body, "tag_name")?;
-    let url = extract_string_field(body, "html_url")?;
-    let version = parse_tag(&tag)?;
+    let raw: ReleaseJson = serde_json::from_str(body).ok()?;
+    let version = parse_tag(&raw.tag_name)?;
     Some(Release {
-        tag,
+        tag: raw.tag_name,
         version,
-        html_url: url,
+        html_url: raw.html_url,
     })
 }
 
@@ -258,30 +215,19 @@ mod tests {
     }
 
     #[test]
-    fn extract_string_field_basic() {
-        let body = r#"{"tag_name":"v0.5.1","html_url":"https://example.com/x"}"#;
-        assert_eq!(
-            extract_string_field(body, "tag_name"),
-            Some("v0.5.1".to_string())
-        );
-        assert_eq!(
-            extract_string_field(body, "html_url"),
-            Some("https://example.com/x".to_string())
-        );
-        assert_eq!(extract_string_field(body, "missing"), None);
+    fn parse_release_json_handles_whitespace_and_escapes() {
+        let body = r#"{ "tag_name" : "v0.5.1" , "html_url": "a\/b\"c" }"#;
+        let r = parse_release_json(body).expect("parse");
+        assert_eq!(r.tag, "v0.5.1");
+        assert_eq!(r.html_url, "a/b\"c");
     }
 
     #[test]
-    fn extract_string_field_handles_whitespace_and_escapes() {
-        let body = r#"{ "tag_name" : "v0.5.1" , "html_url": "a\/b\"c" }"#;
-        assert_eq!(
-            extract_string_field(body, "tag_name"),
-            Some("v0.5.1".to_string())
-        );
-        assert_eq!(
-            extract_string_field(body, "html_url"),
-            Some("a/b\"c".to_string())
-        );
+    fn parse_release_json_ignores_extra_fields() {
+        // GitHub returns dozens of fields; serde must ignore the ones we don't ask for.
+        let body = r#"{"tag_name":"v0.5.1","html_url":"u","author":{"login":"x"},"assets":[]}"#;
+        let r = parse_release_json(body).expect("parse");
+        assert_eq!(r.tag, "v0.5.1");
     }
 
     #[test]

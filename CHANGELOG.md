@@ -13,6 +13,7 @@ Release notes.
 ## [Unreleased]
 
 - chore(io): drop binary FBX exporter — glTF covers the same DCC targets without a hand-rolled 550-line Kaydara writer
+- refactor(updater): parse GitHub release JSON via `serde_json` instead of a hand-rolled byte scanner
 - feat(ui): canvas-first redesign — floating right-edge tool island, top-center menu pill (Win/Linux), single left inspector with Status section replacing the bottom bar
 - feat(ui): focus mode — Backquote (\`) toggles inspector + floating chrome
 - feat(ui): macOS transparent titlebar with fullsize content view
