@@ -16,7 +16,7 @@ Both floating surfaces share `pill_frame` + `floating_area`. `space::FLOAT_GAP` 
 
 **macOS titlebar**: primary window has `titlebar_transparent` + `titlebar_show_title = false` + `fullsize_content_view`. Inspector reserves `height::MAC_TITLEBAR_GUTTER = 28` px top inner padding on macOS.
 
-Inspector sections are flat (bold title → content → full-width divider, no card frames). Divider paints at `ui.clip_rect().x_range()` (not `available_width()`) with `painter.round_to_pixel_center(...)` on y for Retina crispness.
+Inspector sections are flat (uppercase tracked title → content → full-width divider, no card frames). Each header is clickable to fold/unfold the section; folded state persists per title via `egui` memory (`Id::new("inspector_section_collapsed").with(title)`). Divider paints at `ui.clip_rect().x_range()` (not `available_width()`) with `painter.round_to_pixel_center(...)` on y for Retina crispness. `widgets::section` returns `Option<R>` — `None` when the section is folded, `Some(closure_result)` otherwise.
 
 `tool_button`, big swatch, palette/recent swatches: `egui::Button` wrapped in a scope that zeroes `button_padding` + `interact_size`. Keeps exact sizing while egui's AA tessellator renders cleanly (manual-painter version produced Retina jaggies).
 

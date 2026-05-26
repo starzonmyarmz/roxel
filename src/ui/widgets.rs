@@ -191,10 +191,27 @@ pub fn section<R>(
     theme: &Theme,
     title: &str,
     add: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    ui.label(section_header_richtext(theme, title));
-    ui.add_space(space::SM);
-    let r = add(ui);
+) -> Option<R> {
+    let mem_id = egui::Id::new("inspector_section_collapsed").with(title);
+    let mut collapsed = ui
+        .ctx()
+        .memory(|m| m.data.get_temp::<bool>(mem_id))
+        .unwrap_or(false);
+
+    let header_resp = section_header(ui, theme, title, collapsed);
+    if header_resp.clicked() {
+        collapsed = !collapsed;
+        ui.ctx()
+            .memory_mut(|m| m.data.insert_temp(mem_id, collapsed));
+    }
+
+    let result = if collapsed {
+        None
+    } else {
+        ui.add_space(space::SM);
+        Some(add(ui))
+    };
+
     ui.add_space(space::MD);
     let sep_rect = ui
         .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
@@ -206,20 +223,67 @@ pub fn section<R>(
         egui::Stroke::new(stroke::HAIR, theme.border),
     );
     ui.add_space(space::MD);
-    r
+    result
 }
 
-/// Uppercase, slightly-tracked section label shared by every inspector
-/// section. Renders at `font::SECTION` (12 pt) in SemiBold and is dimmed
-/// vs body text so headings read as control-surface furniture instead of
-/// blog-post chapter titles. Tracking is faked by interleaving hair spaces
-/// because egui has no per-character letter-spacing knob yet.
-pub fn section_header_richtext(theme: &Theme, title: &str) -> egui::RichText {
+/// Clickable header row used by [`section`]. Renders the section label on the
+/// left and a chevron on the right that rotates -90° when collapsed. The whole
+/// row is the click target so the chevron is decorative, not the hit.
+fn section_header(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    title: &str,
+    collapsed: bool,
+) -> egui::Response {
+    let row_h = font::SECTION + 6.0;
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), row_h),
+        egui::Sense::click(),
+    );
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    let painter = ui.painter();
+    let label_color = if resp.hovered() {
+        theme.text
+    } else {
+        theme.text_dim
+    };
+    painter.text(
+        rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        section_header_text(title),
+        egui::FontId::new(
+            font::SECTION,
+            egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()),
+        ),
+        label_color,
+    );
+
+    let chev_size = egui::vec2(icon::SM, icon::SM);
+    let chev_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - chev_size.x * 0.5, rect.center().y),
+        chev_size,
+    );
+    let angle = if collapsed {
+        -std::f32::consts::FRAC_PI_2
+    } else {
+        0.0
+    };
+    egui::Image::new(crate::ui::icons::chevron_down())
+        .fit_to_exact_size(chev_size)
+        .tint(label_color)
+        .rotate(angle, egui::Vec2::splat(0.5))
+        .paint_at(ui, chev_rect);
+    resp
+}
+
+/// Uppercase, hair-space-tracked title rendered by [`section_header`] and
+/// reusable wherever the same label style is needed without the click target.
+/// Tracking is faked by interleaving U+200A characters because egui has no
+/// per-character letter-spacing knob.
+pub fn section_header_text(title: &str) -> String {
     let spaced: String = title.chars().flat_map(|c| [c, '\u{200A}']).collect();
-    egui::RichText::new(spaced.to_uppercase())
-        .color(theme.text_dim)
-        .size(font::SECTION)
-        .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
+    spaced.to_uppercase()
 }
 
 pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
