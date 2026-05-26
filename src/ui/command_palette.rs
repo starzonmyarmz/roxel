@@ -806,7 +806,8 @@ pub fn draw(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
             .inner_margin(egui::Margin::symmetric(14, 12))
-            .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+            .stroke(egui::Stroke::NONE)
+            .shadow(crate::ui::tokens::shadow::high())
             .corner_radius(egui::CornerRadius::same(radius::LG)),
     )
     .show(ctx, |ui| {

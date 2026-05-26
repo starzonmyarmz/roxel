@@ -322,7 +322,7 @@ pub fn modal_window<'a>(
     egui::Window::new(
         egui::RichText::new(title)
             .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
-            .size(font::BODY),
+            .size(font::HEADING),
     )
     .collapsible(false)
     .resizable(false)
@@ -331,8 +331,9 @@ pub fn modal_window<'a>(
     .frame(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
-            .inner_margin(egui::Margin::symmetric(16, 14))
-            .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+            .inner_margin(egui::Margin::symmetric(20, 16))
+            .stroke(egui::Stroke::NONE)
+            .shadow(crate::ui::tokens::shadow::high())
             .corner_radius(egui::CornerRadius::same(radius::LG)),
     )
 }

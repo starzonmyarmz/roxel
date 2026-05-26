@@ -19,7 +19,7 @@ use crate::grid::NewProject;
 use crate::theme::{Preferences, PreferencesWindow, Theme, save_preferences};
 use crate::ui::CommandPalette;
 use crate::ui::icons;
-use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, stroke, width};
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, width};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum AnchorId {
@@ -261,7 +261,8 @@ pub fn onboarding_overlay_system(
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style())
                 .fill(theme.panel)
-                .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
+                .stroke(egui::Stroke::NONE)
+                .shadow(crate::ui::tokens::shadow::mid())
                 .corner_radius(egui::CornerRadius::same(radius::LG))
                 .inner_margin(egui::Margin::ZERO)
                 .show(ui, |ui| {
