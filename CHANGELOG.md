@@ -12,20 +12,28 @@ Release notes.
 
 ## [Unreleased]
 
-- chore(io): drop binary FBX exporter — glTF covers the same DCC targets without a hand-rolled 550-line Kaydara writer
-- refactor(updater): parse GitHub release JSON via `serde_json` instead of a hand-rolled byte scanner
-- feat(ui): canvas-first redesign — floating right-edge tool island, top-center menu pill (Win/Linux), single left inspector with Status section replacing the bottom bar
-- feat(ui): focus mode — Backquote (\`) toggles inspector + floating chrome
-- feat(ui): macOS transparent titlebar with fullsize content view
-- feat(ui): swap embedded Nunito + DM Mono for Inter; monospace now loads from the OS
-- feat(ui): first-launch coachmark tour, relaunchable from Help menu
-- feat(ui): three-tier shadow elevation (low/mid/high) + neutral grey panel; drops the bluish UI surface so voxel hues read true
-- feat(ui): brand teal accent (`#4FCEC5`, sourced from the Roxel logo crystal) replaces system blue across selection, hover, and active states
-- feat(ui): uppercase + tracked section headers, clickable to fold/unfold per section
-- feat(ui): shadow-only modals, command palette, and onboarding cards (no hairline border); larger modal title
-- feat(ui): tinted toasts with a leading kind icon, no side accent bar
-- feat(ui): tool button paints accent fill + white icon when selected, no border or outer ring
-- refactor(ui): drop `show_status_chip` and `show_tool_labels` prefs — commit to icon-only tool island and always-visible status section
+## [0.6.0] - 2026-05-26
+
+- chore: bump to 0.6.0
+- feat(ui): brand teal accent + finalized tool button look
+- feat(ui): collapsible inspector sections
+- refactor(ui): drop show_status_chip + show_tool_labels prefs
+- feat(ui): accent halo + white icon on selected tool
+- feat(ui): tinted toasts with leading icon, drop side accent bar
+- feat(ui): shadow-only dialogs, larger modal title, denser padding
+- feat(ui): uppercase tracked section headers
+- feat(ui): elevation tiers + neutral panel + brand accent
+- refactor(updater): parse release JSON with serde_json
+- chore(io): drop binary FBX exporter
+- docs: split CLAUDE.md by subdir for lazy-load token savings
+- docs: trim CLAUDE.md ~48% while preserving invariants
+- feat(ui): ArrowUp/Down step numeric color inputs (Shift = ×10)
+- feat(ui): accent preview outline + target highlight for erase/paint
+- style(ui): drop floating-surface borders, prefer Monaco, fix canvas-bg seed
+- feat(ui): canvas chrome overhaul + system blue accent + onboarding redesign
+- feat(ui): canvas-first redesign with floating chrome
+- feat(ui): first-launch coachmark tour
+- docs: finalize CHANGELOG for v0.5.1 [skip ci]
 
 ## [0.5.1] - 2026-05-20
 
