@@ -1,267 +1,231 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repo.
 
 ## Commands
 
-- `cargo run` — launch the editor (dev profile; opt-level=1 for the crate, 3 for deps via `[profile.dev.package."*"]`)
-- `cargo run --release` — release build, slow to compile, fast at runtime
-- `cargo check` — fast type/borrow check; use this in iteration, not `cargo build`
-- `cargo test` — unit tests (inline `#[cfg(test)] mod tests` per source file)
-- `cargo fmt` / `cargo clippy` — standard Rust toolchain
+- `cargo run` — dev build (opt-level=1 crate, 3 deps)
+- `cargo run --release` — release
+- `cargo check` — iterate with this, not `cargo build`
+- `cargo test` — unit tests
+- `cargo fmt` / `cargo clippy`
 
 ## Tests
 
-Tests live as inline `#[cfg(test)] mod tests` blocks at the bottom of each `src/*.rs` module — there is no lib target and no `tests/` directory. Coverage focuses on pure logic: `grid` (sparse chunk allocate/drop, y<0 refusal, iter_occupied, bounding_box across negative coords, dirty-chunk seam propagation, perf-threshold latch math), `history` (record/undo/redo/dedup/cap), `shapes` (rect/ellipse/line2d/extrude), `picking` (DDA raycaster + y=0 fallback + step-cap termination in empty world), `mesh` (sRGB roundtrip, greedy quad counts, chunked vs monolithic equivalence across seams, negative coords), `camera` (fit_view, zoom step reciprocity, zoom_radius_limits lower/upper bounds), `theme` (canvas resolution + serde back-compat for older `preferences.ron` carrying now-removed `show_floor` / `floor_color` / `show_walls` / `wall_color` fields), `io::project` (sparse roundtrip, negative + far-coord roundtrip, v1 lax-deserialize), `io::vox` (AABB-shift on export, refusal beyond 256³, axis remap), `io::palettes` (user palette roundtrip, builtins not persisted). Avoid spinning up a Bevy `App` in tests — exercise the pure functions instead. File-IO tests use `std::env::temp_dir()`; do not add `tempfile` as a dep.
+Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs`. No `tests/` dir, no lib target. Coverage focuses on pure logic (grid, history, shapes, picking, mesh, camera, theme, io::*). **Don't spin up a Bevy `App` in tests** — exercise pure functions. File-IO tests use `std::env::temp_dir()`; don't add `tempfile`.
 
-**Always add or update tests when adding or modifying a feature** — `cargo test` runs as a pre-commit gate (see below), so untested feature work is incomplete.
+**Always add/update tests when adding/modifying a feature** — `cargo test` is a pre-push gate.
 
 ## Git hooks
 
-Two tracked hooks in `.githooks/`. Fresh clones must opt in once:
+Tracked in `.githooks/`. Opt in once per clone: `git config core.hooksPath .githooks`.
 
-```sh
-git config core.hooksPath .githooks
-```
+- `pre-commit` — `cargo fmt --all -- --check`
+- `pre-push` — `cargo test`
 
-- `pre-commit` — `cargo fmt --all -- --check`. Fast gate; runs on every commit. Bypass with `git commit --no-verify`.
-- `pre-push` — `cargo test`. Heavier gate; runs once per push. Bypass with `git push --no-verify`.
-
-CI re-runs both fmt and `cargo nextest` on every PR, so a `--no-verify` bypass is caught upstream.
+CI re-runs both, so `--no-verify` is caught upstream.
 
 ## Architecture
 
-Roxel is a single-window Bevy 0.18 app with a `bevy_egui` UI overlay and a `bevy_panorbit_camera` viewport camera. Everything is in one binary (`src/main.rs`) — no library crate, no workspace.
+Single-window Bevy 0.18 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. One binary (`src/main.rs`), no lib crate, no workspace.
 
 ### Data flow
 
-`VoxelGrid` (`grid.rs`) is the single source of truth. Storage is **sparse**: a `HashMap<IVec3, Chunk>` keyed by chunk coordinate. Each `Chunk` holds a flat `Box<[Option<Color8>]>` of `CHUNK_VOL = 32³` cells plus an occupancy `count`. Chunks allocate on first write to any of their cells and **drop** the moment the count hits zero. The only hard rule is `p.y >= 0`; writes below the floor are silently refused. There is no upper bound on X, Y, or Z — the open world is sized by the user's memory.
+`VoxelGrid` (`grid.rs`) is the single source of truth. Sparse storage: `HashMap<IVec3, Chunk>` keyed by chunk coord. `CHUNK = 32`, `CHUNK_VOL = 32_768`. Chunks allocate on first write, **drop the moment occupancy hits zero**. Only hard rule: `p.y >= 0` (writes below floor silently refused). No upper bound on X/Y/Z — open world sized by user memory. `chunk_coord` uses `div_euclid`, `local_idx` uses `rem_euclid` (negative coords work).
 
-`CHUNK = 32`, `CHUNK_I = 32`, `CHUNK_VOL = 32_768`. `chunk_coord(p)` returns the chunk key (`div_euclid` per axis so negative coords work); `local_idx(p)` is the flat index into a chunk's cell array (`rem_euclid`).
+Every `set` flips `dirty`, inserts owning chunk into `dirty_chunks`, plus seam-neighbour chunks for boundary cells (face occlusion changes there). `dirty_chunks` drained by `regenerate_mesh_system`.
 
-Every `set` flips a global `dirty: bool`, inserts the owning chunk coord into `dirty_chunks: HashSet<IVec3>`, and inserts seam-neighbour chunk coords for cells on a chunk boundary — face occlusion changes there too. `dirty_chunks` is drained by `regenerate_mesh_system`. `total_count` and `warned_large` track the soft perf-warning latch (`large_scene_threshold_crossed` / `large_scene_warning_cleared` are the pure predicates; `perf_warn_system` in `main.rs` ticks them and fires a one-shot toast).
+**Mutations flow through `History::record`, not `grid.set` directly.** Recording wraps each set in a `CellDelta`, dedupes per-stroke via `HashSet<(i32,i32,i32)>`. `History::begin`/`end` bracket a stroke; LMB-release path in `tool_input_system` calls `end`. Undo cap `MAX_UNDO = 200`; new stroke clears redo. Picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow) — voxels placed earlier in the same stroke are invisible to the next pick. This kills runaway stacking and replaces the old full-grid-clone snapshot (which would be unbounded in open world).
 
-Mutations flow through `History::record` (`history.rs`), **not** `grid.set` directly. Recording wraps each `grid.set` in a `CellDelta`, dedupes per stroke via a `HashSet<(i32,i32,i32)>`, and appends to `History.current`. `History::begin` / `History::end` bracket a stroke; the LMB-release path in `tool_input_system` is responsible for calling `end`. The undo stack is capped at `MAX_UNDO = 200`; pushing a new stroke clears the redo stack. The picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow), so voxels placed earlier in the same stroke are invisible to the next pick — this is what kills runaway stacking, and replaces the old full-grid-clone snapshot.
+`regenerate_mesh_system` drains `dirty_chunks` each frame. Chunks with data → spawn/update entity; emptied → despawn. Entities live in `VoxelChunkMeshes`. Mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces in a `[min, max)` chunk-aligned box but queries the **full grid** for cross-bounds occlusion (quads agree at seams). Base colors run through `srgb_to_linear` before upload — Bevy expects linear vertex colors.
 
-`regenerate_mesh_system` (`mesh.rs`) drains `grid.dirty_chunks` each frame. For each dirty coord: if the chunk has data, spawn an entity on first sight (or update the existing mesh handle); if the chunk has emptied, despawn its entity. Chunk meshes live in `VoxelChunkMeshes { chunks: HashMap<IVec3, (Entity, Handle<Mesh>)>, material: Handle<StandardMaterial> }` — entities are created lazily and despawned on empty. The mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces inside a half-open `[min, max)` chunk-coord-aligned box while still querying the full grid for cross-bounds occlusion so emitted quads agree at chunk seams with the monolithic `greedy_quads` reference (which itself walks loaded chunks). Touching `grid` outside `History::record` still works but bypasses undo, so prefer the history path. Base colors are run through `srgb_to_linear` before upload — Bevy's pipeline expects linear vertex colors.
+`PreviewHide` (`mesh.rs`): erase preview hides target cell; paint preview swaps it in place via `PreviewHide.recolor`. Change to either re-triggers chunk rebuild even when `grid.dirty` is false. Driven by `brush_preview_system` (`preview.rs`) and `shape_preview_system` (`shape_preview.rs`), both scheduled `before(regenerate_mesh_system)`.
 
-The mesher also consults `PreviewHide` (`mesh.rs`): when the erase preview is active, the targeted cell is filtered out of `build_mesh` so the voxel-to-be-removed visually disappears under the cursor. `PreviewHide.recolor` does the same for paint, swapping the cell's color in-place. A change to `PreviewHide.cell` or `PreviewHide.recolor` re-triggers a mesh rebuild for that chunk even when `grid.dirty` is false. `brush_preview_system` (`preview.rs`) drives the ghost cuboid for `Tool::Brush`, the `PreviewHide` cell for `Tool::Erase`, and the `PreviewHide.recolor` entry for `Tool::Paint`; `shape_preview_system` (`shape_preview.rs`) drives the ghost mesh for `Tool::Shape`. Both are scheduled `before(regenerate_mesh_system)` so the mesher sees the current frame's hide state.
+All tool preview outlines go through `PreviewGizmos` group (`preview.rs`): `depth_bias = -1.0`, `line.width = 2.5`, `perspective = false`. **Depth bias is mandatory** — without it, outlines flush against a neighbour's face get z-occluded and silently vanish. Color is `accent_outline_color(&theme)` (system blue). Don't reintroduce a luminance-contrast outline — reads as generic edge, not tool affordance.
 
-All tool preview outlines (brush ghost, erase/paint target highlight, shape silhouette) emit through the `PreviewGizmos` group (`preview.rs`) — a dedicated `GizmoConfigGroup` with `depth_bias = -1.0`, `line.width = 2.5`, and `line.perspective = false`. The depth bias is mandatory: without it, outline edges that sit flush against an adjacent voxel's face get z-occluded by that neighbor's mesh and the affordance silently disappears. Color comes from `accent_outline_color(&theme)` — the active `Theme::accent` (system blue, matching Figma/Spline/Blender selection chrome). Do not reintroduce a luminance-based contrast outline: it reads as a generic edge, not a tool affordance, and decouples preview chrome from the rest of the themed UI.
-
-Both previews hide while the user is orbiting (RMB), dragging the gizmo, or already mid-stroke — checked via mouse state, `GizmoDrag.active`, and `PointerState.stroking`. Don't reintroduce a preview that flashes during orbit; it's distracting and was deliberately removed.
+Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mouse, `GizmoDrag.active`, `PointerState.stroking`. Don't reintroduce a preview that flashes during orbit.
 
 ### Tools and input
 
-`tool_input_system` is the central tool dispatcher. It early-returns when egui wants the pointer (`is_pointer_over_area` or `wants_pointer_input`) or when the gizmo viewport rect contains the cursor — these gates exist to prevent painting through UI. `Tool::Eyedropper` is single-click; it auto-restores `tool.previous` on release **unless** Alt is held (Alt keeps the eyedropper sticky for repeated picks, driven by `alt_eyedropper_system`). The other tools are stroke-based and rely on `PointerState.stroking` plus `history.begin/record/end`.
+`tool_input_system` is the central dispatcher. Early-returns when egui wants the pointer or the gizmo viewport rect contains the cursor.
 
-`Tool::Shape` (rectangle / ellipse / line, configurable via `ShapeOptions`) is two-click: first click anchors corner1 on the picked face, drag previews the 2D footprint, second click commits and lets the user drag along the face normal to extrude (`shapes::extrude` lifts the 2D cell set into a 3D box / cylinder / line column). The shape's in-progress state lives in `ShapeState`; `tool_input_system` checks `state.phase` to route input through the rectangle/ellipse/line cell generators in `shapes.rs`. Holding Shift during the footprint drag locks aspect ratio via `constrain_shape_corner2` — rectangle/ellipse become square (both 2D-plane axes equal magnitude); line snaps to the nearest 45° direction in the face plane.
+- **`Tool::Eyedropper`** — single-click, auto-restores `tool.previous` on release unless Alt held (sticky via `alt_eyedropper_system`).
+- **`Tool::Shape`** (rect/ellipse/line, `ShapeOptions`) — two-click: anchor on picked face → drag 2D footprint → click commits → drag along face normal to extrude (`shapes::extrude`). State in `ShapeState`. Shift during footprint drag locks aspect ratio via `constrain_shape_corner2` (rect/ellipse → square; line → nearest 45° in face plane).
+- **Long-press shape picker** (`ui.rs`) — `LONG_PRESS_SECS = 0.18` on the rail button opens the picker; release-over-option commits. Quick click selects via `tool_button`'s `clicked()` path. Press state in `egui::Memory` keyed by `shape_resp.id.with("press_hold")` (`f64::NAN` = not pressed). Release frame still paints the picker so `released && r.contains_pointer()` can fire. Picker is bare `egui::Area::fade_in(false)` + manual `Frame::popup` (not `egui::Popup` — its fade-in is hardcoded). Options are hand-painted (`painter().rect` + `Image::paint_at`), not `egui::Button`, so hover fill tracks `r.contains_pointer()` regardless of press source.
+- **`Tool::Select`** (`select.rs`) — same two-phase face-plane drag as Shape, commits a region into `Selection`. AABB hull (drag) or per-cell mask (double-click → `connected_same_color` flood). `selection_render_system` draws marching ants around AABB or along `silhouette_edges` of mask. All region ops consult mask first, fall back to AABB. Backspace/Delete → `clear_selection`; Esc → clear selection.
+- **`Tool::Move`** (`select.rs` + `move_drag_system` in `tools.rs`) — translates selection by integer offsets. Mouse drag uses `StrokeAnchor` face plane; Shift locks Y. Overlap with non-source occupied cell refused. `history.abort` on RMB/Esc/tool-switch. Arrow keys: ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. One history stroke per commit — `History::record` dedupes mid-drag by overwriting the existing delta's `after`.
 
-The shape tool button in the left rail uses a long-press primitive picker (`ui.rs`). Holding LMB on the button for `LONG_PRESS_SECS = 0.18` opens the picker; releasing over an option commits that primitive and switches to `Tool::Shape`. A quick click never paints the picker — it just selects the tool via `tool_button`'s usual `clicked()` path. Press state `(press_start: f64, opened: bool)` lives in `egui::Memory` keyed by `shape_resp.id.with("press_hold")`; `f64::NAN` is the "not pressed" sentinel. The release frame still paints the picker (memory keeps `opened = true` until after the frame) so an option's `released && r.contains_pointer()` check can fire — `is_pointer_button_down_on()` flips to false on release and would otherwise hide the picker before the click registers.
+**Clipboard** (`clipboard.rs`) — selection → `Stamp { cells, origin, aabb }`. Cmd+C/X/V (egui-keys-gated). Cut = copy + clear in one stroke. Paste anchor priority: cursor pick (`hit.cell + hit.normal`) → selection AABB min → stamp origin. Command-palette `Paste` skips cursor branch. Pastes below `y = 0` refused.
 
-The picker itself is a bare `egui::Area::fade_in(false)` with a manually painted `Frame::popup`, not `egui::Popup`. The `Popup` builder hard-codes Area fade-in (no public toggle), which made the picker visibly fade in/out. Option cells are also hand-painted via `painter().rect(...)` + `Image::paint_at(...)` instead of `egui::Button` so the hover fill (`theme.surface_hover`) tracks `r.contains_pointer()` regardless of click/press source — egui's stock button only paints the `hovered` visuals when the button itself was the press target, which fails here because the press lives on the shape rail button.
+`PointerState` carries `anchor` (`StrokeAnchor` — locks build plane axis during drag) and `last_placed` (endpoint for `line3d` 3D Bresenham — fills jump gaps; Shift+click runs one-shot `line3d` from `last_placed` to target).
 
-`Tool::Select` (`select.rs`) is the same two-phase face-plane drag as Shape but commits a region into `Selection` instead of writing voxels. The region is either the AABB hull (drag) or a per-cell mask (`Selection.cells`, populated by double-click → `connected_same_color` flood). `selection_render_system` draws marching ants — either around the AABB or, when a mask is present, along the `silhouette_edges` of the masked region so a connected blob reads as one shape. All region ops (`clear_selection`, `recolor_selection`, `move_selection`, `move_drag_system` originals) consult the mask when present and fall back to the AABB; `selection_key_action_system` wires Backspace/Delete to `clear_selection` and Esc to clear the selection.
-
-`Tool::Move` (`select.rs` + `move_drag_system` in `tools.rs`) translates the contents of the active selection by integer cell offsets. Two input paths, both share `MoveDragState` (mouse) and the pure `select::move_selection` helper:
-- **Mouse drag** — `move_drag_system` runs as its own `Update` system. LMB-press on a voxel inside the selection anchors a face plane (same `StrokeAnchor` machinery as Shape/Select); cursor motion projects to that plane and snaps to integer cells via `constrain_move_delta`. The drag locks the face-normal axis; Shift also locks Y so the move stays on the same horizontal plane. A move that would overlap a non-source occupied cell is refused, leaving the selection at the last valid delta. `history.abort` rolls partial writes back when the user RMB / Esc / switches tool mid-drag. Click on a bare voxel with no active selection creates an ad-hoc 1×1×1 selection that is cleared on release.
-- **Arrow keys** — `move_selection_keys_system` calls `move_selection` once per `just_pressed`. ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. Collisions and below-floor shifts are rejected; X / Z are unbounded.
-
-Both paths record exactly one history stroke per commit. Mid-drag, frames re-record the same touched cells repeatedly; `History::record` dedupes by overwriting the existing delta's `after` value so the final stroke contains one entry per cell regardless of how many frames the drag spanned.
-
-Clipboard (`clipboard.rs`) snapshots the active selection's occupied voxels into a `Stamp { cells, origin, aabb }` held in the `Clipboard` resource. `clipboard_key_system` wires Cmd+C / Cmd+X / Cmd+V (egui-keys-gated). Cut runs `copy_selection` + `clear_selection` in one stroke. Paste anchor resolves through `resolve_paste_anchor` with priority: cursor pick (`hit.cell + hit.normal`, so the stamp sits on top of the hovered face like the Brush) → active selection's AABB min → stamp origin (paste-in-place). The command-palette `Paste` action skips the cursor branch (no ray available mid-dispatch) and resolves selection → origin. Paste overwrites destination cells in one history stroke and updates the selection to the pasted region (preserving mask vs AABB shape). Pastes that would land below `y = 0` are refused outright.
-
-Two pieces of stroke state in `PointerState` matter for non-shape tools:
-- `anchor` (`StrokeAnchor`) — locks the build plane axis for the duration of a drag so the picker can't slide onto a perpendicular face mid-stroke.
-- `last_placed: Option<IVec3>` — endpoint for `line3d` (3D Bresenham). Fills gaps when the cursor jumps between frames, and `Shift+click` runs a one-shot `line3d` stroke from `last_placed` to the new target without entering drag mode.
-
-Pre-stroke values for the picker come from `history.pre_stroke_value(p)` — a per-cell shadow built up as cells are recorded during the stroke. This replaced an earlier full-grid `VoxelGrid` clone that paid 8 MB per stroke; in the open world a clone would be unbounded, so the per-cell path is the only viable approach.
-
-`picking.rs` is a DDA-style voxel raycaster fed by `cursor_ray`. `pick` returns the hit cell and surface normal so `Tool::Brush` can place into `hit.cell + hit.normal`. The DDA caps at `MAX_DDA_STEPS = 1024` so an open-air ray terminates in an empty world; it also exits early when the cell drops below the floor going further down. When the ray misses every voxel it falls back to the floor plane at y=0 (unbounded on X/Z) so brushing on empty space still works.
+`picking.rs` — DDA voxel raycaster fed by `cursor_ray`. Caps at `MAX_DDA_STEPS = 1024` (open-air ray terminates in empty world). Falls back to y=0 floor plane (unbounded X/Z) on miss so brushing on empty space works.
 
 ### File I/O — async dialogs are mandatory
 
-Synchronous `rfd::FileDialog` calls **block winit's event loop on macOS** (spinning beachball). All save/open/export buttons in `ui.rs` (and the macOS menu) go through `PendingDialog`:
+Sync `rfd::FileDialog` **blocks winit's event loop on macOS** (beachball). All save/open/export goes through `PendingDialog`:
 
-1. Button click → `pending.spawn(async move { rfd::AsyncFileDialog... })` on `AsyncComputeTaskPool`.
-2. `poll_dialogs_system` (registered in `Update`) calls `block_on(future::poll_once(task))` each frame.
-3. On `Some(DialogResult::*)`, dispatch to `io::project::{save,load}` / `io::vox::{import,export}` / `io::qb::import` / `io::gox::{import,export}` / `io::obj::export` / `io::fbx::export` / `io::gltf::export` / `io::svg::export` / `io::ase::{import,export}` (PNG goes through `snapshot.rs` which spawns a transparent-clear render pass).
+1. Click → `pending.spawn(async { rfd::AsyncFileDialog... })` on `AsyncComputeTaskPool`
+2. `poll_dialogs_system` (Update) calls `block_on(future::poll_once(task))` each frame
+3. On `Some(DialogResult::*)` → dispatch to `io::project/vox/qb/gox/obj/fbx/gltf/svg/ase` (PNG via `snapshot.rs`)
 
-`io::fbx::export` writes binary FBX 7.4 (Geometry + Model + Connections + Definitions + GlobalSettings + footer with the canonical magic). Per-face quads with vertex colors via `LayerElementColor` (`ByPolygonVertex`/`Direct`). Y-up to match Bevy and Blender's default importer expectations. The ASCII variant accepted by Maya / 3ds Max / Unity but not Blender was the first attempt — do not revive it without a reason.
+Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::FileDialog::*` in egui draw code.**
 
-`io::gltf::export` writes glTF 2.0 binary (`.glb`): 12-byte header + JSON chunk + BIN chunk, all 4-byte aligned. Indexed triangle mesh, per-vertex `COLOR_0` as u8-normalized RGBA, Y-up (glTF spec default — Unity and Godot import upright with no extra transform). Per-face quads share the iteration path with FBX through `mesh::for_each_exposed_face`; do not reintroduce a separate grid-walk loop.
+**Format notes:**
+- `io::fbx::export` — binary FBX 7.4, Y-up, per-face quads with `LayerElementColor` (`ByPolygonVertex`/`Direct`). Don't revive the ASCII variant (Blender rejects).
+- `io::gltf::export` — `.glb` (12-byte header + JSON + BIN chunks, 4-byte aligned). Indexed triangles, `COLOR_0` as u8-norm RGBA, Y-up.
+- **Axis remap**: `.vox` and `.gox` are Z-up → swap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` on import + export. `.qb` is Y-up natively. `.gox` BL16 written as raw 16³ RGBA; PNG-encoded BL16 rejected with clear error.
+- **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.fbx`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
+- Imports `grid.set` each voxel at source coord. No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
-Foreign-tool axis handling: MagicaVoxel `.vox` and Goxel `.gox` are Z-up; both importer + exporter remap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` so foreign files load upright and Roxel-exported files open upright in the target tool. Qubicle `.qb` is Y-up natively — no remap. `.gox` BL16 blocks are written as raw 16³ RGBA bytes; PNG-encoded BL16 (used by current Goxel versions) is rejected with a clear error rather than silently misparsing.
+**Shared io helpers — use them, don't reroll:**
+- `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.
+- `grid::bounding_box()` — `Option<(min, max)>` inclusive.
+- `mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by fbx/gltf.
+- `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import.
+- `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper.
 
-**AABB-shift on export for unsigned-coord formats.** `.vox` and `.qb` use unsigned coordinates starting at origin; the open-world grid can carry negative coords. On export, compute `grid.bounding_box()` and translate every emitted voxel by `-min` so the model's min corner lands at (0, 0, 0) in the target format. The axis remap (Z-up for `.vox`) applies after the shift. `.vox` additionally refuses export when any axis extent exceeds 256 (format cap — coords are stored in `u8`); user gets a toast. `.gox` and the mesh-based formats (`.obj`, `.fbx`, `.gltf`, `.svg`) handle negative coords natively and write them as-is.
+`io::palettes` persists user palettes (built-ins filtered) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave.
 
-Imports just `grid.set` each voxel at its source coordinate. There is no grid-resize step, no `snap_to_allowed_size` — the open-world grid will accept any IVec3 with `y >= 0`. `apply_import_system` (`main.rs`) only consumes the `PendingImport` flag now; it does not rebuild floor/walls (there's no walls, and the floor follows the camera). If the user wants to re-frame after import, they press Cmd+0.
-
-Shared io helpers (use them; don't reroll):
-
-- `crate::grid::iter_occupied()` — yields `(IVec3, Color8)` for every occupied cell across all loaded chunks. Use this in every exporter instead of nested loops.
-- `crate::grid::bounding_box()` — `Option<(min, max)>` (inclusive) over occupied cells. Used by camera fit, AABB-shift exports, and the design-size footer readout.
-- `crate::mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling, walks `iter_occupied`. Shared by `fbx::build_mesh` + `gltf::build_mesh`.
-- `crate::io::reader::LeReader` — bounds-checked little-endian binary reader. Shared by `qb::import` + `gox::import`.
-- `crate::io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` helper that produces a unique temp-file path for io tests.
-
-Buttons are disabled while `pending.is_active()` so only one dialog runs at a time. **Never** reintroduce sync `rfd::FileDialog::*` calls inside egui draw code.
-
-`io::palettes` persists user-created palettes (only — built-ins are filtered out by `encode`) to `dirs::config_dir()/roxel/palettes.ron` as `Vec<StoredPalette>`. `Palettes::with_user_loaded()` appends them to the built-ins on startup. Any UI action that mutates a user palette must call `io::palettes::save(...)` after — there's no autosave system.
-
-`io::recent` persists the most-recently-opened/saved `.rox` paths to `dirs::config_dir()/roxel/recent.ron` as `Stored { paths: Vec<PathBuf> }`, capped at `MAX_RECENT = 10`. The `RecentFiles` resource (`ui/dialogs.rs`) is hydrated on startup via `RecentFiles::loaded()` and `poll_dialogs_system` calls `recent_files.push(path)` after a successful `OpenProject` or `SaveProject`. `push` dedupes (most-recent first), trims to cap, and writes synchronously — there's no autosave system. The Open Recent submenu in the in-app top bar (`ui.rs`) and the macOS native File menu (`menu.rs`) both read from this resource; `update_recent_menu_system` rebuilds the native submenu only when the snapshot diverges.
+`io::recent` persists recent `.rox` paths (cap `MAX_RECENT = 10`) to `{config_dir}/roxel/recent.ron`. `RecentFiles` resource (`ui/dialogs.rs`) is hydrated on startup; `poll_dialogs_system` pushes after successful open/save. Drives in-app Open Recent submenu (`ui.rs`) and macOS native File menu (`menu.rs`).
 
 ### macOS menu bar
 
-`menu.rs` is gated by `#[cfg(target_os = "macos")]` and installs a native `muda` menu (App / File / Edit submenus with accelerators). It runs four `Update` systems chained `after` each other: `install_menu_system` (one-shot, sets up the menu and stores a `MenuStore` as a non-send resource), `poll_menu_events_system` (drains `MenuEvent` channel into `MenuQueue`), `apply_menu_actions_system` (translates `MenuAction` variants into `PendingDialog` spawns, `History::undo/redo` calls, `NewProject.dialog_open = true`, etc.), and `update_recent_menu_system` (rebuilds the Open Recent submenu when `RecentFiles` changes). `update_menu_enabled_system` greys out Undo/Redo when their stacks are empty. The Open Recent submenu reuses `MAX_RECENT` pre-allocated `MenuItem`s (muda doesn't support runtime creation cleanly) and re-appends a subset each rebuild; the whole submenu is disabled when `RecentFiles` is empty.
+`menu.rs` (`#[cfg(target_os = "macos")]`) installs native `muda` menu. Four chained Update systems: `install_menu_system` (one-shot), `poll_menu_events_system` (drains `MenuEvent` → `MenuQueue`), `apply_menu_actions_system` (translates to `PendingDialog`/`History`/`NewProject`), `update_recent_menu_system` (rebuilds when `RecentFiles` changes). `update_menu_enabled_system` greys undo/redo when stacks empty. Open Recent reuses `MAX_RECENT` pre-allocated `MenuItem`s (muda doesn't support clean runtime creation).
 
-The menu mirrors `ui.rs`'s File/Edit buttons — when adding a new dialog-driven action, wire it into both unless the action is mac-only.
+Menu mirrors `ui.rs` File/Edit — wire new dialog actions into both unless mac-only.
 
 ### New-project flow
 
-`NewProject { dialog_open, apply: bool }` (`grid.rs`) drives a confirm-only modal — there is no grid size to pick. On confirm, `apply` is set to `true`; `apply_new_project_system` (`main.rs`) consumes it the next frame to `grid.clear()` (drains every chunk into `dirty_chunks` so the mesher despawns their entities), clear history, drain `VoxelChunkMeshes.chunks` (despawning any leftover entities the mesher hasn't reached yet), and reset the camera to origin / `EMPTY_WORLD_RADIUS`. Don't poke `VoxelGrid` directly from UI code — go through `NewProject.apply` so the camera + history stay consistent.
+`NewProject { dialog_open, apply }` (`grid.rs`) — confirm-only modal, no grid size. On confirm, `apply = true`; `apply_new_project_system` consumes next frame: `grid.clear()` (drains chunks → mesher despawns), clear history, drain `VoxelChunkMeshes.chunks`, reset camera to origin / `EMPTY_WORLD_RADIUS`. **Don't poke `VoxelGrid` directly from UI** — go through `NewProject.apply`.
 
 ### UI structure
 
-`apply_egui_style` runs every frame at the top of `ui_system` using the current `Theme` resource. `ui_system` runs in the `EguiPrimaryContextPass` schedule (not `Update`) and lays out one anchored panel plus two floating surfaces over the canvas:
+`apply_egui_style` runs every frame at top of `ui_system` using current `Theme`. `ui_system` runs in `EguiPrimaryContextPass` (not Update). One anchored panel + two floating surfaces:
 
-- **Left inspector** (`SidePanel::left`) — color swatch + popup picker, palette selector with built-ins + user palettes + add/new/dup/rename/delete + drag-reorder, `.ase` import/export, recent colors, shape options, scene stats. Top section "Status" shows `Size W×H×D` / `Voxels N` / `Zoom N voxels` (gated on `prefs.show_status_chip`) — replaces the old bottom status bar. The panel has no separator line; the right edge is implicit because nothing else is anchored there.
-- **Floating tool island** (`ui/floating.rs::tool_island`) — pinned to right-center via `egui::Area` with pivot `RIGHT_CENTER` against `ctx.available_rect()`. Icon-only by default; `prefs.show_tool_labels` adds a dim caption under each tool button. The long-press shape picker now opens to the **left** of its anchor (`Align2::RIGHT_TOP`) since the rail itself is on the right edge.
-- **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center File/Edit controls, Win/Linux only and gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu (see `menu.rs`).
+- **Left inspector** (`SidePanel::left`) — color swatch + picker, palette selector with add/dup/rename/delete/reorder, `.ase` import/export, recent colors, shape options, scene stats. "Status" top section (Size/Voxels/Zoom) gated on `prefs.show_status_chip`.
+- **Floating tool island** (`ui/floating.rs::tool_island`) — right-center pivot. Icon-only; `prefs.show_tool_labels` adds dim caption. Shape picker opens to the left (`Align2::RIGHT_TOP`).
+- **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center, Win/Linux only, gated on `prefs.show_floating_menu_bar`. macOS uses native `muda` menu.
 
-Both floating surfaces share `pill_frame` (panel fill, hairline border, `radius::PILL` corners, soft drop shadow) and `floating_area` (Foreground order, fixed-pos + pivot anchor). `space::FLOAT_GAP` is the canvas-edge inset.
+Both floating surfaces share `pill_frame` + `floating_area`. `space::FLOAT_GAP` is canvas-edge inset.
 
-**Focus mode**: `ui/visibility.rs` exposes `UiVisible` (Resource) and `tab_toggle_system`. Pressing `` ` `` (Backquote) flips `UiVisible.0`, hiding the inspector + both floating surfaces so the canvas takes the full window. Toasts and modals still render so error feedback is never trapped behind the toggle. Backquote was chosen over Tab to avoid colliding with egui's built-in focus-traversal. Gated on `ctx.wants_keyboard_input()` so the key types literally into focused text fields.
+**Focus mode**: Backquote (`` ` ``) flips `UiVisible.0` (`ui/visibility.rs`), hiding inspector + floating surfaces. Toasts/modals still render. Backquote (not Tab) avoids egui focus-traversal collision. Gated on `ctx.wants_keyboard_input()` so it types literally into focused fields.
 
-**macOS titlebar integration**: the primary window enables `titlebar_transparent`, `titlebar_show_title = false`, and `fullsize_content_view`. The inspector panel reserves `height::MAC_TITLEBAR_GUTTER = 28` px of top inner padding on macOS so contents don't slide under the traffic-light buttons. Win/Linux runs with a normal titlebar and no gutter.
+**macOS titlebar**: primary window has `titlebar_transparent` + `titlebar_show_title = false` + `fullsize_content_view`. Inspector reserves `height::MAC_TITLEBAR_GUTTER = 28` px top inner padding on macOS.
 
-Sections in the inspector are flat: bold title, then content, then a thin full-width divider — no card frames. The divider spans the full panel width by painting at `ui.clip_rect().x_range()` rather than `ui.available_width()`, with `painter.round_to_pixel_center(...)` on the y-coord so the hairline crisps on Retina.
+Inspector sections are flat (bold title → content → full-width divider, no card frames). Divider paints at `ui.clip_rect().x_range()` (not `available_width()`) with `painter.round_to_pixel_center(...)` on y for Retina crispness.
 
-`tool_button`, the big color swatch, palette swatches, and recent swatches use `egui::Button` wrapped in a `ui.scope` that zeroes `spacing.button_padding` and `spacing.interact_size`. This keeps them at their exact requested size while letting egui's AA tessellator render the rounded fills cleanly (the manual-painter version produced jaggies on Retina displays).
-
-Egui labels disable text selection except on numeric values in the Status section (so users can copy a count or hex without dragging the whole label).
+`tool_button`, big swatch, palette/recent swatches: `egui::Button` wrapped in a scope that zeroes `button_padding` + `interact_size`. Keeps exact sizing while egui's AA tessellator renders cleanly (manual-painter version produced Retina jaggies).
 
 ### Design tokens
 
-Every spacing, padding, corner radius, font size, icon size, swatch size, stroke width, fixed widget size, container width, and container height in the UI must resolve to a value in `src/ui/tokens.rs` — not an inline literal. Submodules: `font` (SMALL/BODY/HEADING, no font under 12 pt), `radius` (XS/SM/MD/LG/PILL as `u8` for `CornerRadius::same` — `PILL = 18` is the floating-surface radius), `space` (scalar `f32` for `ui.add_space`; `FLOAT_GAP` is the canvas-edge inset for floating surfaces), `gap` (Vec2 for `item_spacing`), `pad` (Vec2 for `button_padding`), `icon` (square sizes + `*_square()` helpers), `swatch` (recent/palette/hero), `stroke` (HAIR/NORMAL/ACCENT), `size` (fixed widget sizes — rule height, icon-button min, dropdown / action-row / command-palette row heights, toast accent bar, prefs label), `width` (container widths — pill menu, side panel, modal widths, command palette, toast, plus floating-surface sizing tokens `FLOAT_MENU` / `STATUS_CHIP_MIN` / `TOOL_ISLAND`), `height` (container max heights — `FLOAT_MENU`, `STATUS_CHIP`, and `MAC_TITLEBAR_GUTTER` for the transparent-titlebar inset).
+**Every spacing, padding, radius, font size, icon size, swatch size, stroke width, fixed widget size, container width/height must resolve to `src/ui/tokens.rs` — not an inline literal.** Submodules: `font` (SMALL/BODY/HEADING, ≥12pt), `radius` (XS/SM/MD/LG/PILL u8, `PILL = 18`), `space` (scalar f32), `gap` (Vec2 item_spacing), `pad` (Vec2 button_padding), `icon`, `swatch`, `stroke` (HAIR/NORMAL/ACCENT), `size`, `width`, `height`.
 
-All values land on a 4-px grid and are even. The token guard tests in `tokens::tests` enforce this — if you add a new constant, keep it even and ≥ 12 pt for fonts, or extend the guards explicitly. **Never inline a literal radius, padding, gap, or font size in a UI call site.** If no token fits, add one rather than hardcoding. Colors stay in `Theme` (`theme.rs`) — they swap with theme mode, so they don't belong with the static tokens.
+All values land on a 4-px grid and are even. Token guard tests in `tokens::tests` enforce. **Never inline a literal radius/padding/gap/font size.** Add a token if none fits. Colors stay in `Theme` (`theme.rs`) — they swap with mode.
 
 ### UI widget helpers
 
-Reusable egui widget helpers live in `src/ui/widgets.rs`:
+Helpers in `src/ui/widgets.rs`:
+- Structural: `section`, `prefs_row`, `modal_window`, `swatch_grid`, `vertical_rule`. Floating-surface: `pill_frame`, `floating_area`, `tool_island`, `pill_menu` (in `ui/floating.rs`).
+- Buttons: `tool_button`, `icon_button`, `icon_only_button`, `wide_action_button`, `dialog_button` (primary = accent), `chip_button`, `swatch_button`.
+- Labels: `stat_row`, `hint_label`, `status_label`, `hex_label`/`hex_string`, `tool_label`, `plane_color_row`.
 
-- Structural: `section` (titled block + full-width divider), `prefs_row` (settings-modal label + content row), `modal_window` (centred themed `egui::Window` builder used by Preferences + New-project), `swatch_grid` (zero-padding `horizontal_wrapped` for swatch rows), `vertical_rule`. Floating-surface helpers (`pill_frame`, `floating_area`, `tool_island`, `pill_menu`) live in `ui/floating.rs` — reach for those when adding canvas-overlay UI rather than registering a new `SidePanel`.
-- Buttons: `tool_button` (floating tool island), `icon_button` (pill menu text + icon), `icon_only_button` (palette toolbar), `wide_action_button` ("Add current color" style full-width row), `dialog_button` (modal Create/Cancel rows; `primary` = accent fill), `chip_button` (generic selectable toggle, used by Theme: System/Light/Dark), `swatch_button` (foreground/palette/recent colour squares).
-- Labels: `stat_row` (label + right-aligned monospace value, used by Status section), `hint_label` (dim italic body text), `status_label` (dim readout — kept for future use after the bottom bar was retired), `hex_label` / `hex_string` (canonical `#RRGGBB` rendering), `tool_label` (`Tool` → display string), `plane_color_row` (radio + custom-colour pref row).
-
-**Prefer these over hand-rolling new one-off styles.** When adding UI, reach for an existing helper first. Only introduce a new inline pattern if no helper fits and the shape is genuinely single-use; if a second call site appears, promote it to `widgets.rs` rather than copying. Helpers own the `ui.scope` + `spacing_mut` boilerplate, the themed strokes/fills, the corner radii, and the title font selection — duplicating those inline drifts the look over time. The same rule applies to modal frames (`modal_window`) and section dividers (`section`): never reach for `egui::Window::new` or hand-painted hlines directly.
+**Prefer helpers over hand-rolling.** Promote a second call site into `widgets.rs`. Never reach for `egui::Window::new` or hand-painted hlines directly — use `modal_window` and `section`.
 
 ### Toast notifications
 
-User-facing success/error feedback goes through `crate::ui::toast::Toasts` — a `Resource` holding a capped `VecDeque<Toast>` (max 4 visible, oldest evicted). Call sites use `toasts.success(msg)` / `toasts.error(msg)` / `toasts.info(msg)`; `toast_lifetime_system` ticks each toast's `remaining` field down by `time.delta_secs()` and removes expired ones. Success TTL is 3.5 s, error 6 s (errors linger for readability).
+`crate::ui::toast::Toasts` — capped `VecDeque<Toast>` (max 4 visible). `toasts.success/error/info(msg)`. Success TTL 3.5s, error 6s. `draw_toasts` anchors bottom-center of canvas, pivot `CENTER_BOTTOM`, grows upward. Always renders (even in focus mode).
 
-`draw_toasts` runs last in `ui_system` and anchors the stack to **bottom-center of the canvas** (`ctx.available_rect()` after all panels have been registered), pivot `CENTER_BOTTOM`, so newest toast sits closest to the action and grows upward into the open canvas. Toasts always render, even in focus mode (Backquote), so I/O errors are never trapped behind the toggle.
-
-**Never reintroduce `eprintln!` for user-facing I/O errors.** All save/open/export/import paths in `ui/dialogs.rs` (and `snapshot.rs`'s PNG observer) emit toasts; terminal output is invisible to packaged-app users. Internal diagnostics (dropped-voxel counts, multi-model warnings) can still go to stderr — those aren't actionable.
+**Never reintroduce `eprintln!` for user-facing I/O errors** — terminal output is invisible in packaged apps. Internal diagnostics (dropped-voxel counts) can still go to stderr.
 
 ### Theme + Preferences
 
-`Theme` (`theme.rs`) is a `Resource` carrying every egui color slot (bg / panel / surface / surface_hover / accent / accent_dim / text / text_dim / border / faint) plus a `mode: ThemeMode::{Light, Dark}` discriminator. `Theme::dark()` (UI bg `#191A2E`) and `Theme::light()` are the two presets.
+`Theme` (`theme.rs`) — Resource with all egui color slots + `mode: ThemeMode::{Light, Dark}`. `Theme::dark()` (bg `#191A2E`) / `Theme::light()`.
 
-`Preferences` (`theme.rs`) carries:
-- `theme: ThemePref { Light, Dark, System }`
-- `canvas_bg: CanvasBgPref { MatchTheme, Custom([u8; 3]) }` — viewport clear color. `MatchTheme` resolves to a near-neutral grey (`canvas_match_color`) rather than the bluish UI panel bg, so voxel hues read truly. Light = `#F2F3F6`, Dark = `#1C1C1E`.
-- `show_floor_grid: bool` (default true) — master "canvas chrome" toggle. Gates the dot grid + vignette overlay together.
-- `show_origin_axes: bool` (default true) — unit-length RGB axis triad at world origin (red X, green Y, blue Z). Auto-fades to 0 as voxels appear inside a 4-cell cube around origin — empty-scene wayfinder, not always-on chrome.
-- `color_space: ColorSpace` (default `Hex`) — active readout/edit space in the inspector Color section. Variants: `Hex`, `Rgb`, `Hsl`, `Hsb`, `Oklch`. Conversions live in `src/color_space.rs`; sRGB 8-bit storage round-trips losslessly through all variants within ±1/255 (OKLCH reuses `mesh::srgb_to_linear` / `linear_to_srgb`). The editable inspector fields are backed by the `ColorEditBuffer` resource — string slots repopulated whenever `CurrentColor` or the active space changes, so keystrokes don't round-trip through `Color8` mid-edit (which would drop hue on greys and quantise OKLCH chroma). Commit on `lost_focus` (Enter / Tab / click-away); invalid input silently reverts.
-- `show_status_chip: bool` (default true) — show the Status section (Size / Voxels / Zoom) at the top of the inspector. Off = recover the vertical space.
-- `show_tool_labels: bool` (default false) — dim caption under each tool button in the floating island.
-- `show_floating_menu_bar: bool` (default `!cfg!(target_os = "macos")`) — show the top-center pill menu on Win/Linux. macOS users get the native menu either way; the field still exists on macOS for cross-platform pref-file portability.
+`Preferences` (`theme.rs`) — `theme`, `canvas_bg` (`MatchTheme` resolves via `canvas_match_color` to near-neutral grey, not bluish panel bg, so voxel hues read true — Light `#F2F3F6`, Dark `#1C1C1E`), `show_floor_grid` (master canvas chrome toggle: dot grid + vignette), `show_origin_axes` (RGB triad, auto-fades as voxels appear near origin), `color_space` (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch` — conversions in `src/color_space.rs`, sRGB roundtrip within ±1/255, OKLCH reuses `mesh::srgb_to_linear`/`linear_to_srgb`), `show_status_chip`, `show_tool_labels`, `show_floating_menu_bar` (default `!cfg!(target_os = "macos")`).
 
-Every field after `theme` is `#[serde(default = "...")]` (or `#[serde(default)]` if the field's type carries `Default`) so older `preferences.ron` files load without wiping user state. **Keep that invariant**: any new field must have a `#[serde(default)]` provider; otherwise pre-existing prefs files become unparseable and silently revert to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`, `show_y_axis`) are silently dropped at load time — ron ignores unknown struct fields. `theme::tests::preferences_loads_after_floor_fields_removed` and `preferences_loads_after_show_y_axis_field_removed` guard this.
+Editable color fields backed by `ColorEditBuffer` — string slots repopulated when `CurrentColor` or active space changes, so keystrokes don't roundtrip through `Color8` mid-edit (which would drop hue on greys / quantise OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
 
-`Preferences` is loaded on startup via `load_preferences()` and saved via `save_preferences()` whenever the user changes a value in the Preferences modal. The file lives at `dirs::config_dir()/roxel/preferences.ron`. Theme + pref changes propagate through `refresh_theme_system` (every frame, `NonSendMarker` for main-thread `WINIT_WINDOWS` access — resolves `ThemePref::System` against `winit::Window::theme()`) and `apply_canvas_bg_system` in `main.rs`, which diffs before writing so we don't dirty assets every frame.
+**Every field after `theme` is `#[serde(default)]`** — any new field must have a default provider or older `preferences.ron` becomes unparseable and reverts to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`, `show_y_axis`) silently dropped by ron's lax deserializer. Guard tests: `theme::tests::preferences_loads_after_floor_fields_removed`, `..._show_y_axis_field_removed`.
 
-### Grid + origin + canvas chrome
+`Preferences` loaded on startup, saved on modal change. Lives at `{config_dir}/roxel/preferences.ron`. `refresh_theme_system` (NonSendMarker for main-thread `WINIT_WINDOWS`) resolves `ThemePref::System` against `winit::Window::theme()`. `apply_canvas_bg_system` diffs before writing.
 
-There is no floor plane. The canvas chrome stack — dot grid + vignette — replaces the old "engineering-paper" line grid with something closer to Spline. Both share the `show_floor_grid` toggle so users can kill the lot at once.
+### Canvas chrome
 
-`floor_dots_system` (`main.rs`) draws y=0 intersection dots through a dedicated `FloorDotsGizmos` group whose `line.width` is configured to `3.0` with `perspective = false` (`configure_floor_dots_gizmos`). Each dot is a tiny `+` cross of two perpendicular `tick = 0.05` segments — the thick, screen-space-constant line width is what makes the short cross render as a round dot at any orbit angle. Bevy gizmos only expose line primitives, so this is how we fake point sprites without a custom mesh pass. Spacing is always 1 voxel — there are no LOD spacing bands. Window half-extent is `(radius * 1.5).clamp(8, 96)` centered on the camera focus; per-dot alpha fades quadratically with distance from focus (`floor_dot_alpha`), so far dots dissolve to zero before the rim. This is what keeps the grid from cluttering when zoomed out, not an LOD switch. No upper radius cap: at extreme zoom the fade kills every dot's alpha so the loop is cheap even though it always runs.
+**No floor plane.** Chrome stack = dot grid + vignette, both gated on `show_floor_grid`.
 
-`vignette_system` (`main.rs`, runs in `EguiPrimaryContextPass` `after(ui_system)`) paints a 5-vertex `egui::Mesh` (4 dark corners + transparent center) on `Order::Background` over the canvas's `available_rect()`. This is a pseudo-radial darken — the linear-interpolated quad approximates a true circular vignette closely enough at canvas aspect ratios, without needing a fullscreen shader pass. Corner alpha is light (28/255 dark, 14/255 light) so voxel color reading stays honest.
+`floor_dots_system` (`main.rs`) — y=0 intersection dots via `FloorDotsGizmos` group (`line.width = 3.0`, `perspective = false`). Each dot is a tiny `+` cross of `tick = 0.05` segments — thick screen-space-constant width makes the short cross render as a round dot. Spacing always 1 voxel (no LOD bands). Window half-extent `(radius * 1.5).clamp(8, 96)` around camera focus; per-dot alpha fades quadratically (`floor_dot_alpha`). No upper radius cap — extreme zoom kills alpha.
 
-`draw_origin_system` draws a unit-length RGB axis triad at (0, 0, 0) through a dedicated `OriginAxesGizmos` gizmo group (configured in `configure_origin_axes_gizmos` with `depth_bias = -1.0` so the triad reads cleanly on top of the floor dots where both sit at y≈0). Gated on `show_origin_axes`. The triad auto-fades via `triad_fade(near_count)` — full opacity on empty scene, zero when ~8 voxels are packed inside the 4-cell cube around origin. It's a wayfinder for the empty start, not always-on chrome; the old 10,000-unit Y-axis sky line was retired with it.
+`vignette_system` (`EguiPrimaryContextPass` `after(ui_system)`) — 5-vertex `egui::Mesh` (4 dark corners + transparent center) on `Order::Background`. Pseudo-radial darken. Corner alpha light (28/255 dark, 14/255 light).
+
+`draw_origin_system` — RGB axis triad at (0,0,0) via `OriginAxesGizmos` group (`depth_bias = -1.0` reads cleanly over floor dots). Gated on `show_origin_axes`. `triad_fade(near_count)` — full alpha empty, zero at ~8 voxels in 4-cell cube around origin. Wayfinder for empty start, not always-on chrome.
 
 ### Fonts
 
-`install_fonts` (`theme.rs`) registers two static TTFs embedded via `include_bytes!`:
+`install_fonts` (`theme.rs`) embeds Inter Medium + Inter SemiBold via `include_bytes!` (families `"InterMedium"`, `INTER_SEMIBOLD_FAMILY = "InterSemiBold"`).
 
-- Inter Medium (proportional default; named family `"InterMedium"`)
-- Inter SemiBold (named family `INTER_SEMIBOLD_FAMILY = "InterSemiBold"`, used for headings, section titles, and the command-palette title)
+Monospace **not embedded** — `load_system_monospace` reads `SFNSMono`/`Monaco` (macOS), `consola`/`cour` (Win), DejaVu/Ubuntu/Liberation (Linux). Falls back to egui built-in.
 
-Monospace is **not embedded** — `load_system_monospace` reads the platform's stock mono font from disk (`SFNSMono` / `Monaco` on macOS, `consola` / `cour` on Windows, DejaVu / Ubuntu / Liberation on Linux) and registers the first one that exists as the egui monospace family. If none exist, egui falls back to its built-in mono. Used by `.monospace()` RichText for hex codes and stat values.
+For real bold use `FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())`, not `.strong()` (`.strong()` adds an extra stroke pass, not a family switch).
 
-For real bold (not faux), reference `egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())` instead of `.strong()` — `.strong()` only adds an extra stroke pass, it doesn't switch font family.
-
-**Critical scheduling**: `font_setup` runs in `PreUpdate` between `EguiPreUpdateSet::InitContexts` and `EguiPreUpdateSet::BeginPass`. `Context::set_fonts` only takes effect on the next `begin_pass`, so if fonts are installed inside `EguiPrimaryContextPass` (which is after `begin_pass`), the first frame will panic with `"FontFamily::Name(\"InterSemiBold\") is not bound to any fonts"`.
+**Critical scheduling**: `font_setup` runs in `PreUpdate` between `EguiPreUpdateSet::InitContexts` and `EguiPreUpdateSet::BeginPass`. `Context::set_fonts` only takes effect on the next `begin_pass` — if installed inside `EguiPrimaryContextPass` (after begin_pass), first frame panics with `"FontFamily::Name(\"InterSemiBold\") is not bound to any fonts"`.
 
 ### App icon
 
-The icon lives in `assets/icons/`: `roxel.svg` (source), `roxel-256.png` (embedded via `include_bytes!`), `roxel.icns` (for bundling), and the `roxel.iconset/` directory of PNGs used to build the `.icns`.
+Lives in `assets/icons/`: `roxel.svg`, `roxel-256.png` (embedded), `roxel.icns` (bundling), `roxel.iconset/`.
 
-`set_window_icon` (`icon.rs`) reads the embedded PNG and applies it two ways:
-1. `winit::Window::set_window_icon` — works on Windows/Linux, **no-ops on macOS** for unbundled binaries.
-2. `NSApplication::setApplicationIconImage` (via `objc2` + `objc2-app-kit`) — this is the only way to get a dock icon for `cargo run --release` on macOS.
+`set_window_icon` (`icon.rs`) applies the embedded PNG two ways:
+1. `winit::Window::set_window_icon` — Win/Linux only; **no-ops on macOS** for unbundled binaries.
+2. `NSApplication::setApplicationIconImage` (objc2 + objc2-app-kit) — only way to get a dock icon for `cargo run --release` on macOS.
 
-The system accesses `WINIT_WINDOWS` via the thread-local `bevy::winit::WINIT_WINDOWS` (it's not a regular `NonSend` resource in Bevy 0.18). It must run on the main thread, enforced by a `NonSendMarker` system param.
+Accesses `WINIT_WINDOWS` via thread-local `bevy::winit::WINIT_WINDOWS` (not a regular NonSend resource in Bevy 0.18). Main-thread only, enforced by `NonSendMarker`.
 
-For packaged builds, `[package.metadata.bundle]` in `Cargo.toml` points `cargo-bundle` at `roxel.icns`.
+Packaged builds: `[package.metadata.bundle]` in `Cargo.toml` points cargo-bundle at `roxel.icns`.
 
 ### Camera
 
-`spawn_camera` (`camera.rs`) places the orbit camera at the isometric direction `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` so a fresh project doesn't open looking down a single axis. `EMPTY_WORLD_RADIUS = 32.0` is the spawn radius and the empty-world fallback used everywhere a fit-view-style answer is required (frame-view on empty, zoom-limits on empty, new-project reset).
+`spawn_camera` (`camera.rs`) — orbit at `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` (isometric). `EMPTY_WORLD_RADIUS = 32.0` is spawn + empty-world fallback.
 
-`frame_view_system` (`Cmd/Ctrl+0`) computes the AABB of all occupied voxels via `grid.bounding_box()` and is **panel-aware** — it uses `ViewportRect` (the egui-occupied rect, updated `after(ui_system)`) to fit the cluster inside the visible viewport, not the full window. On an empty scene it falls back to focus=origin, radius=`EMPTY_WORLD_RADIUS`. The bottom-bar zoom readout uses `cam.radius` (the current smoothed value, not `target_radius`) rounded to a voxel count (`Zoom N voxels`) — reading the target lied during long lerps from huge radii.
+`frame_view_system` (Cmd/Ctrl+0) — AABB via `grid.bounding_box()`, **panel-aware** (uses `ViewportRect` updated `after(ui_system)`). Empty scene → focus=origin, radius=`EMPTY_WORLD_RADIUS`. Zoom readout uses `cam.radius` (smoothed, not `target_radius`) rounded to voxel count — target lied during long lerps.
 
-`zoom_click_system` is wired through `KeyZ` + LMB-just-pressed: multiplies `target_radius` by `ZOOM_STEP_IN = 1/√2` (zoom in) or `ZOOM_STEP_OUT = √2` (zoom out, when Alt is also held), clamped to `[zoom_lower_limit, zoom_upper_limit]`. The click also recenters `target_focus` to whatever's under the cursor (picked voxel, or floor plane) so the zoom converges on the user's point of interest. `tool_input_system` early-returns while `Z` is held so the click doesn't also paint.
+`zoom_click_system` (`KeyZ` + LMB just-pressed) — multiplies `target_radius` by `ZOOM_STEP_IN = 1/√2` (or `ZOOM_STEP_OUT = √2` with Alt), clamped. Click recenters `target_focus` to picked voxel or floor. `tool_input_system` early-returns while Z held.
 
-`FlybyState { active, t }` drives the auto-orbit "drone" view. `flyby_system` (`camera.rs`) overwrites `target_yaw` / `target_pitch` / `target_radius` (and pins `target_focus` to `fit_view`'s centroid) every frame from pure parametric path fns (`flyby_yaw`, `flyby_pitch`, `flyby_radius`). PanOrbitCamera has no public `enabled: bool`, so clobbering the targets each tick is what lets the cinematic win over user RMB-drag without modifying the crate. Painting is gated separately (`tool_input_system` early-returns and aborts any in-flight stroke when `flyby.active`); brush + shape previews hide. Esc or a second palette toggle ends the flyby; mouse input does NOT cancel (so screen recordings aren't ruined by accidental clicks). Tunables `FLYBY_*` live in `camera.rs`.
+`FlybyState { active, t }` — auto-orbit "drone" view. `flyby_system` overwrites `target_yaw`/`pitch`/`radius` every frame (PanOrbitCamera has no public `enabled`, so clobbering targets is how cinematic wins over RMB-drag). Painting gated separately. Esc or palette-toggle ends; mouse does NOT cancel (screen recordings).
 
-`zoom_radius_limits` derives the camera's allowed radius range from the current scene. Lower bound is fixed at `ZOOM_LOWER_LIMIT = 8.0` (independent of cluster size, so big scenes still allow close inspection); upper bound is `max(fit_radius * ZOOM_OUT_MULTIPLIER, ZOOM_OUT_FLOOR)` = `max(fit * 2, 64)` so empty scenes stay orbit-able and big scenes don't fly off into void.
+`zoom_radius_limits` — lower fixed `ZOOM_LOWER_LIMIT = 8.0` (big scenes still allow close inspection); upper `max(fit_radius * 2, 64)`.
 
 ### Cursor hints
 
-`ui_system` updates `egui::CursorIcon` each frame based on the active modifier (checked only when the pointer is not over an egui area):
+`ui_system` updates `egui::CursorIcon` each frame (only when pointer not over egui):
 
 | Condition | Cursor |
 |-----------|--------|
-| RMB held (orbit) | `Grabbing` |
-| Gizmo dragged | `Grabbing` |
-| Gizmo hovered | `Grab` |
-| `Z` held (no Alt) | `ZoomIn` |
-| `Alt` + `Z` held | `ZoomOut` |
-| `Space` held (LMB up) | `Grab` |
-| `Space` + LMB held | `Grabbing` |
-| `Alt` held alone | `PointingHand` (sticky eyedropper) |
+| RMB held / gizmo dragged | `Grabbing` |
+| Gizmo hovered / Space (LMB up) | `Grab` |
+| Space + LMB | `Grabbing` |
+| `Z` (no Alt) | `ZoomIn` |
+| `Alt`+`Z` | `ZoomOut` |
+| `Alt` alone | `PointingHand` (sticky eyedropper) |
 | otherwise | `Crosshair` |
 
 ### Gizmo overlay
 
-`gizmo.rs` runs a second `Camera3d` on `RenderLayers::layer(1)` with `clear_color: None`, drawing an orientation cube into a viewport rect computed by `update_gizmo_viewport` (scheduled `after(ui_system)` so it sees the final egui-occupied area). `GizmoRect`, `GizmoDrag`, and `GizmoHover` resources are read by `tool_input_system` to suppress tool clicks over the gizmo, by the preview systems to hide while dragging, and by `ui_system` to switch the cursor to grab/grabbing.
+`gizmo.rs` — second `Camera3d` on `RenderLayers::layer(1)`, `clear_color: None`, draws orientation cube into viewport rect from `update_gizmo_viewport` (`after(ui_system)`). `GizmoRect`/`GizmoDrag`/`GizmoHover` read by `tool_input_system` (suppress clicks), preview systems (hide while dragging), `ui_system` (cursor swap).
 
-### Bevy plugin / resource registration
+### Bevy registration
 
-`EguiPlugin` is added with `auto_create_primary_context: false` (set via `EguiGlobalSettings`); the gizmo's secondary camera is what makes this necessary. If you add a new resource consumed by a system, register it with `init_resource` in `main.rs` — most resources here are `#[derive(Default)]` and use that pattern. `Palettes` is the exception (registered with `insert_resource(Palettes::with_user_loaded())` so user palettes load on startup).
+`EguiPlugin` added with `auto_create_primary_context: false` (via `EguiGlobalSettings`) — required by the gizmo secondary camera. New resources: register with `init_resource` in `main.rs`. `Palettes` is the exception — uses `insert_resource(Palettes::with_user_loaded())` so user palettes load on startup.
 
 ## File format
 
 ### Snapshot (PNG export)
 
-`snapshot.rs` spawns a one-shot offscreen `Camera3d` at the main camera's transform/projection, renders into an `Image` at physical window resolution with `ClearColorConfig::Custom(Color::NONE)`, and captures it via Bevy's `Screenshot` pipeline. The snapshot camera forces `Tonemapping::None` — the tonemap fullscreen pass writes `alpha=1` to every output pixel, which would clobber the transparent clear and produce an opaque-black background. Voxel materials are `unlit` so colors are unaffected by skipping tonemap.
+`snapshot.rs` — one-shot offscreen `Camera3d` at main camera's transform/projection, renders into `Image` at physical window res with `ClearColorConfig::Custom(Color::NONE)`, captures via `Screenshot` pipeline. **Forces `Tonemapping::None`** — tonemap fullscreen pass writes `alpha=1` to every pixel, clobbering transparent clear. Voxel materials are `unlit` so colors are unaffected.
 
-While the snapshot is in flight, `SnapshotInProgress` is set. `floor_dots_system`, `vignette_system`, `draw_origin_system`, and `selection_render_system` early-return on the snapshot frame so gizmo overlays don't appear in the captured image. `start_snapshot_system` is ordered `.before(...)` each of those so they see the flag on the same frame. The observer that runs after `ScreenshotCaptured` clears the flag.
+`SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
 
-`.rox` projects are `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells are stored. No `version`, no `size` — the open-world grid has neither. Coordinates are signed; a model can sit anywhere relative to the origin and round-trip exactly.
+### `.rox` project
 
-The previous (`version`, `size`, `voxels`) layout was dropped wholesale. ron's struct deserializer silently ignores unknown fields, so an older v1 file happens to load if its `voxels` field matches — the extra `version`/`size` are dropped on the floor. This is not a compat code path; it's a side effect of lax deserialization. Do not add explicit v1 handling.
+`ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells. No `version`, no `size` — open world has neither. Signed coords roundtrip exactly.
+
+Old (`version`, `size`, `voxels`) layout was dropped. ron silently ignores unknown fields, so older v1 files happen to load if `voxels` matches. **Not a compat code path** — side effect of lax deserialization. Don't add explicit v1 handling.
