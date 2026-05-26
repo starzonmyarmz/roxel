@@ -17,7 +17,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Orbit / pan / zoom camera with isometric default angle
 - Save / load `.rox` project files (RON), with a 10-entry Open Recent menu
 - Import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox`
-- Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, Autodesk `.fbx` (binary 7.4), glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
+- Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
 - In-app toast notifications for save / load / import / export results
 - Light / Dark / System themes with separate canvas and floor color preferences, plus optional Minecraft-style floor grid lines and a permanent RGB axis triad at world origin

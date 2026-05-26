@@ -26,7 +26,6 @@ pub enum MenuAction {
     SaveProjectAs,
     ExportVox,
     ExportObj,
-    ExportFbx,
     ExportPng,
     ExportSvg,
     ExportGltf,
@@ -170,14 +169,11 @@ fn build_menu() -> MenuStore {
     let exp_vox = MenuItem::new("MagicaVoxel (.vox)…", true, None);
     let exp_gox = MenuItem::new("Goxel (.gox)…", true, None);
     let exp_obj = MenuItem::new("Wavefront (.obj)…", true, None);
-    let exp_fbx = MenuItem::new("Autodesk (.fbx)…", true, None);
     let exp_gltf = MenuItem::new("glTF (.glb)…", true, None);
     let exp_png = MenuItem::new("Transparent PNG…", true, None);
     let exp_svg = MenuItem::new("SVG…", true, None);
     export_sub
-        .append_items(&[
-            &exp_vox, &exp_gox, &exp_obj, &exp_fbx, &exp_gltf, &exp_png, &exp_svg,
-        ])
+        .append_items(&[&exp_vox, &exp_gox, &exp_obj, &exp_gltf, &exp_png, &exp_svg])
         .expect("append export submenu");
 
     file.append_items(&[
@@ -210,7 +206,6 @@ fn build_menu() -> MenuStore {
     actions.insert(exp_vox.id().0.clone(), MenuAction::ExportVox);
     actions.insert(exp_gox.id().0.clone(), MenuAction::ExportGox);
     actions.insert(exp_obj.id().0.clone(), MenuAction::ExportObj);
-    actions.insert(exp_fbx.id().0.clone(), MenuAction::ExportFbx);
     actions.insert(exp_gltf.id().0.clone(), MenuAction::ExportGltf);
     actions.insert(exp_png.id().0.clone(), MenuAction::ExportPng);
     actions.insert(exp_svg.id().0.clone(), MenuAction::ExportSvg);
@@ -500,7 +495,6 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::SaveProjectAs => spawn_save_as(&mut p.pending, &p.current_path),
             MenuAction::ExportVox => spawn_export_vox(&mut p.pending),
             MenuAction::ExportObj => spawn_export_obj(&mut p.pending),
-            MenuAction::ExportFbx => spawn_export_fbx(&mut p.pending),
             MenuAction::ExportPng => spawn_export_png(&mut p.pending),
             MenuAction::ExportSvg => spawn_export_svg(&mut p.pending),
             MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending),
@@ -619,20 +613,6 @@ fn spawn_export_obj(pending: &mut PendingDialog) {
             .save_file()
             .await
             .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
-    });
-}
-
-fn spawn_export_fbx(pending: &mut PendingDialog) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
-            .add_filter("Autodesk FBX", &["fbx"])
-            .set_file_name("model.fbx")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
     });
 }
 

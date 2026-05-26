@@ -8,7 +8,7 @@ use std::path::Path;
 // the spec default and Roxel's runtime orientation, so Unity and Godot import
 // upright with no extra transform. Per-face quads with per-vertex sRGB colors
 // in COLOR_0; greedy meshing intentionally skipped so the importer sees the
-// same face-quad structure as the FBX/OBJ exports.
+// same face-quad structure as the OBJ export.
 
 const GLB_MAGIC: u32 = 0x46546C67; // "glTF"
 const GLB_VERSION: u32 = 2;

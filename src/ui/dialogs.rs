@@ -15,7 +15,6 @@ pub enum DialogResult {
     SaveProject(PathBuf),
     ExportVox(PathBuf),
     ExportObj(PathBuf),
-    ExportFbx(PathBuf),
     ExportPng(PathBuf),
     ExportSvg(PathBuf),
     ExportGltf(PathBuf),
@@ -171,10 +170,6 @@ pub fn poll_dialogs_system(
         Some(DialogResult::ExportObj(path)) => match io::obj::export(&path, &grid) {
             Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
             Err(e) => toasts.error(format!("Export .obj failed: {e}")),
-        },
-        Some(DialogResult::ExportFbx(path)) => match io::fbx::export(&path, &grid) {
-            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
-            Err(e) => toasts.error(format!("Export .fbx failed: {e}")),
         },
         Some(DialogResult::ExportPng(path)) => {
             // PNG export is async — the snapshot system finishes the save and

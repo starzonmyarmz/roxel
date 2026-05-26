@@ -1,5 +1,4 @@
 pub mod ase;
-pub mod fbx;
 pub mod gltf;
 pub mod gox;
 pub mod obj;

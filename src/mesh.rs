@@ -83,7 +83,7 @@ pub struct Face {
 }
 
 /// Visit every voxel face that borders empty space. Shared by every per-face
-/// mesh exporter (FBX, glTF). The callback receives the voxel's world-space
+/// mesh exporter (glTF, OBJ, SVG). The callback receives the voxel's world-space
 /// grid position, the face descriptor (giving normal + winding-correct
 /// unit-cube corners), and the cell's color.
 pub fn for_each_exposed_face(

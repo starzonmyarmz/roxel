@@ -82,7 +82,6 @@ pub enum CommandAction {
     ImportGox,
     ExportVox,
     ExportObj,
-    ExportFbx,
     ExportGltf,
     ExportPng,
     ExportSvg,
@@ -301,14 +300,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         None,
         dialog_ok,
         CommandAction::ExportObj,
-    ));
-    out.push(entry(
-        "Export Autodesk (.fbx)…",
-        Category::File,
-        "save write fbx autodesk mesh",
-        None,
-        dialog_ok,
-        CommandAction::ExportFbx,
     ));
     out.push(entry(
         "Export glTF (.glb)…",
@@ -1069,13 +1060,6 @@ pub fn dispatch_command_palette_system(
             "obj",
             "model.obj",
             DialogResult::ExportObj,
-        ),
-        CommandAction::ExportFbx => spawn_export(
-            &mut p.pending,
-            "Autodesk FBX",
-            "fbx",
-            "model.fbx",
-            DialogResult::ExportFbx,
         ),
         CommandAction::ExportGltf => spawn_export(
             &mut p.pending,

@@ -281,20 +281,6 @@ pub fn ui_system(
                             ui.close();
                         }
                         if ui
-                            .add_enabled(!dialog_busy, egui::Button::new("Autodesk .fbx…"))
-                            .clicked()
-                        {
-                            pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
-                                    .add_filter("Autodesk FBX", &["fbx"])
-                                    .set_file_name("model.fbx")
-                                    .save_file()
-                                    .await
-                                    .map(|f| DialogResult::ExportFbx(f.path().to_path_buf()))
-                            });
-                            ui.close();
-                        }
-                        if ui
                             .add_enabled(!dialog_busy, egui::Button::new("glTF .glb…"))
                             .clicked()
                         {
