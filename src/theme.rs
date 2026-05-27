@@ -22,6 +22,11 @@ pub struct Theme {
     pub accent: egui::Color32,
     pub accent_dim: egui::Color32,
     pub text: egui::Color32,
+    /// Brighter than `text_dim`, dimmer than `text`. Used for chevrons and
+    /// secondary glyphs that need to read clearly without competing with
+    /// primary text. Dark mode needs the lift since `text_dim` sinks into
+    /// the panel; light mode keeps it just below `text`.
+    pub text_muted: egui::Color32,
     pub text_dim: egui::Color32,
     pub border: egui::Color32,
     pub faint: egui::Color32,
@@ -32,17 +37,18 @@ impl Theme {
     pub const fn dark() -> Self {
         // Neutral greys for the panel surfaces so the voxel canvas (and the
         // brand-coloured tool accents) read against a quiet background. The
-        // accent itself is the Roxel logo's inner-crystal teal (#4FCEC5 in
-        // `assets/icons/roxel.svg`) — it IS a real brand token, not invented
-        // here. accent_dim is a deeper teal used for selection ranges.
+        // accent is the Roxel logo's warm orange-red (#E9603C in
+        // `assets/icons/roxel.svg`), lifted slightly for dark backgrounds.
+        // accent_dim is a deeper rust used for selection ranges.
         Self {
             bg: egui::Color32::from_rgb(0x14, 0x14, 0x16),
             panel: egui::Color32::from_rgb(0x1A, 0x1B, 0x1E),
             surface: egui::Color32::from_rgb(0x26, 0x27, 0x2B),
-            surface_hover: egui::Color32::from_rgb(0x33, 0x34, 0x39),
-            accent: egui::Color32::from_rgb(0x4F, 0xCE, 0xC5),
-            accent_dim: egui::Color32::from_rgb(0x20, 0x6F, 0x6A),
+            surface_hover: egui::Color32::from_rgb(0x3A, 0x3B, 0x42),
+            accent: egui::Color32::from_rgb(0xF4, 0x7A, 0x5C),
+            accent_dim: egui::Color32::from_rgb(0x7A, 0x35, 0x25),
             text: egui::Color32::from_rgb(220, 225, 235),
+            text_muted: egui::Color32::from_rgb(210, 216, 228),
             text_dim: egui::Color32::from_rgb(150, 158, 172),
             border: egui::Color32::from_rgb(0x2C, 0x2D, 0x32),
             faint: egui::Color32::from_rgb(0x1F, 0x20, 0x23),
@@ -50,16 +56,17 @@ impl Theme {
         }
     }
     pub const fn light() -> Self {
-        // Light mode uses a deeper teal for legibility against the white panel
+        // Light mode uses a deeper rust for legibility against the white panel
         // — same brand hue, lower lightness so contrast holds.
         Self {
             bg: egui::Color32::from_rgb(252, 252, 253),
             panel: egui::Color32::from_rgb(255, 255, 255),
             surface: egui::Color32::from_rgb(240, 242, 246),
             surface_hover: egui::Color32::from_rgb(228, 232, 240),
-            accent: egui::Color32::from_rgb(0x1F, 0x8A, 0x82),
-            accent_dim: egui::Color32::from_rgb(0xB8, 0xE6, 0xE2),
+            accent: egui::Color32::from_rgb(0xD1, 0x4E, 0x2A),
+            accent_dim: egui::Color32::from_rgb(0xF8, 0xD5, 0xC9),
             text: egui::Color32::from_rgb(32, 36, 44),
+            text_muted: egui::Color32::from_rgb(80, 90, 105),
             text_dim: egui::Color32::from_rgb(110, 120, 135),
             border: egui::Color32::from_rgb(210, 215, 225),
             faint: egui::Color32::from_rgb(248, 249, 251),
@@ -100,6 +107,46 @@ mod tests {
     fn dark_and_light_carry_correct_mode() {
         assert_eq!(Theme::dark().mode, ThemeMode::Dark);
         assert_eq!(Theme::light().mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn text_muted_sits_between_text_and_text_dim() {
+        // text_muted is the chevron + section-label color. It must read
+        // brighter than text_dim (so chevrons stop sinking into the panel) and
+        // dimmer than text (so it doesn't compete with primary copy). Use the
+        // perceived-luminance proxy max(r,g,b) since channels stay near-grey.
+        for t in [Theme::dark(), Theme::light()] {
+            let lum = |c: egui::Color32| c.r().max(c.g()).max(c.b());
+            match t.mode {
+                ThemeMode::Dark => {
+                    assert!(lum(t.text_muted) > lum(t.text_dim));
+                    assert!(lum(t.text_muted) < lum(t.text));
+                }
+                ThemeMode::Light => {
+                    // Light mode is inverted: dimmer = higher channel value.
+                    assert!(lum(t.text_muted) < lum(t.text_dim));
+                    assert!(lum(t.text_muted) > lum(t.text));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn accent_is_warm_coral_not_teal() {
+        // Brand swap guardrail — the accent moved from teal (#4FCEC5 dark /
+        // #1F8A82 light) to the logo's orange-red (#E9603C). If a future
+        // edit accidentally reverts to teal-like hues (G > R), this test
+        // catches it.
+        for t in [Theme::dark(), Theme::light()] {
+            let a = t.accent;
+            assert!(
+                a.r() > a.g() && a.r() > a.b(),
+                "accent not warm-dominant: r={} g={} b={}",
+                a.r(),
+                a.g(),
+                a.b()
+            );
+        }
     }
 
     #[test]
@@ -550,7 +597,10 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
 
     visuals.widgets.hovered.bg_fill = theme.surface_hover;
     visuals.widgets.hovered.weak_bg_fill = theme.surface_hover;
-    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.accent_dim);
+    // Softer hover stroke — the SidePanel resize handle picks this up, and the
+    // saturated accent_dim ring read as a hard line. `border` keeps the hint
+    // without flashing.
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.border);
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.text);
     visuals.widgets.hovered.corner_radius = r_sm;
 
@@ -581,10 +631,13 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     style.spacing.item_spacing = gap::DEFAULT;
     style.spacing.button_padding = pad::DEFAULT;
     style.spacing.menu_margin = egui::Margin::same(8);
+    style.spacing.tooltip_width = 240.0;
     style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.slider_width = 160.0;
     style.spacing.interact_size.y = 26.0;
     style.interaction.selectable_labels = false;
+    style.interaction.tooltip_delay = 0.3;
+    style.interaction.show_tooltips_only_when_still = true;
 
     use egui::{FontFamily, FontId, TextStyle};
     let semibold = FontFamily::Name(INTER_SEMIBOLD_FAMILY.into());

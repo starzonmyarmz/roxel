@@ -54,8 +54,19 @@ pub fn tool_button(
         blend_u8(bg.b(), sh.b()),
     );
 
+    // Active tool fills with the full accent — coral wash on the icon was
+    // too subtle for a state this important. White icon over accent reads
+    // unambiguously selected; brightened accent on hover keeps the active
+    // state distinct from a hover preview.
+    let a = theme.accent;
+    let accent_hover = egui::Color32::from_rgb(
+        a.r().saturating_add(12),
+        a.g().saturating_add(12),
+        a.b().saturating_add(12),
+    );
+
     let (inactive_fill, hovered_fill, icon_tint) = if active {
-        (theme.accent, theme.accent, egui::Color32::WHITE)
+        (theme.accent, accent_hover, egui::Color32::WHITE)
     } else {
         (egui::Color32::TRANSPARENT, neutral_hover, theme.text)
     };
@@ -162,26 +173,10 @@ pub fn section<R>(
     theme: &Theme,
     title: &str,
     add: impl FnOnce(&mut egui::Ui) -> R,
-) -> Option<R> {
-    let mem_id = egui::Id::new("inspector_section_collapsed").with(title);
-    let mut collapsed = ui
-        .ctx()
-        .memory(|m| m.data.get_temp::<bool>(mem_id))
-        .unwrap_or(false);
-
-    let header_resp = section_header(ui, theme, title, collapsed);
-    if header_resp.clicked() {
-        collapsed = !collapsed;
-        ui.ctx()
-            .memory_mut(|m| m.data.insert_temp(mem_id, collapsed));
-    }
-
-    let result = if collapsed {
-        None
-    } else {
-        ui.add_space(space::SM);
-        Some(add(ui))
-    };
+) -> R {
+    section_header(ui, theme, title);
+    ui.add_space(space::SM);
+    let result = add(ui);
 
     ui.add_space(space::MD);
     let sep_rect = ui
@@ -197,29 +192,15 @@ pub fn section<R>(
     result
 }
 
-/// Clickable header row used by [`section`]. Renders the section label on the
-/// left and a chevron on the right that rotates -90° when collapsed. The whole
-/// row is the click target so the chevron is decorative, not the hit.
-fn section_header(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    title: &str,
-    collapsed: bool,
-) -> egui::Response {
+/// Label row painted by [`section`]. Uppercase SemiBold label, no chevron,
+/// no click target — sections are always expanded.
+fn section_header(ui: &mut egui::Ui, theme: &Theme, title: &str) {
     let row_h = font::SECTION + 6.0;
-    let (rect, resp) = ui.allocate_exact_size(
+    let (rect, _resp) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), row_h),
-        egui::Sense::click(),
+        egui::Sense::hover(),
     );
-    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-
-    let painter = ui.painter();
-    let label_color = if resp.hovered() {
-        theme.text
-    } else {
-        theme.text_dim
-    };
-    painter.text(
+    ui.painter().text(
         rect.left_center(),
         egui::Align2::LEFT_CENTER,
         section_header_text(title),
@@ -227,34 +208,28 @@ fn section_header(
             font::SECTION,
             egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()),
         ),
-        label_color,
+        theme.text_muted,
     );
-
-    let chev_size = egui::vec2(icon::SM, icon::SM);
-    let chev_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - chev_size.x * 0.5, rect.center().y),
-        chev_size,
-    );
-    // Animate rotation so collapse/expand reads as a swing, not a snap.
-    let collapse_t = ui
-        .ctx()
-        .animate_bool_with_time(resp.id.with("collapsed"), collapsed, 0.12);
-    let angle = -std::f32::consts::FRAC_PI_2 * collapse_t;
-    egui::Image::new(crate::ui::icons::chevron_down())
-        .fit_to_exact_size(chev_size)
-        .tint(label_color)
-        .rotate(angle, egui::Vec2::splat(0.5))
-        .paint_at(ui, chev_rect);
-    resp
 }
 
-/// Uppercase, hair-space-tracked title rendered by [`section_header`] and
-/// reusable wherever the same label style is needed without the click target.
-/// Tracking is faked by interleaving U+200A characters because egui has no
-/// per-character letter-spacing knob.
+/// Title-cased section label. No tracking, no uppercase — SemiBold weight
+/// carries hierarchy. Each whitespace-separated word's first letter is
+/// capitalised; the rest of the input is lowercased so a caller passing
+/// "PALETTE" or "palette" both render as "Palette".
 pub fn section_header_text(title: &str) -> String {
-    let spaced: String = title.chars().flat_map(|c| [c, '\u{200A}']).collect();
-    spaced.to_uppercase()
+    title
+        .split_whitespace()
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
@@ -345,7 +320,9 @@ pub fn swatch_button(
     selected: bool,
 ) -> egui::Response {
     let outline = if selected {
-        egui::Stroke::new(stroke::ACCENT, theme.accent)
+        // Match the voxel preview outline color so a selected swatch reads
+        // as "this color is what the preview will draw with".
+        egui::Stroke::new(stroke::ACCENT, theme.text)
     } else {
         let border = match theme.mode {
             crate::theme::ThemeMode::Dark => {
@@ -586,7 +563,7 @@ pub fn select_dropdown(
         egui::vec2(chev_size, chev_size),
     );
     egui::Image::new(icons::chevron_down())
-        .tint(theme.text_dim)
+        .tint(theme.text_muted)
         .paint_at(ui, chev_rect);
 
     let mut chosen = None;
@@ -663,6 +640,14 @@ mod tests {
         assert_eq!(hex_string([255, 255, 255]), "#FFFFFF");
         assert_eq!(hex_string([18, 26, 200]), "#121AC8");
         assert_eq!(hex_string([171, 205, 239]), "#ABCDEF");
+    }
+
+    #[test]
+    fn section_header_title_cases_input() {
+        assert_eq!(section_header_text("palette"), "Palette");
+        assert_eq!(section_header_text("PALETTE"), "Palette");
+        assert_eq!(section_header_text("recent colors"), "Recent Colors");
+        assert_eq!(section_header_text(""), "");
     }
 
     #[test]

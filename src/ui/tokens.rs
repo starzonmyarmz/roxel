@@ -17,11 +17,6 @@ pub mod font {
     pub const SMALL: f32 = 12.0;
     pub const BODY: f32 = 14.0;
     pub const HEADING: f32 = 16.0;
-    /// Letter-spacing applied to uppercase section labels. Egui has no
-    /// per-character tracking yet, so callers join with a hair space; this is
-    /// kept here so the value stays in the token surface.
-    #[allow(dead_code)] // adopted by widgets::section in the typography pass
-    pub const SECTION_TRACKING_PX: f32 = 0.6;
 }
 
 /// Corner radii. `u8` to feed `egui::CornerRadius::same(...)` directly.
@@ -118,6 +113,8 @@ pub mod pad {
     pub const BUTTON: Vec2 = Vec2::new(12.0, 4.0); // chip_button
     pub const DEFAULT: Vec2 = Vec2::new(12.0, 8.0); // global default
     pub const DIALOG: Vec2 = Vec2::new(16.0, 8.0); // modal action buttons
+    #[allow(dead_code)] // adopted once egui exposes a tooltip frame override
+    pub const TOOLTIP: Vec2 = Vec2::new(10.0, 6.0); // tooltip popup inner padding
 }
 
 /// Icon `fit_to_exact_size` values. Square — width == height. 4-px grid.
@@ -176,7 +173,7 @@ pub mod width {
     pub const TOP_BAR_MENU: f32 = 180.0; // Import / Export submenus
     pub const SIDE_PANEL: f32 = 244.0; // left inspector
     pub const MODAL_PREFS: f32 = 340.0;
-    pub const MODAL_NEW: f32 = 260.0;
+    pub const MODAL_NEW: f32 = 240.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
     pub const COACHMARK: f32 = 256.0;

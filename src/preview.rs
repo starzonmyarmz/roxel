@@ -27,13 +27,17 @@ pub fn configure_preview_gizmos(mut store: ResMut<GizmoConfigStore>) {
     config.line.perspective = false;
 }
 
+/// Tool preview outline color. Theme-driven near-neutral with reduced
+/// alpha — coral fights voxel colors, pure black/white over off-white text
+/// is too saturated, and full-opacity text is still too loud on small
+/// shapes. 0.55 alpha keeps the outline readable without dominating.
 pub fn accent_outline_color(theme: &Theme) -> Color {
-    let c = theme.accent;
+    let c = theme.text;
     Color::srgba(
         c.r() as f32 / 255.0,
         c.g() as f32 / 255.0,
         c.b() as f32 / 255.0,
-        1.0,
+        0.55,
     )
 }
 
@@ -100,7 +104,7 @@ pub fn brush_preview_system(
 
     let egui_wants_pointer = contexts
         .ctx_mut()
-        .map(|c| c.is_pointer_over_area())
+        .map(|c| c.is_pointer_over_area() || c.is_using_pointer())
         .unwrap_or(false);
 
     let clear = |vis: &mut Visibility, hide: &mut PreviewHide| {
@@ -210,24 +214,24 @@ mod tests {
         (s.red, s.green, s.blue, s.alpha)
     }
 
-    fn assert_matches_accent(theme: &Theme) {
+    fn assert_matches_text(theme: &Theme) {
         let (r, g, b, a) = srgb_components(accent_outline_color(theme));
-        let expected_r = theme.accent.r() as f32 / 255.0;
-        let expected_g = theme.accent.g() as f32 / 255.0;
-        let expected_b = theme.accent.b() as f32 / 255.0;
-        assert!((r - expected_r).abs() < 1e-4, "r {} vs {}", r, expected_r);
-        assert!((g - expected_g).abs() < 1e-4, "g {} vs {}", g, expected_g);
-        assert!((b - expected_b).abs() < 1e-4, "b {} vs {}", b, expected_b);
-        assert!((a - 1.0).abs() < 1e-4, "alpha {} vs 1.0", a);
+        let er = theme.text.r() as f32 / 255.0;
+        let eg = theme.text.g() as f32 / 255.0;
+        let eb = theme.text.b() as f32 / 255.0;
+        assert!((r - er).abs() < 1e-4);
+        assert!((g - eg).abs() < 1e-4);
+        assert!((b - eb).abs() < 1e-4);
+        assert!(a < 1.0 && a > 0.3, "alpha {a} must be soft, not opaque");
     }
 
     #[test]
-    fn accent_outline_color_matches_dark_theme_accent() {
-        assert_matches_accent(&Theme::dark());
+    fn dark_outline_matches_text() {
+        assert_matches_text(&Theme::dark());
     }
 
     #[test]
-    fn accent_outline_color_matches_light_theme_accent() {
-        assert_matches_accent(&Theme::light());
+    fn light_outline_matches_text() {
+        assert_matches_text(&Theme::light());
     }
 }
