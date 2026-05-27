@@ -66,53 +66,78 @@ pub fn spawn_gizmo(
         GizmoCamera,
     ));
 
-    let size = FACE_HALF * 2.0;
-    let quad = meshes.add(Rectangle::new(size, size));
+    spawn_etched_faces(commands, meshes, materials);
+}
 
-    // Blender convention: X=red, Y=green, Z=blue. Negative axes dimmed.
-    let red = Color::srgb(0.92, 0.30, 0.34);
-    let red_dim = Color::srgb(0.55, 0.22, 0.24);
-    let green = Color::srgb(0.40, 0.84, 0.42);
-    let green_dim = Color::srgb(0.25, 0.50, 0.27);
-    let blue = Color::srgb(0.36, 0.58, 1.00);
-    let blue_dim = Color::srgb(0.22, 0.36, 0.62);
+fn axis_colors() -> (Color, Color, Color, Color, Color, Color) {
+    // X=red, Y=green, Z=blue. Negative axes dimmed.
+    (
+        Color::srgb(0.92, 0.30, 0.34),
+        Color::srgb(0.55, 0.22, 0.24),
+        Color::srgb(0.40, 0.84, 0.42),
+        Color::srgb(0.25, 0.50, 0.27),
+        Color::srgb(0.36, 0.58, 1.00),
+        Color::srgb(0.22, 0.36, 0.62),
+    )
+}
 
-    let faces: [(Vec3, Quat, Color); 6] = [
-        // +X
+fn cube_face_layout() -> [(Vec3, Quat); 6] {
+    [
         (
             Vec3::X * FACE_HALF,
             Quat::from_axis_angle(Vec3::Y, FRAC_PI_2),
-            red,
         ),
-        // -X
         (
             -Vec3::X * FACE_HALF,
             Quat::from_axis_angle(Vec3::Y, -FRAC_PI_2),
-            red_dim,
         ),
-        // +Y
         (
             Vec3::Y * FACE_HALF,
             Quat::from_axis_angle(Vec3::X, -FRAC_PI_2),
-            green,
         ),
-        // -Y
         (
             -Vec3::Y * FACE_HALF,
             Quat::from_axis_angle(Vec3::X, FRAC_PI_2),
-            green_dim,
         ),
-        // +Z
-        (Vec3::Z * FACE_HALF, Quat::IDENTITY, blue),
-        // -Z
+        (Vec3::Z * FACE_HALF, Quat::IDENTITY),
         (
             -Vec3::Z * FACE_HALF,
             Quat::from_axis_angle(Vec3::Y, std::f32::consts::PI),
-            blue_dim,
         ),
-    ];
+    ]
+}
 
-    for (idx, (pos, rot, color)) in faces.into_iter().enumerate() {
+fn face_color_for_index(idx: usize) -> Color {
+    let (red, red_dim, green, green_dim, blue, blue_dim) = axis_colors();
+    [red, red_dim, green, green_dim, blue, blue_dim][idx]
+}
+
+fn mute(c: Color, mix: f32) -> Color {
+    // Pull each channel toward neutral grey by `mix`. Modern UIs prefer
+    // restrained palettes — saturated primaries read crayon-y.
+    let l = c.to_linear();
+    let g = 0.30;
+    Color::linear_rgba(
+        l.red * (1.0 - mix) + g * mix,
+        l.green * (1.0 - mix) + g * mix,
+        l.blue * (1.0 - mix) + g * mix,
+        l.alpha,
+    )
+}
+
+/// Etched cube: muted axis colors on each face, canvas-colored "grout" lines
+/// drawn between faces via gizmos. The grout tracks light/dark mode so the
+/// gaps always match the viewport bg, making the cube read as a set of
+/// floating tiles.
+fn spawn_etched_faces(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    let size = FACE_HALF * 2.0;
+    let quad = meshes.add(Rectangle::new(size, size));
+    for (idx, (pos, rot)) in cube_face_layout().into_iter().enumerate() {
+        let color = mute(face_color_for_index(idx), 0.45);
         let mat = materials.add(StandardMaterial {
             base_color: color,
             unlit: true,
@@ -135,10 +160,57 @@ pub fn spawn_gizmo(
     }
 }
 
+/// Per-frame canvas-colored grout strokes along all 12 cube edges. Reads
+/// light/dark mode from `Preferences` + `Theme` so the gaps stay matched to
+/// the viewport bg even when the user toggles theme.
+pub fn draw_gizmo_decorations_system(
+    prefs: Res<crate::theme::Preferences>,
+    theme: Res<crate::theme::Theme>,
+    mut gizmos: Gizmos<AxisGizmoGroup>,
+) {
+    let h = FACE_HALF;
+    let canvas_rgb = crate::theme::resolve_canvas_color(&prefs, &theme);
+    let canvas = Color::srgb(
+        canvas_rgb[0] as f32 / 255.0,
+        canvas_rgb[1] as f32 / 255.0,
+        canvas_rgb[2] as f32 / 255.0,
+    );
+    let corners = [
+        Vec3::new(-h, -h, -h),
+        Vec3::new(h, -h, -h),
+        Vec3::new(h, h, -h),
+        Vec3::new(-h, h, -h),
+        Vec3::new(-h, -h, h),
+        Vec3::new(h, -h, h),
+        Vec3::new(h, h, h),
+        Vec3::new(-h, h, h),
+    ];
+    let pairs = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ];
+    for (a, b) in pairs {
+        gizmos.line(corners[a], corners[b], canvas);
+    }
+}
+
 pub fn configure_axis_gizmo(mut store: ResMut<GizmoConfigStore>) {
     let (config, _) = store.config_mut::<AxisGizmoGroup>();
     config.render_layers = RenderLayers::layer(GIZMO_LAYER);
-    config.line.width = 2.0;
+    // Etched / Wireframe / Subdivided draw their edges as gizmo lines on top
+    // of the cube faces. 3 px reads as a deliberate gap between tiles at the
+    // gizmo's 100 px viewport size, not a hairline.
+    config.line.width = 3.0;
     config.depth_bias = -1.0;
 }
 

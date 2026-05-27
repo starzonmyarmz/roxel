@@ -34,8 +34,9 @@ use crate::camera::{
     update_viewport_rect, update_zoom_limits_system, zoom_click_system, zoom_key_system,
 };
 use crate::gizmo::{
-    AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo, gizmo_drag_system,
-    spawn_gizmo, sync_gizmo_camera, update_gizmo_hover, update_gizmo_viewport,
+    AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo,
+    draw_gizmo_decorations_system, gizmo_drag_system, spawn_gizmo, sync_gizmo_camera,
+    update_gizmo_hover, update_gizmo_viewport,
 };
 use crate::grid::{
     NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared,
@@ -189,6 +190,7 @@ fn main() {
             sync_gizmo_camera,
             gizmo_drag_system,
             update_gizmo_hover,
+            draw_gizmo_decorations_system,
             frame_view_system,
             brush_preview_system.before(regenerate_mesh_system),
             shape_preview_system.before(regenerate_mesh_system),
