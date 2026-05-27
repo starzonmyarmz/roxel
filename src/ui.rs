@@ -483,35 +483,17 @@ pub fn ui_system(
                 "Shape",
                 "S",
             );
-            // Long-press opens the picker. Quick click just selects the tool
-            // and never paints the popup. State (press_start, opened) lives
-            // in egui memory because `is_pointer_button_down_on` returns false
-            // on the release frame — we still want one final paint then so an
-            // option's release-over check can fire.
-            const LONG_PRESS_SECS: f64 = 0.18;
-            let mem_id = shape_resp.id.with("press_hold");
-            let (mut press_start, mut opened) = ui
+            // Click toggles the picker. Clicking the same rail button again
+            // closes it; clicking outside closes via the released-off check
+            // below. State lives in egui memory.
+            let mem_id = shape_resp.id.with("picker_open");
+            let mut popup_open = ui
                 .ctx()
-                .memory(|m| m.data.get_temp::<(f64, bool)>(mem_id))
-                .unwrap_or((f64::NAN, false));
-            let is_down = shape_resp.is_pointer_button_down_on();
-            let now = ui.input(|i| i.time);
-            if is_down {
-                if press_start.is_nan() {
-                    press_start = now;
-                }
-                if !opened && now - press_start >= LONG_PRESS_SECS {
-                    opened = true;
-                }
+                .memory(|m| m.data.get_temp::<bool>(mem_id))
+                .unwrap_or(false);
+            if shape_resp.clicked() {
+                popup_open = !popup_open;
             }
-            let popup_open = opened;
-            let released = ui.input(|i| i.pointer.any_released());
-            let next = if released || !is_down && !opened {
-                (f64::NAN, false)
-            } else {
-                (press_start, opened)
-            };
-            ui.ctx().memory_mut(|m| m.data.insert_temp(mem_id, next));
             if popup_open {
                 // Use bare `Area` (not `Popup`) so we can disable the default
                 // fade-in. Buttons are painted manually so the hover fill
@@ -519,12 +501,20 @@ pub fn ui_system(
                 // standard hover styling only fires when the button itself
                 // was the press target.
                 let area_id = shape_resp.id.with("shape_picker_area");
-                let anchor = shape_resp.rect.left_top() - egui::vec2(space::SM, 0.0);
+                let anchor = shape_resp.rect.left_center() - egui::vec2(space::SM, 0.0);
+                // Tool-rail neutral hover blend so picker options match the
+                // hover style of main tool buttons (bg ⊕ surface_hover ratio).
+                let blend_u8 = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
+                let neutral_hover = egui::Color32::from_rgb(
+                    blend_u8(theme.bg.r(), theme.surface_hover.r()),
+                    blend_u8(theme.bg.g(), theme.surface_hover.g()),
+                    blend_u8(theme.bg.b(), theme.surface_hover.b()),
+                );
                 egui::Area::new(area_id)
                     .order(egui::Order::Foreground)
                     .fade_in(false)
                     .fixed_pos(anchor)
-                    .pivot(egui::Align2::RIGHT_TOP)
+                    .pivot(egui::Align2::RIGHT_CENTER)
                     .show(ui.ctx(), |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.spacing_mut().item_spacing = gap::TIGHT;
@@ -542,21 +532,14 @@ pub fn ui_system(
                                     let fill = if selected {
                                         theme.accent
                                     } else if over {
-                                        theme.surface_hover
+                                        neutral_hover
                                     } else {
-                                        theme.surface
+                                        egui::Color32::TRANSPARENT
                                     };
-                                    let edge = if selected {
-                                        egui::Stroke::NONE
-                                    } else {
-                                        egui::Stroke::new(stroke::HAIR, theme.border)
-                                    };
-                                    ui.painter().rect(
+                                    ui.painter().rect_filled(
                                         rect,
                                         egui::CornerRadius::same(radius::SM),
                                         fill,
-                                        edge,
-                                        egui::StrokeKind::Inside,
                                     );
                                     let icon_size = crate::ui::tokens::icon::md_square();
                                     let icon_rect =
@@ -571,20 +554,37 @@ pub fn ui_system(
                                         .tint(tint)
                                         .paint_at(ui, icon_rect);
                                     let r = r.on_hover_text(label);
-                                    let released_on = ui.input(|i| i.pointer.any_released())
-                                        && r.contains_pointer();
-                                    if r.clicked() || released_on {
+                                    if r.clicked() {
                                         shape_options.primitive = prim;
                                         if tool.current != Tool::Shape {
                                             tool.previous = tool.current;
                                             tool.current = Tool::Shape;
                                         }
+                                        popup_open = false;
                                     }
                                 }
                             });
                         });
                     });
             }
+            // Close picker when the pointer presses anywhere outside the
+            // shape rail button and the picker area itself.
+            if popup_open && ui.input(|i| i.pointer.any_pressed()) {
+                let pos = ui.input(|i| i.pointer.interact_pos());
+                let over_button = pos.map(|p| shape_resp.rect.contains(p)).unwrap_or(false);
+                let picker_id = shape_resp.id.with("shape_picker_area");
+                let over_picker = pos
+                    .and_then(|p| {
+                        ui.ctx()
+                            .memory(|m| m.area_rect(picker_id).map(|r| r.contains(p)))
+                    })
+                    .unwrap_or(false);
+                if !over_button && !over_picker {
+                    popup_open = false;
+                }
+            }
+            ui.ctx()
+                .memory_mut(|m| m.data.insert_temp(mem_id, popup_open));
             ui.add_space(space::SX);
             widgets::tool_button(
                 ui,
@@ -1375,29 +1375,61 @@ pub fn ui_system(
     }
 
     // New-project confirm modal. Open-world has no grid size to pick — this
-    // is just "do you want to throw away unsaved work?".
+    // is just "do you want to throw away unsaved work?". Built with an
+    // anchored `Area` instead of `egui::Window` so the modal sizes tight to
+    // its content (egui::Window kept ballooning vertically here).
     if new_project.dialog_open {
-        let mut open = true;
         let mut create_clicked = false;
         let mut cancel_clicked = false;
-        widgets::modal_window(ctx, &theme, "New project", &mut open).show(ctx, |ui| {
-            ui.set_min_width(width::MODAL_NEW);
-            widgets::hint_label(ui, &theme, "Start over? This discards any unsaved work.");
-            ui.add_space(space::SM);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = space::SX;
-                if widgets::dialog_button(ui, &theme, "Create", true).clicked() {
-                    create_clicked = true;
-                }
-                if widgets::dialog_button(ui, &theme, "Cancel", false).clicked() {
-                    cancel_clicked = true;
-                }
+        egui::Area::new("new_project_modal".into())
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(theme.panel)
+                    .inner_margin(egui::Margin::symmetric(20, 16))
+                    .shadow(crate::ui::tokens::shadow::high())
+                    .corner_radius(egui::CornerRadius::same(radius::LG))
+                    .show(ui, |ui| {
+                        ui.set_width(width::MODAL_NEW);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("New project")
+                                    .family(egui::FontFamily::Name(
+                                        crate::theme::INTER_SEMIBOLD_FAMILY.into(),
+                                    ))
+                                    .size(font::HEADING)
+                                    .color(theme.text),
+                            );
+                            ui.add_space(space::XS);
+                            widgets::hint_label(ui, &theme, "Discard unsaved work and start over?");
+                            ui.add_space(space::SM);
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.spacing_mut().item_spacing.x = space::SX;
+                                        if widgets::dialog_button(ui, &theme, "Create", true)
+                                            .clicked()
+                                        {
+                                            create_clicked = true;
+                                        }
+                                        if widgets::dialog_button(ui, &theme, "Cancel", false)
+                                            .clicked()
+                                        {
+                                            cancel_clicked = true;
+                                        }
+                                    },
+                                );
+                            });
+                        });
+                    });
             });
-        });
+        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         if create_clicked {
             new_project.apply = true;
             new_project.dialog_open = false;
-        } else if cancel_clicked || !open {
+        } else if cancel_clicked || esc {
             new_project.dialog_open = false;
         }
     }
