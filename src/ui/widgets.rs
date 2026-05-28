@@ -259,8 +259,7 @@ pub fn hint_label(ui: &mut egui::Ui, theme: &Theme, text: &str) {
         egui::Label::new(
             egui::RichText::new(text)
                 .color(theme.text_dim)
-                .size(font::SMALL)
-                .italics(),
+                .size(font::SMALL),
         )
         .wrap(),
     );
