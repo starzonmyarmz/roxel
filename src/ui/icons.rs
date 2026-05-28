@@ -80,6 +80,12 @@ pub fn chevron_down() -> egui::ImageSource<'static> {
 pub fn corner_down_left() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/corner-down-left.svg")
 }
+pub fn arrow_big_up() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/arrow-big-up.svg")
+}
+pub fn command() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/command.svg")
+}
 pub fn square() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/square.svg")
 }
@@ -88,6 +94,9 @@ pub fn circle() -> egui::ImageSource<'static> {
 }
 pub fn slash() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/slash.svg")
+}
+pub fn search() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/search.svg")
 }
 
 pub fn shape_primitive(p: ShapePrimitive) -> egui::ImageSource<'static> {

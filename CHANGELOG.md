@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): overhauled command palette — no title bar, hidden scrollbar, 10-row height, per-key shortcut chips with Lucide modifier icons, search icon in surface frame, redesigned footer chips
+
 ## [0.6.1] - 2026-05-28
 
 - chore: bump to 0.6.1

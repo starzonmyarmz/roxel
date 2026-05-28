@@ -5,7 +5,7 @@ use crate::camera::{
 use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
-use crate::theme::{INTER_SEMIBOLD_FAMILY, Preferences, PreferencesWindow, Theme, ThemePref};
+use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
     Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
@@ -810,79 +810,97 @@ pub fn draw(
         close_after = true;
     }
 
-    egui::Window::new(
-        egui::RichText::new("Command palette")
-            .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
-            .size(font::BODY),
-    )
-    .collapsible(false)
-    .resizable(false)
-    .open(&mut open_flag)
-    .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-    .default_width(width::COMMAND_PALETTE)
-    .min_width(width::COMMAND_PALETTE)
-    .frame(
-        egui::Frame::window(&ctx.style())
-            .fill(theme.panel)
-            .inner_margin(egui::Margin::symmetric(14, 12))
-            .stroke(egui::Stroke::NONE)
-            .shadow(crate::ui::tokens::shadow::high())
-            .corner_radius(egui::CornerRadius::same(radius::LG)),
-    )
-    .show(ctx, |ui| {
-        ui.set_min_width(492.0);
+    egui::Window::new("Command palette")
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open_flag)
+        .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
+        .default_width(width::COMMAND_PALETTE)
+        .min_width(width::COMMAND_PALETTE)
+        .frame(
+            egui::Frame::window(&ctx.style())
+                .fill(theme.panel)
+                .inner_margin(egui::Margin::symmetric(14, 12))
+                .stroke(egui::Stroke::NONE)
+                .shadow(crate::ui::tokens::shadow::high())
+                .corner_radius(egui::CornerRadius::same(radius::LG)),
+        )
+        .show(ctx, |ui| {
+            ui.set_min_width(492.0);
 
-        let resp = ui.add(
-            egui::TextEdit::singleline(&mut palette.search)
-                .desired_width(f32::INFINITY)
-                .hint_text("Type a command…")
-                .font(egui::TextStyle::Body),
-        );
-        if palette.just_opened {
-            resp.request_focus();
-            palette.just_opened = false;
-        } else if !resp.has_focus() && !resp.lost_focus() {
-            resp.request_focus();
-        }
-
-        ui.add_space(space::XS);
-        ui.painter().hline(
-            ui.clip_rect().x_range(),
-            ui.cursor().min.y,
-            egui::Stroke::new(stroke::HAIR, theme.border),
-        );
-        ui.add_space(space::SX);
-
-        if order.is_empty() {
-            ui.add_space(space::SM);
-            widgets::hint_label(ui, theme, "No commands match.");
-            ui.add_space(space::SM);
-        } else {
-            egui::ScrollArea::vertical()
-                .max_height(height::COMMAND_PALETTE_MAX)
-                .auto_shrink([false, true])
+            let margin = egui::Margin::symmetric(space::SM as i8, space::SX as i8);
+            let inner = egui::Frame::new()
+                .fill(theme.surface)
+                .corner_radius(egui::CornerRadius::same(radius::SM))
+                .inner_margin(margin)
                 .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = gap::NONE.y;
-                    for (visual_idx, &idx) in order.iter().enumerate() {
-                        let entry = &catalog[idx];
-                        let selected = visual_idx == palette.selected;
-                        if draw_row(ui, theme, entry, selected) && entry.enabled {
-                            pending = Some(entry.action.clone());
-                            close_after = true;
-                        }
-                    }
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Image::new(icons::search())
+                                .fit_to_exact_size(icon::md_square())
+                                .tint(theme.text_dim),
+                        );
+                        ui.add_space(space::XS);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut palette.search)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Type a command…")
+                                .font(egui::TextStyle::Body)
+                                .frame(false),
+                        )
+                    })
+                    .inner
                 });
-        }
+            let resp = inner.inner;
+            if palette.just_opened {
+                resp.request_focus();
+                palette.just_opened = false;
+            } else if !resp.has_focus() && !resp.lost_focus() {
+                resp.request_focus();
+            }
 
-        ui.add_space(space::SX);
-        ui.painter().hline(
-            ui.clip_rect().x_range(),
-            ui.cursor().min.y,
-            egui::Stroke::new(stroke::HAIR, theme.border),
-        );
-        ui.add_space(space::SX);
-        draw_footer_hint(ui, theme);
-    });
+            ui.add_space(space::XS);
+            ui.painter().hline(
+                ui.clip_rect().x_range(),
+                ui.cursor().min.y,
+                egui::Stroke::new(stroke::HAIR, theme.border),
+            );
+            ui.add_space(space::SX);
+
+            if order.is_empty() {
+                ui.add_space(space::SM);
+                widgets::hint_label(ui, theme, "No commands match.");
+                ui.add_space(space::SM);
+            } else {
+                egui::ScrollArea::vertical()
+                    .max_height(height::COMMAND_PALETTE_MAX)
+                    .auto_shrink([false, true])
+                    .scroll_bar_visibility(
+                        egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                    )
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = space::XXS;
+                        for (visual_idx, &idx) in order.iter().enumerate() {
+                            let entry = &catalog[idx];
+                            let selected = visual_idx == palette.selected;
+                            if draw_row(ui, theme, entry, selected) && entry.enabled {
+                                pending = Some(entry.action.clone());
+                                close_after = true;
+                            }
+                        }
+                    });
+            }
+
+            ui.add_space(space::SX);
+            ui.painter().hline(
+                ui.clip_rect().x_range(),
+                ui.cursor().min.y,
+                egui::Stroke::new(stroke::HAIR, theme.border),
+            );
+            ui.add_space(space::SX);
+            draw_footer_hint(ui, theme);
+        });
 
     if palette.search != prev_search {
         // Re-clamp + reset to first enabled when the user types.
@@ -905,36 +923,59 @@ pub fn draw(
 
 fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
     let dim = theme.text_dim;
-    let footer_icon = |src| {
-        egui::Image::new(src)
-            .fit_to_exact_size(icon::sm_square())
-            .tint(dim)
+    let chip_h = icon::XS + 8.0;
+    let chip_pad_x = 6.0;
+
+    let icon_chip = |ui: &mut egui::Ui, src: egui::ImageSource<'static>| {
+        let w = icon::XS + chip_pad_x * 2.0;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
+        let img_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon::XS, icon::XS));
+        egui::Image::new(src).tint(dim).paint_at(ui, img_rect);
     };
-    let text = |s: &str| {
-        egui::Label::new(egui::RichText::new(s).color(dim).size(font::SMALL)).selectable(false)
+
+    let text_chip = |ui: &mut egui::Ui, s: &str| {
+        let galley =
+            ui.painter()
+                .layout_no_wrap(s.to_string(), egui::FontId::monospace(font::SMALL), dim);
+        let w = galley.size().x + chip_pad_x * 2.0;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
+        let pos = egui::pos2(
+            rect.center().x - galley.size().x * 0.5,
+            rect.center().y - galley.size().y * 0.5,
+        );
+        ui.painter().galley(pos, galley, dim);
     };
+
+    let plain = |ui: &mut egui::Ui, s: &str| {
+        let galley = ui.painter().layout_no_wrap(
+            s.to_string(),
+            egui::FontId::proportional(font::SMALL),
+            dim,
+        );
+        let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
+        ui.painter().galley(rect.min, galley, dim);
+    };
+
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-        ui.add(footer_icon(icons::arrow_up()));
-        ui.add(footer_icon(icons::arrow_down()));
+        ui.spacing_mut().interact_size.y = chip_h;
+
+        icon_chip(ui, icons::arrow_up());
+        icon_chip(ui, icons::arrow_down());
         ui.add_space(space::XXS);
-        ui.add(text("navigate"));
+        plain(ui, "Navigate");
         ui.add_space(space::FOOTER_GROUP);
-        ui.add(footer_icon(icons::corner_down_left()));
+        icon_chip(ui, icons::corner_down_left());
         ui.add_space(space::XXS);
-        ui.add(text("run"));
+        plain(ui, "Run");
         ui.add_space(space::FOOTER_GROUP);
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Esc")
-                    .monospace()
-                    .color(dim)
-                    .size(font::SMALL),
-            )
-            .selectable(false),
-        );
+        text_chip(ui, "Esc");
         ui.add_space(space::XXS);
-        ui.add(text("close"));
+        plain(ui, "Close");
     });
 }
 
@@ -1002,17 +1043,112 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     ui.painter()
         .galley(egui::pos2(label_x, label_y), label_galley, text_color);
 
-    // Shortcut (right).
+    // Shortcut (right) — per-key chips (text or Lucide icons), surface fill.
     if let Some(sc) = entry.shortcut {
-        let sc_galley =
-            ui.painter()
-                .layout_no_wrap(sc.to_string(), egui::FontId::monospace(font::SMALL), dim);
-        let sc_x = rect.right() - 10.0 - sc_galley.size().x;
-        let sc_y = rect.center().y - sc_galley.size().y * 0.5;
-        ui.painter().galley(egui::pos2(sc_x, sc_y), sc_galley, dim);
+        let chip_h = icon::XS + space::SM; // 20, matches footer chip
+        let tokens = tokenize_shortcut(sc);
+        let gap = space::XXS;
+        let widths: Vec<f32> = tokens
+            .iter()
+            .map(|t| match t {
+                ShortcutToken::Text(s) => {
+                    let g = ui.painter().layout_no_wrap(
+                        s.clone(),
+                        egui::FontId::monospace(font::SMALL),
+                        dim,
+                    );
+                    g.size().x + space::SX * 2.0
+                }
+                ShortcutToken::Command | ShortcutToken::Shift => icon::XS + space::SX * 2.0,
+            })
+            .collect();
+        let total: f32 = widths.iter().sum::<f32>() + gap * (tokens.len().saturating_sub(1)) as f32;
+        let mut x = rect.right() - 10.0 - total;
+        let y = rect.center().y - chip_h * 0.5;
+        for tok in &tokens {
+            let w = match tok {
+                ShortcutToken::Text(s) => {
+                    let g = ui.painter().layout_no_wrap(
+                        s.clone(),
+                        egui::FontId::monospace(font::SMALL),
+                        dim,
+                    );
+                    let tw = g.size().x + space::SX * 2.0;
+                    let chip_rect =
+                        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(tw, chip_h));
+                    ui.painter().rect_filled(
+                        chip_rect,
+                        egui::CornerRadius::same(radius::XS),
+                        theme.surface,
+                    );
+                    let pos = egui::pos2(
+                        chip_rect.center().x - g.size().x * 0.5,
+                        chip_rect.center().y - g.size().y * 0.5,
+                    );
+                    ui.painter().galley(pos, g, dim);
+                    tw
+                }
+                ShortcutToken::Command | ShortcutToken::Shift => {
+                    let tw = icon::XS + space::SX * 2.0;
+                    let chip_rect =
+                        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(tw, chip_h));
+                    ui.painter().rect_filled(
+                        chip_rect,
+                        egui::CornerRadius::same(radius::XS),
+                        theme.surface,
+                    );
+                    let img_rect = egui::Rect::from_center_size(
+                        chip_rect.center(),
+                        egui::vec2(icon::XS, icon::XS),
+                    );
+                    if let Some(src) = tok.icon_source() {
+                        egui::Image::new(src).tint(dim).paint_at(ui, img_rect);
+                    }
+                    tw
+                }
+            };
+            x += w + gap;
+        }
     }
 
     resp.clicked() && entry.enabled
+}
+
+/// A single chip in a shortcut display — either text or a Lucide icon for a
+/// modifier key.
+#[derive(Debug, PartialEq)]
+enum ShortcutToken {
+    Text(String),
+    Command,
+    Shift,
+}
+
+/// Split a shortcut string into per-key tokens for chip rendering. Multi-char
+/// names like "Esc" stay whole; modifier glyphs (`⌘` → `Command` icon,
+/// `⇧` → `Shift` icon) and alphanumeric/punctuation keys become individual
+/// chips.
+fn tokenize_shortcut(s: &str) -> Vec<ShortcutToken> {
+    match s {
+        "Esc" => vec![ShortcutToken::Text("Esc".into())],
+        _ => s
+            .chars()
+            .map(|c| match c {
+                '⌘' => ShortcutToken::Command,
+                '⇧' => ShortcutToken::Shift,
+                c => ShortcutToken::Text(c.to_string()),
+            })
+            .collect(),
+    }
+}
+
+impl ShortcutToken {
+    fn icon_source(&self) -> Option<egui::ImageSource<'static>> {
+        match self {
+            ShortcutToken::Command => Some(icons::command()),
+            ShortcutToken::Shift => Some(icons::arrow_big_up()),
+            _ => None,
+        }
+    }
 }
 
 // -------- Dispatch --------
@@ -1571,6 +1707,30 @@ mod tests {
                 cat[i].label
             );
         }
+    }
+
+    #[test]
+    fn tokenize_shortcut_splits_per_char_but_keeps_esc_whole() {
+        assert_eq!(
+            tokenize_shortcut("Esc"),
+            vec![ShortcutToken::Text("Esc".into())]
+        );
+        assert_eq!(
+            tokenize_shortcut("⌘N"),
+            vec![ShortcutToken::Command, ShortcutToken::Text("N".into())]
+        );
+        assert_eq!(
+            tokenize_shortcut("⇧⌘S"),
+            vec![
+                ShortcutToken::Shift,
+                ShortcutToken::Command,
+                ShortcutToken::Text("S".into())
+            ]
+        );
+        assert_eq!(
+            tokenize_shortcut("B"),
+            vec![ShortcutToken::Text("B".into())]
+        );
     }
 
     #[test]

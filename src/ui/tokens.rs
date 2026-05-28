@@ -120,11 +120,16 @@ pub mod pad {
 /// Icon `fit_to_exact_size` values. Square — width == height. 4-px grid.
 pub mod icon {
     use super::Vec2;
-    pub const SM: f32 = 14.0; // command-palette footer + wide-action icon
+    pub const XS: f32 = 12.0; // command-palette footer key-chips
+    pub const SM: f32 = 14.0; // wide-action icon
     pub const MD: f32 = 16.0; // top-bar, dialog icons
     pub const LG: f32 = 20.0; // left tool rail
     pub const HERO: f32 = 64.0; // onboarding coachmark hero
 
+    #[allow(dead_code)] // reserved for future XS icon use
+    pub const fn xs_square() -> Vec2 {
+        Vec2::new(XS, XS)
+    }
     pub const fn sm_square() -> Vec2 {
         Vec2::new(SM, SM)
     }
@@ -193,7 +198,7 @@ pub mod width {
 
 /// Container heights / max-heights.
 pub mod height {
-    pub const COMMAND_PALETTE_MAX: f32 = 360.0;
+    pub const COMMAND_PALETTE_MAX: f32 = 318.0;
     /// Height of the floating pill menu row.
     #[allow(dead_code)] // reserved for pill-height tuning
     pub const FLOAT_MENU: f32 = 36.0;
@@ -270,7 +275,7 @@ mod tests {
         for v in [font::SECTION, font::SMALL, font::BODY, font::HEADING] {
             assert_eq!(v as u32 % 2, 0, "font {v} is odd");
         }
-        for v in [icon::SM, icon::MD, icon::LG, icon::HERO] {
+        for v in [icon::XS, icon::SM, icon::MD, icon::LG, icon::HERO] {
             assert_eq!(v as u32 % 2, 0, "icon {v} is odd");
         }
     }
