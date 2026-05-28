@@ -778,7 +778,6 @@ pub fn draw(
     });
 
     let prev_search = palette.search.clone();
-    let mut open_flag = true;
     let mut close_after = false;
     let mut pending: Option<CommandAction> = None;
 
@@ -810,11 +809,10 @@ pub fn draw(
         close_after = true;
     }
 
-    egui::Window::new("Command palette")
+    let window_response = egui::Window::new("Command palette")
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
-        .open(&mut open_flag)
         .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
         .default_width(width::COMMAND_PALETTE)
         .min_width(width::COMMAND_PALETTE)
@@ -902,6 +900,18 @@ pub fn draw(
             draw_footer_hint(ui, theme);
         });
 
+    // Close when the user clicks anywhere outside the window.
+    if let Some(wr) = window_response {
+        let rect = wr.response.rect;
+        let clicked_outside = ctx.input(|i| {
+            i.pointer.any_click()
+                && !rect.contains(i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))
+        });
+        if clicked_outside {
+            close_after = true;
+        }
+    }
+
     if palette.search != prev_search {
         // Re-clamp + reset to first enabled when the user types.
         let new_order = rank(catalog, &palette.search);
@@ -916,13 +926,14 @@ pub fn draw(
     if let Some(action) = pending {
         palette.pending = Some(action);
     }
-    if close_after || !open_flag {
+    if close_after {
         palette.open = false;
     }
 }
 
 fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
-    let dim = theme.text_dim;
+    let chip_color = theme.text;
+    let label_color = theme.text_dim;
     let chip_h = icon::XS + 8.0;
     let chip_pad_x = 6.0;
 
@@ -932,13 +943,17 @@ fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
         let img_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon::XS, icon::XS));
-        egui::Image::new(src).tint(dim).paint_at(ui, img_rect);
+        egui::Image::new(src)
+            .tint(chip_color)
+            .paint_at(ui, img_rect);
     };
 
     let text_chip = |ui: &mut egui::Ui, s: &str| {
-        let galley =
-            ui.painter()
-                .layout_no_wrap(s.to_string(), egui::FontId::monospace(font::SMALL), dim);
+        let galley = ui.painter().layout_no_wrap(
+            s.to_string(),
+            egui::FontId::monospace(font::SMALL),
+            chip_color,
+        );
         let w = galley.size().x + chip_pad_x * 2.0;
         let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
         ui.painter()
@@ -947,17 +962,17 @@ fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
             rect.center().x - galley.size().x * 0.5,
             rect.center().y - galley.size().y * 0.5,
         );
-        ui.painter().galley(pos, galley, dim);
+        ui.painter().galley(pos, galley, chip_color);
     };
 
     let plain = |ui: &mut egui::Ui, s: &str| {
         let galley = ui.painter().layout_no_wrap(
             s.to_string(),
             egui::FontId::proportional(font::SMALL),
-            dim,
+            label_color,
         );
         let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
-        ui.painter().galley(rect.min, galley, dim);
+        ui.painter().galley(rect.min, galley, label_color);
     };
 
     ui.horizontal(|ui| {
@@ -1019,6 +1034,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
         theme.text_dim
     };
     let dim = theme.text_dim;
+    let chip_color = theme.text;
 
     // Category chip (left).
     let chip_x = rect.left() + 10.0;
@@ -1055,7 +1071,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
                     let g = ui.painter().layout_no_wrap(
                         s.clone(),
                         egui::FontId::monospace(font::SMALL),
-                        dim,
+                        chip_color,
                     );
                     g.size().x + space::SX * 2.0
                 }
@@ -1071,7 +1087,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
                     let g = ui.painter().layout_no_wrap(
                         s.clone(),
                         egui::FontId::monospace(font::SMALL),
-                        dim,
+                        chip_color,
                     );
                     let tw = g.size().x + space::SX * 2.0;
                     let chip_rect =
@@ -1085,7 +1101,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
                         chip_rect.center().x - g.size().x * 0.5,
                         chip_rect.center().y - g.size().y * 0.5,
                     );
-                    ui.painter().galley(pos, g, dim);
+                    ui.painter().galley(pos, g, chip_color);
                     tw
                 }
                 ShortcutToken::Command | ShortcutToken::Shift => {
@@ -1102,7 +1118,9 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
                         egui::vec2(icon::XS, icon::XS),
                     );
                     if let Some(src) = tok.icon_source() {
-                        egui::Image::new(src).tint(dim).paint_at(ui, img_rect);
+                        egui::Image::new(src)
+                            .tint(chip_color)
+                            .paint_at(ui, img_rect);
                     }
                     tw
                 }
