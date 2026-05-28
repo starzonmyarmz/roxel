@@ -38,6 +38,8 @@ pub enum MenuAction {
     Cut,
     Copy,
     Paste,
+    DoubleDensity,
+    HalveDensity,
     Preferences,
     Changelog,
     ShowOnboarding,
@@ -60,6 +62,8 @@ pub struct MenuStore {
     cut_item: MenuItem,
     copy_item: MenuItem,
     paste_item: MenuItem,
+    double_density_item: MenuItem,
+    halve_density_item: MenuItem,
     recent_sub: Submenu,
     recent_items: Vec<MenuItem>,
     clear_recent_item: MenuItem,
@@ -239,6 +243,8 @@ fn build_menu() -> MenuStore {
         false,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyV)),
     );
+    let double_density_item = MenuItem::new("Double Density", false, None);
+    let halve_density_item = MenuItem::new("Halve Density", false, None);
     edit.append_items(&[
         &undo_item,
         &redo_item,
@@ -246,6 +252,9 @@ fn build_menu() -> MenuStore {
         &cut_item,
         &copy_item,
         &paste_item,
+        &PredefinedMenuItem::separator(),
+        &double_density_item,
+        &halve_density_item,
     ])
     .expect("append edit menu");
     menu.append(&edit).expect("append edit submenu");
@@ -255,6 +264,11 @@ fn build_menu() -> MenuStore {
     actions.insert(cut_item.id().0.clone(), MenuAction::Cut);
     actions.insert(copy_item.id().0.clone(), MenuAction::Copy);
     actions.insert(paste_item.id().0.clone(), MenuAction::Paste);
+    actions.insert(
+        double_density_item.id().0.clone(),
+        MenuAction::DoubleDensity,
+    );
+    actions.insert(halve_density_item.id().0.clone(), MenuAction::HalveDensity);
 
     let view = Submenu::new("View", true);
     let frame_item = MenuItem::new(
@@ -368,6 +382,8 @@ fn build_menu() -> MenuStore {
         cut_item,
         copy_item,
         paste_item,
+        double_density_item,
+        halve_density_item,
         recent_sub,
         recent_items,
         clear_recent_item,
@@ -395,12 +411,14 @@ pub fn update_menu_enabled_system(
     history: Res<History>,
     selection: Res<crate::select::Selection>,
     clipboard: Res<crate::clipboard::Clipboard>,
+    grid: Res<VoxelGrid>,
 ) {
     let Some(store) = store else { return };
     let undo_on = !history.undo.is_empty();
     let redo_on = !history.redo.is_empty();
     let has_sel = selection.aabb.is_some();
     let has_clip = clipboard.has_stamp();
+    let has_voxels = grid.count() > 0;
     if store.undo_item.is_enabled() != undo_on {
         store.undo_item.set_enabled(undo_on);
     }
@@ -415,6 +433,12 @@ pub fn update_menu_enabled_system(
     }
     if store.paste_item.is_enabled() != has_clip {
         store.paste_item.set_enabled(has_clip);
+    }
+    if store.double_density_item.is_enabled() != has_voxels {
+        store.double_density_item.set_enabled(has_voxels);
+    }
+    if store.halve_density_item.is_enabled() != has_voxels {
+        store.halve_density_item.set_enabled(has_voxels);
     }
 }
 
@@ -532,6 +556,18 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                     );
                 }
             }
+            MenuAction::DoubleDensity => crate::resample::apply_resample(
+                &mut p.grid,
+                &mut p.history,
+                &mut p.toasts,
+                crate::resample::ResampleOp::Double,
+            ),
+            MenuAction::HalveDensity => crate::resample::apply_resample(
+                &mut p.grid,
+                &mut p.history,
+                &mut p.toasts,
+                crate::resample::ResampleOp::Halve,
+            ),
             MenuAction::Preferences => {
                 p.prefs_window.open = !p.prefs_window.open;
             }

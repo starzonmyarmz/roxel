@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(edit): double / halve density to resample the scene
+- style(ui): info toasts use blue tint, no leading icon
 - fix(ui): toasts fade uniformly instead of bg-only lerp to panel
 - feat(ui): click-to-toggle shape picker + tight new-project modal
 - feat(ui): coral brand accent + always-expanded section headers

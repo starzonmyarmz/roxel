@@ -1442,6 +1442,7 @@ pub fn ui_system(
             has_redo: !history.redo.is_empty(),
             has_selection: selection.aabb.is_some(),
             has_clipboard: clipboard.has_stamp(),
+            has_voxels: grid.count() > 0,
             dialog_busy: pending.is_active(),
             palettes: &palettes.0,
             palette_choice: palette_choice.0,

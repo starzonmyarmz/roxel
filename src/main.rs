@@ -13,6 +13,7 @@ mod mesh;
 mod onboarding;
 mod picking;
 mod preview;
+mod resample;
 mod select;
 mod shape_preview;
 mod shapes;

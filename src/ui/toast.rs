@@ -84,9 +84,11 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
             ui.spacing_mut().item_spacing.y = space::SX;
             for t in toasts.0.iter() {
                 let (accent, icon_src) = match t.kind {
-                    ToastKind::Success => (egui::Color32::from_rgb(76, 175, 102), icons::check()),
-                    ToastKind::Error => (egui::Color32::from_rgb(220, 90, 90), icons::x()),
-                    ToastKind::Info => (theme.accent, icons::circle()),
+                    ToastKind::Success => {
+                        (egui::Color32::from_rgb(76, 175, 102), Some(icons::check()))
+                    }
+                    ToastKind::Error => (egui::Color32::from_rgb(220, 90, 90), Some(icons::x())),
+                    ToastKind::Info => (egui::Color32::from_rgb(72, 130, 200), None),
                 };
                 let fade = (t.remaining / FADE_WINDOW).clamp(0.0, 1.0);
                 // Tint background: take the kind's accent, fade to 14% alpha
@@ -106,11 +108,13 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = space::SM;
-                                ui.add(
-                                    egui::Image::new(icon_src)
-                                        .fit_to_exact_size(icon::md_square())
-                                        .tint(accent),
-                                );
+                                if let Some(src) = icon_src {
+                                    ui.add(
+                                        egui::Image::new(src)
+                                            .fit_to_exact_size(icon::md_square())
+                                            .tint(accent),
+                                    );
+                                }
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(&t.message)

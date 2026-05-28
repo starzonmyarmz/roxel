@@ -94,6 +94,8 @@ pub enum CommandAction {
     CopySelection,
     CutSelection,
     Paste,
+    DoubleDensity,
+    HalveDensity,
 
     SelectTool(Tool),
     SelectShape(ShapePrimitive),
@@ -209,6 +211,7 @@ pub struct CatalogState<'a> {
     pub has_redo: bool,
     pub has_selection: bool,
     pub has_clipboard: bool,
+    pub has_voxels: bool,
     pub dialog_busy: bool,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
@@ -390,6 +393,22 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         Some("⌘V"),
         state.has_clipboard,
         CommandAction::Paste,
+    ));
+    out.push(entry(
+        "Double density",
+        Category::Edit,
+        "resample upscale 2x detail subdivide",
+        None,
+        state.has_voxels,
+        CommandAction::DoubleDensity,
+    ));
+    out.push(entry(
+        "Halve density",
+        Category::Edit,
+        "resample downscale half simplify merge",
+        None,
+        state.has_voxels,
+        CommandAction::HalveDensity,
     ));
 
     // Tools
@@ -1126,6 +1145,18 @@ pub fn dispatch_command_palette_system(
                 );
             }
         }
+        CommandAction::DoubleDensity => crate::resample::apply_resample(
+            &mut p.grid,
+            &mut p.history,
+            &mut p.toasts,
+            crate::resample::ResampleOp::Double,
+        ),
+        CommandAction::HalveDensity => crate::resample::apply_resample(
+            &mut p.grid,
+            &mut p.history,
+            &mut p.toasts,
+            crate::resample::ResampleOp::Halve,
+        ),
         CommandAction::SelectTool(t) => {
             if p.tool.current != t {
                 p.tool.previous = p.tool.current;
@@ -1361,6 +1392,7 @@ mod tests {
             has_redo: false,
             has_selection: false,
             has_clipboard: false,
+            has_voxels: false,
             dialog_busy: false,
             palettes,
             palette_choice: 0,
@@ -1429,6 +1461,7 @@ mod tests {
             has_redo: false,
             has_selection: false,
             has_clipboard: false,
+            has_voxels: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1456,6 +1489,7 @@ mod tests {
             has_redo: false,
             has_selection: false,
             has_clipboard: false,
+            has_voxels: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1487,6 +1521,7 @@ mod tests {
             has_redo: true,
             has_selection: false,
             has_clipboard: false,
+            has_voxels: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
@@ -1512,6 +1547,7 @@ mod tests {
             has_redo: false,
             has_selection: false,
             has_clipboard: false,
+            has_voxels: false,
             dialog_busy: false,
             palettes: &palettes,
             palette_choice: 0,
