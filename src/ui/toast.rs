@@ -91,34 +91,37 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                 let fade = (t.remaining / FADE_WINDOW).clamp(0.0, 1.0);
                 // Tint background: take the kind's accent, fade to 14% alpha
                 // against the panel. Reads as a coloured surface, not a card
-                // with a side bar. End-of-life fade lerps the tint back toward
-                // panel so the toast dissolves rather than snapping out.
+                // with a side bar. End-of-life fade scales the whole toast's
+                // opacity (fill, shadow, icon, text) so it dissolves uniformly
+                // rather than the bg lerping to panel while text stays opaque.
                 let tinted = blend_alpha(accent, theme.panel, 36);
-                let fill = lerp_color(tinted, theme.panel, fade);
-                egui::Frame::default()
-                    .fill(fill)
-                    .stroke(egui::Stroke::NONE)
-                    .shadow(shadow::mid())
-                    .corner_radius(egui::CornerRadius::same(radius::MD))
-                    .inner_margin(egui::Margin::symmetric(14, 10))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = space::SM;
-                            ui.add(
-                                egui::Image::new(icon_src)
-                                    .fit_to_exact_size(icon::md_square())
-                                    .tint(accent),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&t.message)
-                                        .color(theme.text)
-                                        .size(font::BODY),
-                                )
-                                .wrap(),
-                            );
+                ui.scope(|ui| {
+                    ui.multiply_opacity(fade);
+                    egui::Frame::default()
+                        .fill(tinted)
+                        .stroke(egui::Stroke::NONE)
+                        .shadow(shadow::mid())
+                        .corner_radius(egui::CornerRadius::same(radius::MD))
+                        .inner_margin(egui::Margin::symmetric(14, 10))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = space::SM;
+                                ui.add(
+                                    egui::Image::new(icon_src)
+                                        .fit_to_exact_size(icon::md_square())
+                                        .tint(accent),
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&t.message)
+                                            .color(theme.text)
+                                            .size(font::BODY),
+                                    )
+                                    .wrap(),
+                                );
+                            });
                         });
-                    });
+                });
             }
         });
 }
@@ -136,20 +139,6 @@ fn blend_alpha(fg: egui::Color32, bg: egui::Color32, alpha: u8) -> egui::Color32
         mix(fg.r(), bg.r()),
         mix(fg.g(), bg.g()),
         mix(fg.b(), bg.b()),
-    )
-}
-
-fn lerp_color(from: egui::Color32, to: egui::Color32, t: f32) -> egui::Color32 {
-    let lerp = |a: u8, b: u8| -> u8 {
-        let af = a as f32;
-        let bf = b as f32;
-        (af + (bf - af) * (1.0 - t)).round().clamp(0.0, 255.0) as u8
-    };
-    egui::Color32::from_rgba_unmultiplied(
-        lerp(from.r(), to.r()),
-        lerp(from.g(), to.g()),
-        lerp(from.b(), to.b()),
-        lerp(from.a(), to.a()),
     )
 }
 

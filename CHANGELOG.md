@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): toasts fade uniformly instead of bg-only lerp to panel
+
 ## [0.6.0] - 2026-05-26
 
 - chore: bump to 0.6.0
