@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(render): voxel colors match palette swatch — disable camera tonemap so unlit colors render as exact sRGB
 - feat(color): shift-click swatches to build a multi-color pool; paint and shape fills sample per voxel with a dithered preview
 - fix(color): Recent grid updates on LMB release instead of every voxel so it stops reshuffling mid-stroke
 - fix(icon): squircle + safe area so the dock stops wrapping it in a white card

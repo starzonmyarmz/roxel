@@ -58,7 +58,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Camera
 
-`spawn_camera` (`camera.rs`) — orbit at `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` (isometric). `EMPTY_WORLD_RADIUS = 32.0` is spawn + empty-world fallback.
+`spawn_camera` (`camera.rs`) — orbit at `(1, 1, 1).normalize() * EMPTY_WORLD_RADIUS` (isometric). `EMPTY_WORLD_RADIUS = 32.0` is spawn + empty-world fallback. **Forces `Tonemapping::None`** so unlit voxel colors render as the exact sRGB the user picked — Bevy's default `TonyMcMapface` curve desaturates/darkens output and would diverge from the egui palette swatch.
 
 `frame_view_system` (Cmd/Ctrl+0) — AABB via `grid.bounding_box()`, **panel-aware** (uses `ViewportRect` updated `after(ui_system)`). Empty scene → focus=origin, radius=`EMPTY_WORLD_RADIUS`. Zoom readout uses `cam.radius` (smoothed, not `target_radius`) rounded to voxel count — target lied during long lerps.
 

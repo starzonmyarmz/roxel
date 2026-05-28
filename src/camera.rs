@@ -1,4 +1,5 @@
 use crate::grid::VoxelGrid;
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
@@ -29,6 +30,11 @@ pub fn spawn_camera(commands: &mut Commands) {
     let offset = iso_camera_offset();
     commands.spawn((
         Camera3d::default(),
+        // Force tonemapping off so voxel colors render as the exact sRGB values
+        // the user picked in the palette. Voxel materials are `unlit`, so the
+        // default tonemap curve only desaturates/darkens output vs. the egui
+        // swatch with no benefit. Matches the snapshot camera.
+        Tonemapping::None,
         Transform::from_translation(focus + offset).looking_at(focus, Vec3::Y),
         PrimaryEguiContext,
         PanOrbitCamera {
