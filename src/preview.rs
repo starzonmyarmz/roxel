@@ -10,7 +10,9 @@ use crate::grid::VoxelGrid;
 use crate::mesh::PreviewHide;
 use crate::picking::{cursor_ray, pick};
 use crate::theme::Theme;
-use crate::tools::{CurrentColor, PointerState, Tool, ToolState};
+use crate::tools::{
+    CurrentColor, ExtraColors, PointerState, Tool, ToolState, color_pool, sample_color,
+};
 
 /// Dedicated gizmo group for tool preview outlines (brush ghost, erase/paint
 /// target highlight, shape silhouette). Uses `depth_bias = -1.0` so the outline
@@ -46,6 +48,12 @@ pub struct StrokeGates<'w> {
     pub pointer: Res<'w, PointerState>,
     pub shape: Res<'w, crate::tools::ShapeState>,
     pub theme: Res<'w, Theme>,
+}
+
+#[derive(SystemParam)]
+pub struct BrushColors<'w> {
+    pub color: Res<'w, CurrentColor>,
+    pub extras: Res<'w, ExtraColors>,
 }
 
 #[derive(Component)]
@@ -87,7 +95,7 @@ pub fn brush_preview_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     grid: Res<VoxelGrid>,
     tool: Res<ToolState>,
-    color: Res<CurrentColor>,
+    colors: BrushColors,
     gates: StrokeGates,
     mat_handle: Res<BrushPreviewMaterial>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -98,6 +106,7 @@ pub fn brush_preview_system(
     mut gizmos: Gizmos<PreviewGizmos>,
 ) {
     let theme = *gates.theme;
+    let BrushColors { color, extras } = colors;
     let Ok((mut tf, mut vis)) = q.single_mut() else {
         return;
     };
@@ -153,7 +162,8 @@ pub fn brush_preview_system(
             *vis = Visibility::Hidden;
             return;
         }
-        let c = color.0;
+        let pool = color_pool(color.0, &extras.0);
+        let c = sample_color(target, &pool);
         let pos = target.as_vec3() + Vec3::splat(0.5);
         *tf = Transform::from_translation(pos);
         *vis = Visibility::Visible;
@@ -193,7 +203,9 @@ pub fn brush_preview_system(
             *vis = Visibility::Hidden;
             hide.set(None);
             if hit.hit_voxel {
-                hide.set_recolor(Some((hit.cell, color.0)));
+                let pool = color_pool(color.0, &extras.0);
+                let c = sample_color(hit.cell, &pool);
+                hide.set_recolor(Some((hit.cell, c)));
                 emit_target_outline(&mut gizmos, hit.cell);
             } else {
                 hide.set_recolor(None);

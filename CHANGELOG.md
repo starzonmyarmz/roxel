@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(color): shift-click swatches to build a multi-color pool; paint and shape fills sample per voxel with a dithered preview
+- fix(color): Recent grid updates on LMB release instead of every voxel so it stops reshuffling mid-stroke
 - fix(icon): squircle + safe area so the dock stops wrapping it in a white card
 - feat(edit): double / halve density to resample the scene
 - style(ui): info toasts use blue tint, no leading icon

@@ -4,11 +4,13 @@ use bevy::prelude::*;
 
 use std::collections::HashSet;
 
+use crate::mesh::srgb_to_linear;
 use crate::preview::{PreviewGizmos, accent_outline_color};
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use crate::theme::Theme;
 use crate::tools::{
-    CurrentColor, ShapeOptions, ShapeState, Tool, ToolState, extrude_args_from_signed_offset,
+    CurrentColor, ExtraColors, ShapeOptions, ShapeState, Tool, ToolState, color_pool,
+    extrude_args_from_signed_offset, sample_color,
 };
 
 #[derive(Component)]
@@ -59,6 +61,7 @@ pub fn shape_preview_system(
     options: Res<ShapeOptions>,
     state: Res<ShapeState>,
     color: Res<CurrentColor>,
+    extras: Res<ExtraColors>,
     handles: Res<ShapePreviewHandles>,
     flyby: Res<crate::camera::FlybyState>,
     theme: Res<Theme>,
@@ -92,6 +95,9 @@ pub fn shape_preview_system(
     let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, base_sign);
     let cells = extrude(&base, anchor.axis, count, dir_sign);
 
+    let pool = color_pool(color.0, &extras.0);
+    let multi = pool.len() > 1;
+
     let Some(mesh) = meshes.get_mut(&handles.mesh) else {
         *vis = Visibility::Hidden;
         return;
@@ -99,16 +105,29 @@ pub fn shape_preview_system(
     let (positions, normals, indices) = build_cubes_mesh(&cells);
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    if multi {
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_COLOR,
+            build_cube_vertex_colors(&cells, &pool),
+        );
+    } else {
+        mesh.remove_attribute(Mesh::ATTRIBUTE_COLOR.id);
+    }
     mesh.insert_indices(Indices::U32(indices));
 
     if let Some(m) = materials.get_mut(&handles.material) {
-        let c = color.0;
-        m.base_color = Color::srgba(
-            c[0] as f32 / 255.0,
-            c[1] as f32 / 255.0,
-            c[2] as f32 / 255.0,
-            0.4,
-        );
+        if multi {
+            // White base lets vertex colors show through unmodified.
+            m.base_color = Color::srgba(1.0, 1.0, 1.0, 0.4);
+        } else {
+            let c = color.0;
+            m.base_color = Color::srgba(
+                c[0] as f32 / 255.0,
+                c[1] as f32 / 255.0,
+                c[2] as f32 / 255.0,
+                0.4,
+            );
+        }
     }
 
     draw_silhouette(&mut gizmos, &cells, accent_outline_color(&theme));
@@ -163,6 +182,30 @@ fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: C
             }
         }
     }
+}
+
+/// Per-vertex RGBA colors (24 verts/cell, six faces × four corners) sampled
+/// deterministically from `pool` so the dithered preview matches what
+/// `shape_commit` will write. Linear-space — Bevy expects linear vertex
+/// colors (sRGB tonemapped at the final blit, see mesh::srgb_to_linear).
+pub(crate) fn build_cube_vertex_colors(
+    cells: &[IVec3],
+    pool: &[crate::grid::Color8],
+) -> Vec<[f32; 4]> {
+    let mut out = Vec::with_capacity(cells.len() * 24);
+    for c in cells {
+        let s = sample_color(*c, pool);
+        let lin = [
+            srgb_to_linear(s[0] as f32 / 255.0),
+            srgb_to_linear(s[1] as f32 / 255.0),
+            srgb_to_linear(s[2] as f32 / 255.0),
+            1.0,
+        ];
+        for _ in 0..24 {
+            out.push(lin);
+        }
+    }
+    out
 }
 
 pub(crate) fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {

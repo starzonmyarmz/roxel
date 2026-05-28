@@ -97,6 +97,80 @@ impl RecentColors {
     }
 }
 
+/// Additional swatches shift-clicked alongside `CurrentColor`. Together with
+/// the primary they form a sampling pool (see [`color_pool`]) — paint and
+/// shape commits draw one color per voxel from that pool. Session-scoped:
+/// not persisted.
+#[derive(Resource, Default)]
+pub struct ExtraColors(pub Vec<Color8>);
+
+impl ExtraColors {
+    pub fn contains(&self, c: Color8) -> bool {
+        self.0.contains(&c)
+    }
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+    /// Add `c` if absent, remove if present. Returns true when `c` is in the
+    /// set after the call.
+    pub fn toggle(&mut self, c: Color8) -> bool {
+        if let Some(idx) = self.0.iter().position(|x| *x == c) {
+            self.0.remove(idx);
+            false
+        } else {
+            self.0.push(c);
+            true
+        }
+    }
+}
+
+/// Build the sampling pool from primary + extras. Primary always first; any
+/// extras matching primary are dropped so each pool color is unique.
+pub fn color_pool(primary: Color8, extras: &[Color8]) -> Vec<Color8> {
+    let mut out = Vec::with_capacity(1 + extras.len());
+    out.push(primary);
+    for c in extras {
+        if !out.contains(c) {
+            out.push(*c);
+        }
+    }
+    out
+}
+
+/// Deterministic per-voxel color from `pool`. Same `pos` always returns the
+/// same color so preview and commit agree (WYSIWYG). Empty pool would panic
+/// — callers must ensure pool always carries the primary.
+pub fn sample_color(pos: IVec3, pool: &[Color8]) -> Color8 {
+    if pool.len() == 1 {
+        return pool[0];
+    }
+    let h = (pos.x as u32).wrapping_mul(73856093)
+        ^ (pos.y as u32).wrapping_mul(19349663)
+        ^ (pos.z as u32).wrapping_mul(83492791);
+    pool[(h as usize) % pool.len()]
+}
+
+/// Pure click-handler for palette swatches. Plain click sets primary and
+/// clears extras; shift-click toggles a non-primary color in/out of extras
+/// (clicking the primary itself is a no-op). Returns the new primary.
+pub fn apply_swatch_click(
+    shift: bool,
+    clicked: Color8,
+    primary: Color8,
+    extras: &mut ExtraColors,
+) -> Color8 {
+    if shift {
+        if clicked == primary {
+            return primary;
+        }
+        extras.toggle(clicked);
+        primary
+    } else {
+        extras.clear();
+        clicked
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct StrokeAnchor {
     pub axis: usize,
@@ -153,6 +227,10 @@ pub struct PointerState {
     pub stroking: bool,
     pub anchor: Option<StrokeAnchor>,
     pub last_placed: Option<IVec3>,
+    /// Distinct colors written during the current stroke. Flushed into
+    /// `RecentColors` on stroke end so the Recent grid doesn't reshuffle on
+    /// every painted voxel mid-drag.
+    pub stroke_used: Vec<Color8>,
 }
 
 #[derive(Resource, Clone, Copy, Default)]
@@ -440,7 +518,7 @@ fn shape_commit(
     state: &mut ShapeState,
     grid: &mut VoxelGrid,
     history: &mut History,
-    color: Color8,
+    pool: &[Color8],
     recent: &mut RecentColors,
 ) {
     let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
@@ -455,13 +533,20 @@ fn shape_commit(
     let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);
     let cells = extrude(&base, anchor.axis, count, dir_sign);
     history.begin();
+    let mut used: Vec<Color8> = Vec::new();
     for cell in cells {
         if grid.in_bounds(cell) {
-            history.record(grid, cell, Some(color));
+            let c = sample_color(cell, pool);
+            history.record(grid, cell, Some(c));
+            if !used.contains(&c) {
+                used.push(c);
+            }
         }
     }
     history.end();
-    recent.push(color);
+    for c in used {
+        recent.push(c);
+    }
     state.reset();
 }
 
@@ -470,7 +555,7 @@ fn shape_input(
     state: &mut ShapeState,
     grid: &mut VoxelGrid,
     history: &mut History,
-    color: Color8,
+    pool: &[Color8],
     recent: &mut RecentColors,
     keys: &ButtonInput<KeyCode>,
     mouse: &ButtonInput<MouseButton>,
@@ -534,7 +619,7 @@ fn shape_input(
             state.thickness =
                 signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
             if lmb_just && !blocked {
-                shape_commit(options, state, grid, history, color, recent);
+                shape_commit(options, state, grid, history, pool, recent);
             }
         }
     }
@@ -627,6 +712,7 @@ pub fn tool_input_system(
     mut history: ResMut<History>,
     mut tool: ResMut<ToolState>,
     mut color: ResMut<CurrentColor>,
+    extras: Res<ExtraColors>,
     mut recent: ResMut<RecentColors>,
     mut state: ResMut<PointerState>,
     shape: ShapeInput,
@@ -649,6 +735,7 @@ pub fn tool_input_system(
             history.abort(&mut grid);
             state.stroking = false;
             state.anchor = None;
+            state.stroke_used.clear();
         }
         return;
     }
@@ -664,12 +751,16 @@ pub fn tool_input_system(
     let lmb_pressed = mouse.pressed(MouseButton::Left);
     let lmb_just = mouse.just_pressed(MouseButton::Left);
     let lmb_released = mouse.just_released(MouseButton::Left);
+    let pool = color_pool(color.0, &extras.0);
 
     // End stroke whenever LMB is released, regardless of where pointer is now.
     if state.stroking && (lmb_released || !lmb_pressed) {
         history.end();
         state.stroking = false;
         state.anchor = None;
+        for c in state.stroke_used.drain(..) {
+            recent.push(c);
+        }
     }
 
     if tool.current != Tool::Shape && shape_state.phase.is_some() {
@@ -760,7 +851,7 @@ pub fn tool_input_system(
                 &mut shape_state,
                 &mut grid,
                 &mut history,
-                color.0,
+                &pool,
                 &mut recent,
                 &keys,
                 &mouse,
@@ -843,12 +934,19 @@ pub fn tool_input_system(
             return;
         }
         history.begin();
+        let mut used: Vec<Color8> = Vec::new();
         for cell in line3d(from, target) {
             if !grid.in_bounds(cell) {
                 continue;
             }
             match tool.current {
-                Tool::Brush => history.record(&mut grid, cell, Some(color.0)),
+                Tool::Brush => {
+                    let c = sample_color(cell, &pool);
+                    history.record(&mut grid, cell, Some(c));
+                    if !used.contains(&c) {
+                        used.push(c);
+                    }
+                }
                 Tool::Erase => {
                     if grid.get(cell).is_some() {
                         history.record(&mut grid, cell, None);
@@ -856,7 +954,11 @@ pub fn tool_input_system(
                 }
                 Tool::Paint => {
                     if grid.get(cell).is_some() {
-                        history.record(&mut grid, cell, Some(color.0));
+                        let c = sample_color(cell, &pool);
+                        history.record(&mut grid, cell, Some(c));
+                        if !used.contains(&c) {
+                            used.push(c);
+                        }
                     }
                 }
                 Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
@@ -864,7 +966,9 @@ pub fn tool_input_system(
         }
         history.end();
         state.last_placed = Some(target);
-        recent.push(color.0);
+        for c in used {
+            recent.push(c);
+        }
         return;
     }
 
@@ -880,8 +984,10 @@ pub fn tool_input_system(
     {
         match tool.current {
             Tool::Paint => {
-                recolor_selection(&mut grid, &mut history, &selection, color.0);
-                recent.push(color.0);
+                let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
+                for c in used {
+                    recent.push(c);
+                }
             }
             Tool::Erase => clear_selection(&mut grid, &mut history, &selection),
             _ => {}
@@ -905,7 +1011,8 @@ pub fn tool_input_system(
         state.stroking = true;
         state.anchor = Some(anchor);
         state.last_placed = None;
-        recent.push(color.0);
+        // Recent push for the stroke happens per-voxel below so multi-color
+        // pools surface every color used, not just the primary.
     }
 
     if !state.stroking {
@@ -953,7 +1060,11 @@ pub fn tool_input_system(
         }
         match tool.current {
             Tool::Brush => {
-                history.record(&mut grid, cell, Some(color.0));
+                let c = sample_color(cell, &pool);
+                history.record(&mut grid, cell, Some(c));
+                if !state.stroke_used.contains(&c) {
+                    state.stroke_used.push(c);
+                }
                 state.last_placed = Some(cell);
             }
             Tool::Erase => {
@@ -964,7 +1075,11 @@ pub fn tool_input_system(
             }
             Tool::Paint => {
                 if grid.get(cell).is_some() {
-                    history.record(&mut grid, cell, Some(color.0));
+                    let c = sample_color(cell, &pool);
+                    history.record(&mut grid, cell, Some(c));
+                    if !state.stroke_used.contains(&c) {
+                        state.stroke_used.push(c);
+                    }
                     state.last_placed = Some(cell);
                 }
             }
@@ -1457,5 +1572,106 @@ mod tests {
         assert!(cells.contains(&(0, 7, 0)));
         assert!(!cells.contains(&(0, 4, 0)));
         assert!(!cells.contains(&(0, 8, 0)));
+    }
+
+    const C_R: Color8 = [255, 0, 0, 255];
+    const C_G: Color8 = [0, 255, 0, 255];
+    const C_B: Color8 = [0, 0, 255, 255];
+
+    #[test]
+    fn color_pool_primary_first_dedup_against_primary() {
+        let pool = color_pool(C_R, &[C_G, C_R, C_B]);
+        assert_eq!(pool, vec![C_R, C_G, C_B]);
+    }
+
+    #[test]
+    fn color_pool_preserves_extras_order() {
+        let pool = color_pool(C_R, &[C_B, C_G]);
+        assert_eq!(pool, vec![C_R, C_B, C_G]);
+    }
+
+    #[test]
+    fn sample_color_pool_of_one_returns_primary() {
+        for x in -3..3 {
+            for y in 0..3 {
+                for z in -3..3 {
+                    assert_eq!(sample_color(IVec3::new(x, y, z), &[C_R]), C_R);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sample_color_is_deterministic_for_same_position() {
+        let pool = color_pool(C_R, &[C_G, C_B]);
+        let p = IVec3::new(7, 2, -4);
+        let first = sample_color(p, &pool);
+        for _ in 0..16 {
+            assert_eq!(sample_color(p, &pool), first);
+        }
+    }
+
+    #[test]
+    fn sample_color_distributes_across_pool() {
+        let pool = color_pool(C_R, &[C_G, C_B]);
+        let mut seen: HashSet<Color8> = HashSet::new();
+        for x in 0..16 {
+            for z in 0..16 {
+                seen.insert(sample_color(IVec3::new(x, 0, z), &pool));
+            }
+        }
+        assert_eq!(seen.len(), 3);
+    }
+
+    #[test]
+    fn sample_color_always_returns_member_of_pool() {
+        let pool = color_pool(C_R, &[C_G, C_B]);
+        for x in -8..8 {
+            for y in 0..4 {
+                for z in -8..8 {
+                    let c = sample_color(IVec3::new(x, y, z), &pool);
+                    assert!(pool.contains(&c));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn extra_colors_toggle_adds_and_removes() {
+        let mut e = ExtraColors::default();
+        assert!(e.toggle(C_G));
+        assert!(e.contains(C_G));
+        assert!(!e.toggle(C_G));
+        assert!(!e.contains(C_G));
+    }
+
+    #[test]
+    fn apply_swatch_click_plain_resets_extras_and_swaps_primary() {
+        let mut e = ExtraColors::default();
+        e.toggle(C_G);
+        e.toggle(C_B);
+        let new_primary = apply_swatch_click(false, C_G, C_R, &mut e);
+        assert_eq!(new_primary, C_G);
+        assert!(e.0.is_empty());
+    }
+
+    #[test]
+    fn apply_swatch_click_shift_on_primary_is_noop() {
+        let mut e = ExtraColors::default();
+        let new_primary = apply_swatch_click(true, C_R, C_R, &mut e);
+        assert_eq!(new_primary, C_R);
+        assert!(e.0.is_empty());
+    }
+
+    #[test]
+    fn apply_swatch_click_shift_toggles_extras() {
+        let mut e = ExtraColors::default();
+        apply_swatch_click(true, C_G, C_R, &mut e);
+        assert!(e.contains(C_G));
+        apply_swatch_click(true, C_B, C_R, &mut e);
+        assert!(e.contains(C_B));
+        apply_swatch_click(true, C_G, C_R, &mut e);
+        assert!(!e.contains(C_G));
+        assert!(e.contains(C_B));
     }
 }

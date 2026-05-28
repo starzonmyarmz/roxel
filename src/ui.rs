@@ -30,7 +30,9 @@ use crate::theme::{
     CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, apply_egui_style,
     canvas_match_color, save_preferences,
 };
-use crate::tools::{CurrentColor, RecentColors, ShapeOptions, Tool, ToolState};
+use crate::tools::{
+    CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState, apply_swatch_click,
+};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
 use crate::ui::tokens::{font, gap, height, radius, space, stroke, swatch, width};
@@ -58,6 +60,13 @@ pub struct GizmoView<'w> {
 }
 
 #[derive(SystemParam)]
+pub struct ColorParams<'w> {
+    pub color: ResMut<'w, CurrentColor>,
+    pub extras: ResMut<'w, ExtraColors>,
+    pub recent: Res<'w, RecentColors>,
+}
+
+#[derive(SystemParam)]
 pub struct UiInput<'w> {
     pub keys: Res<'w, ButtonInput<KeyCode>>,
     pub mouse: Res<'w, ButtonInput<MouseButton>>,
@@ -81,8 +90,7 @@ pub struct UiState<'w> {
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
-    mut color: ResMut<CurrentColor>,
-    recent: Res<RecentColors>,
+    colors: ColorParams,
     #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<VoxelGrid>,
     #[cfg_attr(target_os = "macos", allow(unused_mut))] mut history: ResMut<History>,
     mut pending: ResMut<PendingDialog>,
@@ -96,6 +104,11 @@ pub fn ui_system(
     ui_state: UiState,
     mut cmd_palette: ResMut<CommandPalette>,
 ) -> Result {
+    let ColorParams {
+        mut color,
+        mut extras,
+        recent,
+    } = colors;
     let UiInput { keys, mouse } = input;
     #[cfg_attr(target_os = "macos", allow(unused_variables, unused_mut))]
     let UiState {
@@ -1118,7 +1131,13 @@ pub fn ui_system(
                                                 let col = egui::Color32::from_rgba_unmultiplied(
                                                     c[0], c[1], c[2], 255,
                                                 );
-                                                let is_current = color.0 == *c;
+                                                let select_state = if color.0 == *c {
+                                                    widgets::SwatchSelect::Primary
+                                                } else if extras.contains(*c) {
+                                                    widgets::SwatchSelect::Extra
+                                                } else {
+                                                    widgets::SwatchSelect::None
+                                                };
                                                 let swatch_id =
                                                     egui::Id::new(("swatch", active_idx, si));
                                                 let mut clicked = false;
@@ -1130,7 +1149,7 @@ pub fn ui_system(
                                                             col,
                                                             swatch::PALETTE,
                                                             radius::XS,
-                                                            is_current,
+                                                            select_state,
                                                         );
                                                         clicked = r.clicked();
                                                         r
@@ -1143,13 +1162,17 @@ pub fn ui_system(
                                                         col,
                                                         swatch::PALETTE,
                                                         radius::XS,
-                                                        is_current,
+                                                        select_state,
                                                     );
                                                     clicked = r.clicked();
                                                     r
                                                 };
                                                 if clicked {
-                                                    color.0 = *c;
+                                                    let shift =
+                                                        ui.input(|i| i.modifiers.shift);
+                                                    color.0 = apply_swatch_click(
+                                                        shift, *c, color.0, &mut extras,
+                                                    );
                                                 }
                                                 if editable {
                                                     egui::Popup::context_menu(&resp).show(|ui| {
@@ -1217,17 +1240,27 @@ pub fn ui_system(
                                                 let col = egui::Color32::from_rgba_unmultiplied(
                                                     c[0], c[1], c[2], 255,
                                                 );
-                                                let is_current = color.0 == *c;
+                                                let select_state = if color.0 == *c {
+                                                    widgets::SwatchSelect::Primary
+                                                } else if extras.contains(*c) {
+                                                    widgets::SwatchSelect::Extra
+                                                } else {
+                                                    widgets::SwatchSelect::None
+                                                };
                                                 let resp = widgets::swatch_button(
                                                     ui,
                                                     &theme,
                                                     col,
                                                     swatch::RECENT,
                                                     radius::XS,
-                                                    is_current,
+                                                    select_state,
                                                 );
                                                 if resp.clicked() {
-                                                    color.0 = *c;
+                                                    let shift =
+                                                        ui.input(|i| i.modifiers.shift);
+                                                    color.0 = apply_swatch_click(
+                                                        shift, *c, color.0, &mut extras,
+                                                    );
                                                 }
                                                 resp.on_hover_text(widgets::hex_string([
                                                     c[0], c[1], c[2],

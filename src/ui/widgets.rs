@@ -307,30 +307,51 @@ pub fn hex_label(ui: &mut egui::Ui, theme: &Theme, rgb: [u8; 3], dim: bool) {
     );
 }
 
-/// Single colour-square button. Selected swatches get a 2.0 px accent stroke;
-/// unselected swatches a subtle alpha-blended border that reads on any fill
-/// (white in dark mode, black in light mode). The caller wraps for DnD,
-/// context-menus, and hover-text — keep this focused on rendering.
+/// How a swatch participates in the active color pool. `Primary` is the
+/// single `CurrentColor`; `Extra` is a shift-selected additional sample
+/// color (renders the same accent ring but at the unselected stroke width so
+/// the primary still dominates).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SwatchSelect {
+    None,
+    Primary,
+    Extra,
+}
+
+impl From<bool> for SwatchSelect {
+    fn from(selected: bool) -> Self {
+        if selected { Self::Primary } else { Self::None }
+    }
+}
+
+/// Single colour-square button. Primary swatches get a full-weight accent
+/// stroke; extras (shift-selected pool members) get the same accent color at
+/// the unselected stroke width so the primary stays visually dominant.
+/// Unselected swatches use a subtle alpha-blended border. The caller wraps
+/// for DnD, context-menus, and hover-text — keep this focused on rendering.
 pub fn swatch_button(
     ui: &mut egui::Ui,
     theme: &Theme,
     color: egui::Color32,
     size: egui::Vec2,
     corner_radius: u8,
-    selected: bool,
+    state: impl Into<SwatchSelect>,
 ) -> egui::Response {
-    let outline = if selected {
-        // Match the voxel preview outline color so a selected swatch reads
-        // as "this color is what the preview will draw with".
-        egui::Stroke::new(stroke::ACCENT, theme.text)
-    } else {
-        let border = match theme.mode {
-            crate::theme::ThemeMode::Dark => {
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36)
-            }
-            crate::theme::ThemeMode::Light => egui::Color32::from_rgba_unmultiplied(0, 0, 0, 36),
-        };
-        egui::Stroke::new(stroke::NORMAL, border)
+    let outline = match state.into() {
+        SwatchSelect::Primary | SwatchSelect::Extra => {
+            egui::Stroke::new(stroke::ACCENT, theme.text)
+        }
+        SwatchSelect::None => {
+            let border = match theme.mode {
+                crate::theme::ThemeMode::Dark => {
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36)
+                }
+                crate::theme::ThemeMode::Light => {
+                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 36)
+                }
+            };
+            egui::Stroke::new(stroke::NORMAL, border)
+        }
     };
     ui.add_sized(
         [size.x, size.y],

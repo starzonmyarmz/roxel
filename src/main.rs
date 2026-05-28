@@ -111,6 +111,7 @@ fn main() {
         .init_resource::<History>()
         .init_resource::<ToolState>()
         .init_resource::<CurrentColor>()
+        .init_resource::<crate::tools::ExtraColors>()
         .init_resource::<crate::color_space::ColorEditBuffer>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
