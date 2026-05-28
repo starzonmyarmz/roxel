@@ -12,16 +12,19 @@ Release notes.
 
 ## [Unreleased]
 
-- fix(render): voxel colors match palette swatch — disable camera tonemap so unlit colors render as exact sRGB
-- feat(color): shift-click swatches to build a multi-color pool; paint and shape fills sample per voxel with a dithered preview
-- fix(color): Recent grid updates on LMB release instead of every voxel so it stops reshuffling mid-stroke
-- fix(icon): squircle + safe area so the dock stops wrapping it in a white card
-- feat(edit): double / halve density to resample the scene
-- style(ui): info toasts use blue tint, no leading icon
-- fix(ui): toasts fade uniformly instead of bg-only lerp to panel
+## [0.6.1] - 2026-05-28
+
+- chore: bump to 0.6.1
+- fix(render): match palette swatch with Tonemapping::None on main camera
+- feat(color): shift-click swatches for multi-color dithered fills
+- fix(icon): macOS squircle + safe area master at 1024×1024
+- feat(edit): double / halve density + blue info toasts
+- docs: backfill Unreleased with post-0.6.0 changes
+- fix(ui): toasts fade uniformly with multiply_opacity
 - feat(ui): click-to-toggle shape picker + tight new-project modal
 - feat(ui): coral brand accent + always-expanded section headers
 - feat(gizmo): etched cube with muted face colors + grout lines
+- docs: finalize CHANGELOG for v0.6.0 [skip ci]
 
 ## [0.6.0] - 2026-05-26
 
