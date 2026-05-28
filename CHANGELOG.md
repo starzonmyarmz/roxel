@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(icon): squircle + safe area so the dock stops wrapping it in a white card
 - feat(edit): double / halve density to resample the scene
 - style(ui): info toasts use blue tint, no leading icon
 - fix(ui): toasts fade uniformly instead of bg-only lerp to panel

@@ -4,7 +4,7 @@ use bevy::window::PrimaryWindow;
 use bevy::winit::WINIT_WINDOWS;
 use winit::window::Icon;
 
-const ICON_PNG: &[u8] = include_bytes!("../assets/icons/roxel-256.png");
+const ICON_PNG: &[u8] = include_bytes!("../assets/icons/roxel-1024.png");
 
 pub fn set_window_icon(
     _marker: NonSendMarker,

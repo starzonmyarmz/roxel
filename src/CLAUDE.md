@@ -146,7 +146,7 @@ Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `o
 
 ## App icon
 
-Lives in `assets/icons/`: `roxel.svg`, `roxel-256.png` (embedded), `roxel.icns` (bundling), `roxel.iconset/`.
+Lives in `assets/icons/`: `roxel.svg` (1024×1024 master, squircle + transparent corners per macOS app-icon convention), `roxel-1024.png` (embedded — derived from the SVG via `sips`), `roxel.icns` (bundling), `roxel.iconset/`.
 
 `set_window_icon` (`icon.rs`) applies the embedded PNG two ways:
 1. `winit::Window::set_window_icon` — Win/Linux only; **no-ops on macOS** for unbundled binaries.

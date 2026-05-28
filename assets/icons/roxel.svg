@@ -1,9 +1,17 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="256" height="256" fill="#191A2E"/>
-<path d="M128 36.7594L216 87.5618L128 138.364L40 87.5618L128 36.7594Z" fill="#F4C841"/>
-<path d="M127.996 138.371L128 219.24L40.0038 168.431L40 87.5618L127.996 138.371Z" fill="#E9603C"/>
-<path d="M128.003 138.371L128 219.24L215.996 168.431L215.999 87.5618L128.003 138.371Z" fill="#2E2B3E"/>
-<path d="M127.998 138.365L167 160.881L127.998 183.396L88.9966 160.881L127.998 138.365Z" fill="#4FCEC5"/>
-<path d="M127.997 183.399L127.998 219.241L88.9983 196.722L88.9966 160.88L127.997 183.399Z" fill="#7C988A"/>
-<path d="M128 183.399L127.998 219.241L166.998 196.722L167 160.88L128 183.399Z" fill="#182132"/>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    macOS app-icon canvas. 1024×1024 with transparent corners; the squircle
+    spans 824×824 centered (top-left at 100,100), corner radius 185.4 (~22.5%).
+    The cube artwork is the original src/icons/roxel design transformed to
+    sit comfortably inside the squircle's safe area.
+  -->
+  <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4" fill="#191A2E"/>
+  <g transform="translate(91 91) scale(3.29)">
+    <path d="M128 36.7594L216 87.5618L128 138.364L40 87.5618L128 36.7594Z" fill="#F4C841"/>
+    <path d="M127.996 138.371L128 219.24L40.0038 168.431L40 87.5618L127.996 138.371Z" fill="#E9603C"/>
+    <path d="M128.003 138.371L128 219.24L215.996 168.431L215.999 87.5618L128.003 138.371Z" fill="#2E2B3E"/>
+    <path d="M127.998 138.365L167 160.881L127.998 183.396L88.9966 160.881L127.998 138.365Z" fill="#4FCEC5"/>
+    <path d="M127.997 183.399L127.998 219.241L88.9983 196.722L88.9966 160.88L127.997 183.399Z" fill="#7C988A"/>
+    <path d="M128 183.399L127.998 219.241L166.998 196.722L167 160.88L128 183.399Z" fill="#182132"/>
+  </g>
 </svg>
