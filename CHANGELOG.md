@@ -13,6 +13,9 @@ Release notes.
 ## [Unreleased]
 
 - fix(ui): toasts fade uniformly instead of bg-only lerp to panel
+- feat(ui): click-to-toggle shape picker + tight new-project modal
+- feat(ui): coral brand accent + always-expanded section headers
+- feat(gizmo): etched cube with muted face colors + grout lines
 
 ## [0.6.0] - 2026-05-26
 
