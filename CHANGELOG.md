@@ -13,6 +13,8 @@ Release notes.
 ## [Unreleased]
 
 - feat(ui): overhauled command palette — no title bar, hidden scrollbar, 10-row height, per-key shortcut chips with Lucide modifier icons, search icon in surface frame, redesigned footer chips
+- feat(ui): close command palette by clicking outside the window
+- fix(ui): unify shortcut chip color so Esc, numbers, and Lucide modifier icons share the same primary text color
 
 ## [0.6.1] - 2026-05-28
 
