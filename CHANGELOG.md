@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): simplified color inspector — one Color section (swatch + hex + recent strip); numeric editing now lives only in the picker popup
+- feat(ui): moved color-space format (Hex/RGB/HSL/HSB/OKLCH) to Preferences → Color → Format
 - feat(ui): overhauled command palette — no title bar, hidden scrollbar, 10-row height, per-key shortcut chips with Lucide modifier icons, search icon in surface frame, redesigned footer chips
 - feat(ui): close command palette by clicking outside the window
 - fix(ui): unify shortcut chip color so Esc, numbers, and Lucide modifier icons share the same primary text color

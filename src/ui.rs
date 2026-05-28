@@ -686,7 +686,11 @@ pub fn ui_system(
                                         );
                                     }
                                 });
-                                // Color section
+                                // Color section — hero swatch opens the full
+                                // picker popup (the only place to edit numerically;
+                                // the color-space format lives in Preferences). Hex
+                                // readout and recent colors fold in below so this is
+                                // one compact block instead of three sections.
                                 widgets::section(ui, &theme, "Color", |ui| {
                                     let srgba = egui::Color32::from_rgba_unmultiplied(
                                         color.0[0], color.0[1], color.0[2], color.0[3],
@@ -707,138 +711,64 @@ pub fn ui_system(
                                             egui::PopupCloseBehavior::CloseOnClickOutside,
                                         )
                                         .show(|ui| {
-                                            space_color_picker(ui, &mut color, active_space);
+                                            space_color_picker(
+                                                ui,
+                                                &mut color,
+                                                active_space,
+                                                &mut color_edit,
+                                            );
                                         });
+
                                     ui.add_space(space::XS);
-
-                                    // Repopulate edit buffer if foreground or active
-                                    // space changed since last frame. Without this
-                                    // gate, every keystroke would round-trip through
-                                    // Color8 and drop precision (greys lose hue,
-                                    // OKLCH chroma quantises).
-                                    if color_edit.source != color.0
-                                        || color_edit.space != active_space
-                                    {
-                                        color_edit.populate(color.0, active_space);
-                                    }
-
-                                    // Space dropdown — compact, right-aligned.
-                                    let labels: Vec<String> = ColorSpace::ALL
-                                        .iter()
-                                        .map(|s| s.label().to_string())
-                                        .collect();
-                                    let current_idx = ColorSpace::ALL
-                                        .iter()
-                                        .position(|s| *s == active_space)
-                                        .unwrap_or(0);
-                                    let dd_w = 96.0;
-                                    ui.horizontal(|ui| {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if let Some(i) = widgets::select_dropdown(
-                                                    ui,
-                                                    &theme,
-                                                    "color_space_combo",
-                                                    dd_w,
-                                                    active_space.label(),
-                                                    &labels,
-                                                    current_idx,
-                                                ) {
-                                                    let next = ColorSpace::ALL[i];
-                                                    if next != prefs.color_space {
-                                                        prefs.color_space = next;
-                                                        color_edit.populate(color.0, next);
-                                                        save_preferences(&prefs);
-                                                    }
-                                                }
-                                            },
+                                    // Hex readout for the active color.
+                                    ui.vertical_centered(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(widgets::hex_string([
+                                                color.0[0], color.0[1], color.0[2],
+                                            ]))
+                                            .monospace()
+                                            .size(font::SMALL)
+                                            .color(theme.text_dim),
                                         );
                                     });
 
-                                    ui.add_space(space::XS);
-
-                                    // Editable per-space field row. Commit on
-                                    // lost_focus (covers Enter, Tab, click-away);
-                                    // invalid input reverts silently to last valid.
-                                    // Arrow-key stepping commits without
-                                    // repopulating: the 8-bit RGB roundtrip
-                                    // would collapse small steps in HSL/HSB/
-                                    // OKLCH (e.g. +1 hue would re-read as
-                                    // same H after quantization), so keep the
-                                    // buffer authoritative during stepping.
-                                    let mut commit_now = false;
-                                    let mut stepped = false;
-                                    match active_space {
-                                        ColorSpace::Hex => {
-                                            let resp = ui.add(
-                                                egui::TextEdit::singleline(
-                                                    &mut color_edit.fields[0],
-                                                )
-                                                .font(egui::TextStyle::Monospace)
-                                                .desired_width(ui.available_width()),
-                                            );
-                                            if resp.lost_focus() {
-                                                commit_now = true;
-                                            }
-                                        }
-                                        _ => {
-                                            ui.horizontal(|ui| {
-                                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                                let total = ui.available_width();
-                                                let w = ((total - 8.0) / 3.0).max(40.0);
-                                                for i in 0..3 {
-                                                    let resp = ui.add(
-                                                        egui::TextEdit::singleline(
-                                                            &mut color_edit.fields[i],
-                                                        )
-                                                        .font(egui::TextStyle::Monospace)
-                                                        .desired_width(w),
+                                    // Recent colors — unlabeled strip under the swatch.
+                                    if !recent.0.is_empty() {
+                                        ui.add_space(space::XS);
+                                        widgets::swatch_grid(ui, |ui| {
+                                            for c in &recent.0 {
+                                                let col = egui::Color32::from_rgba_unmultiplied(
+                                                    c[0], c[1], c[2], 255,
+                                                );
+                                                let select_state = if color.0 == *c {
+                                                    widgets::SwatchSelect::Primary
+                                                } else if extras.contains(*c) {
+                                                    widgets::SwatchSelect::Extra
+                                                } else {
+                                                    widgets::SwatchSelect::None
+                                                };
+                                                let resp = widgets::swatch_button(
+                                                    ui,
+                                                    &theme,
+                                                    col,
+                                                    swatch::RECENT,
+                                                    radius::XS,
+                                                    select_state,
+                                                );
+                                                if resp.clicked() {
+                                                    let shift = ui.input(|i| i.modifiers.shift);
+                                                    color.0 = apply_swatch_click(
+                                                        shift,
+                                                        *c,
+                                                        color.0,
+                                                        &mut extras,
                                                     );
-                                                    if resp.has_focus() {
-                                                        let (up, down, shift) = ui.input(|i| {
-                                                            (
-                                                                i.key_pressed(egui::Key::ArrowUp),
-                                                                i.key_pressed(egui::Key::ArrowDown),
-                                                                i.modifiers.shift,
-                                                            )
-                                                        });
-                                                        let step =
-                                                            crate::color_space::ColorEditBuffer::field_step(
-                                                                active_space,
-                                                                i,
-                                                                shift,
-                                                            );
-                                                        if up && color_edit.step_field(i, step) {
-                                                            stepped = true;
-                                                        }
-                                                        if down && color_edit.step_field(i, -step) {
-                                                            stepped = true;
-                                                        }
-                                                    }
-                                                    if resp.lost_focus() {
-                                                        commit_now = true;
-                                                    }
                                                 }
-                                            });
-                                        }
-                                    }
-
-                                    if stepped {
-                                        if let Some(rgb) = color_edit.commit() {
-                                            color.0 = [rgb[0], rgb[1], rgb[2], 255];
-                                            // Track source so the mismatch
-                                            // gate above doesn't repopulate
-                                            // and clobber the stepped buffer
-                                            // with a quantised readback.
-                                            color_edit.source = color.0;
-                                        }
-                                    }
-                                    if commit_now {
-                                        if let Some(rgb) = color_edit.commit() {
-                                            color.0 = [rgb[0], rgb[1], rgb[2], 255];
-                                        }
-                                        color_edit.populate(color.0, active_space);
+                                                resp.on_hover_text(widgets::hex_string([
+                                                    c[0], c[1], c[2],
+                                                ]));
+                                            }
+                                        });
                                     }
                                 });
 
@@ -1168,10 +1098,12 @@ pub fn ui_system(
                                                     r
                                                 };
                                                 if clicked {
-                                                    let shift =
-                                                        ui.input(|i| i.modifiers.shift);
+                                                    let shift = ui.input(|i| i.modifiers.shift);
                                                     color.0 = apply_swatch_click(
-                                                        shift, *c, color.0, &mut extras,
+                                                        shift,
+                                                        *c,
+                                                        color.0,
+                                                        &mut extras,
                                                     );
                                                 }
                                                 if editable {
@@ -1227,46 +1159,6 @@ pub fn ui_system(
                                             &theme,
                                             "Built-in palette — duplicate to add swatches",
                                         );
-                                    }
-                                });
-
-                                // Recent section
-                                widgets::section(ui, &theme, "Recent", |ui| {
-                                    if recent.0.is_empty() {
-                                        widgets::hint_label(ui, &theme, "No recent colors");
-                                    } else {
-                                        widgets::swatch_grid(ui, |ui| {
-                                            for c in &recent.0 {
-                                                let col = egui::Color32::from_rgba_unmultiplied(
-                                                    c[0], c[1], c[2], 255,
-                                                );
-                                                let select_state = if color.0 == *c {
-                                                    widgets::SwatchSelect::Primary
-                                                } else if extras.contains(*c) {
-                                                    widgets::SwatchSelect::Extra
-                                                } else {
-                                                    widgets::SwatchSelect::None
-                                                };
-                                                let resp = widgets::swatch_button(
-                                                    ui,
-                                                    &theme,
-                                                    col,
-                                                    swatch::RECENT,
-                                                    radius::XS,
-                                                    select_state,
-                                                );
-                                                if resp.clicked() {
-                                                    let shift =
-                                                        ui.input(|i| i.modifiers.shift);
-                                                    color.0 = apply_swatch_click(
-                                                        shift, *c, color.0, &mut extras,
-                                                    );
-                                                }
-                                                resp.on_hover_text(widgets::hex_string([
-                                                    c[0], c[1], c[2],
-                                                ]));
-                                            }
-                                        });
                                     }
                                 });
 
@@ -1398,6 +1290,33 @@ pub fn ui_system(
                     ui.checkbox(&mut prefs.show_floating_menu_bar, "Show floating menu bar");
                 }
             });
+
+            // Color-space format for the picker's numeric fields. Demoted here
+            // from the inspector: most users never leave Hex, so it doesn't earn
+            // panel space in a beginner-friendly editor.
+            widgets::section(ui, &theme, "Color", |ui| {
+                widgets::prefs_row(ui, &theme, "Format", |ui| {
+                    let labels: Vec<String> = ColorSpace::ALL
+                        .iter()
+                        .map(|s| s.label().to_string())
+                        .collect();
+                    let idx = ColorSpace::ALL
+                        .iter()
+                        .position(|s| *s == prefs.color_space)
+                        .unwrap_or(0);
+                    if let Some(i) = widgets::select_dropdown(
+                        ui,
+                        &theme,
+                        "prefs_color_space",
+                        width::PREFS_DROPDOWN,
+                        prefs.color_space.label(),
+                        &labels,
+                        idx,
+                    ) {
+                        prefs.color_space = ColorSpace::ALL[i];
+                    }
+                });
+            });
         });
         if !open_flag {
             prefs_window.open = false;
@@ -1492,28 +1411,31 @@ pub fn ui_system(
     Ok(())
 }
 
-/// Custom color picker popup body whose readout row shows the active
-/// [`ColorSpace`]'s component triple (instead of egui's hard-coded RGB
-/// readout). Composed of:
+/// Custom color picker popup body — the single numeric edit surface for the
+/// foreground color. Composed of:
 ///
-/// 1. **Header row** — space label + 3 editable [`egui::DragValue`]s.
+/// 1. **Field row** — buffer-backed text inputs in the active [`ColorSpace`]
+///    (`Hex` = one field, others = three). Backed by [`ColorEditBuffer`] so
+///    keystrokes don't roundtrip through `Color8` mid-edit (greys lose hue,
+///    OKLCH chroma quantises). Commit on `lost_focus`; invalid reverts.
+///    Arrow keys step the focused field (Shift = ×10).
 /// 2. **2D area** — saturation (x) × value (y), painted as a vertex-gradient
 ///    mesh. Click/drag sets S and V; the hue used to render the area lives
 ///    in egui memory so dragging through grey (S=0) doesn't lose the hue.
 /// 3. **Hue bar** — full hue gradient strip, click/drag to set hue.
 ///
-/// State cache `(last_rgba, h_norm_0_1)` is keyed by widget id; we re-derive
-/// the hue from RGB only when the live color was changed by something else
-/// (palette click, eyedropper, header drag). All writes funnel through
-/// `color.0`.
+/// The active space comes from `Preferences.color_space` (chosen in the
+/// Preferences window, not here). State cache `(last_rgba, h_norm_0_1)` is
+/// keyed by widget id; we re-derive the hue from RGB only when the live color
+/// changed elsewhere (palette click, eyedropper, field edit). All writes
+/// funnel through `color.0`.
 fn space_color_picker(
     ui: &mut egui::Ui,
     color: &mut crate::tools::CurrentColor,
     space: ColorSpace,
+    color_edit: &mut crate::color_space::ColorEditBuffer,
 ) -> bool {
-    use crate::color_space::{
-        hsb_to_rgb, hsl_to_rgb, oklch_to_rgb, rgb_to_hsb, rgb_to_hsl, rgb_to_oklch,
-    };
+    use crate::color_space::{hsb_to_rgb, rgb_to_hsb};
 
     // Cache: last rgba we produced + working hue (0..1). Per-widget id so a
     // palette swatch popup can't clobber the inspector's working state.
@@ -1533,111 +1455,80 @@ fn space_color_picker(
     let mut changed = false;
     let area_size = 220.0;
 
-    // ---------- Header readout row ----------
-    let triple_from_rgb = |rgb: [u8; 3], sp: ColorSpace| -> [f32; 3] {
-        match sp {
-            ColorSpace::Hex | ColorSpace::Rgb => [rgb[0] as f32, rgb[1] as f32, rgb[2] as f32],
-            ColorSpace::Hsl => {
-                let (h, s, l) = rgb_to_hsl(rgb);
-                [h, s, l]
-            }
-            ColorSpace::Hsb => {
-                let (h, s, v) = rgb_to_hsb(rgb);
-                [h, s, v]
-            }
-            ColorSpace::Oklch => {
-                let (l, c, h) = rgb_to_oklch(rgb);
-                [l, c, h]
-            }
-        }
-    };
-    let mut triple = triple_from_rgb(rgb3, space);
-
-    let (labels, ranges, decimals, speed): (
-        [&'static str; 3],
-        [(f32, f32); 3],
-        [usize; 3],
-        [f32; 3],
-    ) = match space {
-        ColorSpace::Hex | ColorSpace::Rgb => (
-            ["R", "G", "B"],
-            [(0.0, 255.0), (0.0, 255.0), (0.0, 255.0)],
-            [0, 0, 0],
-            [0.5, 0.5, 0.5],
-        ),
-        ColorSpace::Hsl => (
-            ["H", "S", "L"],
-            [(0.0, 360.0), (0.0, 100.0), (0.0, 100.0)],
-            [0, 1, 1],
-            [0.5, 0.25, 0.25],
-        ),
-        ColorSpace::Hsb => (
-            ["H", "S", "B"],
-            [(0.0, 360.0), (0.0, 100.0), (0.0, 100.0)],
-            [0, 1, 1],
-            [0.5, 0.25, 0.25],
-        ),
-        ColorSpace::Oklch => (
-            ["L", "C", "H"],
-            [(0.0, 100.0), (0.0, 0.37), (0.0, 360.0)],
-            [1, 3, 0],
-            [0.25, 0.002, 0.5],
-        ),
-    };
-
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(space.label())
-                .size(font::SMALL)
-                .color(ui.visuals().weak_text_color()),
-        );
-        for i in 0..3 {
+    // ---------- Editable field row ----------
+    // Repopulate when the live color or active space drifts from the buffer so
+    // typing isn't clobbered by a quantised readback (see `ColorEditBuffer`).
+    if color_edit.source != color.0 || color_edit.space != space {
+        color_edit.populate(color.0, space);
+    }
+    // Commit on lost_focus (Enter / Tab / click-away); invalid input reverts
+    // silently. Arrow-key stepping keeps the buffer authoritative so small
+    // HSL/HSB/OKLCH steps survive the 8-bit RGB roundtrip.
+    let mut commit_now = false;
+    let mut stepped = false;
+    match space {
+        ColorSpace::Hex => {
             let resp = ui.add(
-                egui::DragValue::new(&mut triple[i])
-                    .speed(speed[i])
-                    .range(ranges[i].0..=ranges[i].1)
-                    .fixed_decimals(decimals[i])
-                    .prefix(format!("{} ", labels[i])),
+                egui::TextEdit::singleline(&mut color_edit.fields[0])
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(area_size),
             );
-            if resp.has_focus() {
-                let (up, down, shift) = ui.input(|inp| {
-                    (
-                        inp.key_pressed(egui::Key::ArrowUp),
-                        inp.key_pressed(egui::Key::ArrowDown),
-                        inp.modifiers.shift,
-                    )
-                });
-                let step = crate::color_space::ColorEditBuffer::field_step(space, i, shift);
-                if up {
-                    triple[i] = (triple[i] + step).clamp(ranges[i].0, ranges[i].1);
-                    changed = true;
-                }
-                if down {
-                    triple[i] = (triple[i] - step).clamp(ranges[i].0, ranges[i].1);
-                    changed = true;
-                }
-            }
-            if resp.changed() {
-                changed = true;
+            if resp.lost_focus() {
+                commit_now = true;
             }
         }
-    });
-
-    if changed {
-        let rgb = match space {
-            ColorSpace::Hex | ColorSpace::Rgb => [
-                triple[0].round().clamp(0.0, 255.0) as u8,
-                triple[1].round().clamp(0.0, 255.0) as u8,
-                triple[2].round().clamp(0.0, 255.0) as u8,
-            ],
-            ColorSpace::Hsl => hsl_to_rgb(triple[0], triple[1], triple[2]),
-            ColorSpace::Hsb => hsb_to_rgb(triple[0], triple[1], triple[2]),
-            ColorSpace::Oklch => oklch_to_rgb(triple[0], triple[1], triple[2]),
-        };
-        color.0 = [rgb[0], rgb[1], rgb[2], 255];
-        // Refresh hue from edited color (header may have changed H).
-        let (h, _, _) = rgb_to_hsb(rgb);
-        hue_norm = h / 360.0;
+        _ => {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
+                let w = ((area_size - 8.0) / 3.0).max(40.0);
+                for i in 0..3 {
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut color_edit.fields[i])
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(w),
+                    );
+                    if resp.has_focus() {
+                        let (up, down, shift) = ui.input(|inp| {
+                            (
+                                inp.key_pressed(egui::Key::ArrowUp),
+                                inp.key_pressed(egui::Key::ArrowDown),
+                                inp.modifiers.shift,
+                            )
+                        });
+                        let step = crate::color_space::ColorEditBuffer::field_step(space, i, shift);
+                        if up && color_edit.step_field(i, step) {
+                            stepped = true;
+                        }
+                        if down && color_edit.step_field(i, -step) {
+                            stepped = true;
+                        }
+                    }
+                    if resp.lost_focus() {
+                        commit_now = true;
+                    }
+                }
+            });
+        }
+    }
+    if stepped {
+        if let Some(rgb) = color_edit.commit() {
+            color.0 = [rgb[0], rgb[1], rgb[2], 255];
+            // Keep source in sync so the gate above doesn't repopulate and
+            // clobber the stepped buffer with a quantised readback.
+            color_edit.source = color.0;
+            let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+            hue_norm = h / 360.0;
+            changed = true;
+        }
+    }
+    if commit_now {
+        if let Some(rgb) = color_edit.commit() {
+            color.0 = [rgb[0], rgb[1], rgb[2], 255];
+            let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+            hue_norm = h / 360.0;
+            changed = true;
+        }
+        color_edit.populate(color.0, space);
     }
 
     ui.add_space(space::XS);

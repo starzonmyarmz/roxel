@@ -178,6 +178,9 @@ pub mod width {
     pub const TOP_BAR_MENU: f32 = 180.0; // Import / Export submenus
     pub const SIDE_PANEL: f32 = 244.0; // left inspector
     pub const MODAL_PREFS: f32 = 340.0;
+    /// Right-hand control width inside a Preferences row (`MODAL_PREFS` minus
+    /// the label column and modal margins).
+    pub const PREFS_DROPDOWN: f32 = 200.0;
     pub const MODAL_NEW: f32 = 240.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
@@ -308,6 +311,7 @@ mod tests {
             width::TOP_BAR_MENU,
             width::SIDE_PANEL,
             width::MODAL_PREFS,
+            width::PREFS_DROPDOWN,
             width::MODAL_NEW,
             width::COMMAND_PALETTE,
             width::TOAST,
