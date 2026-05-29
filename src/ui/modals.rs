@@ -101,7 +101,8 @@ pub fn draw_preferences(
             });
         });
     });
-    if !open_flag {
+    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+    if !open_flag || esc {
         prefs_window.open = false;
     }
     if *prefs != before {
@@ -201,6 +202,7 @@ pub fn draw_discard(
             });
         });
     });
+    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
     if save_clicked {
         let i = palette::save_as_new(palettes, palette_choice, working);
         palette_rename.editing = Some(i);
@@ -211,7 +213,8 @@ pub fn draw_discard(
         working.clear();
         palette_choice.0 = target.min(palettes.0.len().saturating_sub(1));
         discard.pending = None;
-    } else if cancel_clicked || !open {
+    } else if cancel_clicked || esc || !open {
+        // Esc cancels — keeps the scratch edits and the current palette.
         discard.pending = None;
     }
 }
