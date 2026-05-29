@@ -541,12 +541,7 @@ pub fn ui_system(
                 let anchor = shape_resp.rect.left_center() - egui::vec2(space::SM, 0.0);
                 // Tool-rail neutral hover blend so picker options match the
                 // hover style of main tool buttons (bg ⊕ surface_hover ratio).
-                let blend_u8 = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
-                let neutral_hover = egui::Color32::from_rgb(
-                    blend_u8(theme.bg.r(), theme.surface_hover.r()),
-                    blend_u8(theme.bg.g(), theme.surface_hover.g()),
-                    blend_u8(theme.bg.b(), theme.surface_hover.b()),
-                );
+                let neutral_hover = theme.hover_fill();
                 egui::Area::new(area_id)
                     .order(egui::Order::Foreground)
                     .fade_in(false)

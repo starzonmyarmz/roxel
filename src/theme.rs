@@ -86,6 +86,19 @@ impl Theme {
             mode: ThemeMode::Light,
         }
     }
+
+    /// Neutral hover fill for transparent-resting buttons (tool rail, icon-only
+    /// buttons, shape-picker options): a 3:1 blend of `bg` toward
+    /// `surface_hover`. Single source so every transparent button hovers to the
+    /// exact same grey instead of three hand-inlined copies drifting apart.
+    pub fn hover_fill(&self) -> egui::Color32 {
+        let blend = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
+        egui::Color32::from_rgb(
+            blend(self.bg.r(), self.surface_hover.r()),
+            blend(self.bg.g(), self.surface_hover.g()),
+            blend(self.bg.b(), self.surface_hover.b()),
+        )
+    }
 }
 
 impl Default for Theme {
@@ -192,6 +205,27 @@ mod tests {
                 i.g(),
                 i.b()
             );
+        }
+    }
+
+    #[test]
+    fn hover_fill_lies_between_bg_and_surface_hover() {
+        // 3:1 blend toward surface_hover — must sit strictly between the two
+        // endpoints per channel so the hover reads as a lift off bg without
+        // jumping all the way to the full surface_hover grey.
+        for t in [Theme::dark(), Theme::light()] {
+            let h = t.hover_fill();
+            for (lo, mid, hi) in [
+                (t.bg.r(), h.r(), t.surface_hover.r()),
+                (t.bg.g(), h.g(), t.surface_hover.g()),
+                (t.bg.b(), h.b(), t.surface_hover.b()),
+            ] {
+                let (min, max) = (lo.min(hi), lo.max(hi));
+                assert!(
+                    mid >= min && mid <= max,
+                    "hover {mid} outside [{min},{max}]"
+                );
+            }
         }
     }
 

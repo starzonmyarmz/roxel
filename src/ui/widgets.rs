@@ -45,14 +45,7 @@ pub fn tool_button(
     // Static three-state palette — no animation. The animated version stuttered
     // on hover (the visible fill alternated between two greys mid-hover), so
     // motion is reverted in favour of a snappy, predictable hover.
-    let sh = theme.surface_hover;
-    let bg = theme.bg;
-    let blend_u8 = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
-    let neutral_hover = egui::Color32::from_rgb(
-        blend_u8(bg.r(), sh.r()),
-        blend_u8(bg.g(), sh.g()),
-        blend_u8(bg.b(), sh.b()),
-    );
+    let neutral_hover = theme.hover_fill();
 
     // Active tool fills with the full accent — coral wash on the icon was
     // too subtle for a state this important. White icon over accent reads
@@ -133,14 +126,7 @@ pub fn icon_only_button(
     let img = egui::Image::new(icon_src)
         .fit_to_exact_size(icon::md_square())
         .tint(tint);
-    let sh = theme.surface_hover;
-    let bg = theme.bg;
-    let blend = |a: u8, b: u8| (((a as u16) * 3 + b as u16) / 4) as u8;
-    let hover_fill = egui::Color32::from_rgb(
-        blend(bg.r(), sh.r()),
-        blend(bg.g(), sh.g()),
-        blend(bg.b(), sh.b()),
-    );
+    let hover_fill = theme.hover_fill();
     ui.scope(|ui| {
         ui.spacing_mut().button_padding = pad::NONE;
         ui.spacing_mut().interact_size = gap::NONE;
