@@ -50,18 +50,6 @@ pub fn redo() -> egui::ImageSource<'static> {
 pub fn plus() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/plus.svg")
 }
-pub fn copy() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/copy.svg")
-}
-pub fn pencil() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/pencil.svg")
-}
-pub fn trash() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/trash-2.svg")
-}
-pub fn upload() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/upload.svg")
-}
 pub fn check() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/check.svg")
 }
@@ -76,6 +64,9 @@ pub fn arrow_down() -> egui::ImageSource<'static> {
 }
 pub fn chevron_down() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/chevron-down.svg")
+}
+pub fn ellipsis() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/ellipsis.svg")
 }
 pub fn corner_down_left() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/corner-down-left.svg")

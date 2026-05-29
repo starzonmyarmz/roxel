@@ -12,6 +12,13 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): palette swatches wrap into fixed rows instead of running off and forcing the inspector to max width
+- fix(ui): swatch drag-to-reorder and right-click-remove work again; while dragging, the swatch lifts to a cursor ghost and neighbours shift to open a gap at the drop target
+- feat(ui): "add current colour" is now a `+` cell at the end of the swatch grid; the `…` actions menu sits on the Palette title row with roomier item padding
+- feat(ui): palette switcher rows preview colours as narrow, tall swatches, with clearer spacing between groups
+- fix(ui): widen the "Discard edits?" modal so Cancel / Discard / Save as new fit on one row instead of clipping
+- fix(ui): palette switcher no longer closes on the click that opened it
+- fix(ui): inspector edge line no longer draws across the command palette / palette switcher
 - fix(render): apply face shade in sRGB space so light-coloured faces are no longer over-darkened on sides and bottom
 - feat(ui): reworked palette panel — palette switching moved to a Cmd+K-style popover; sidebar drops the dropdown for a single `…` actions menu (switch / new / duplicate-or-save-as / rename / delete / .ase)
 - feat(ui): built-in palettes are now editable — edits are scratch and prompt "Save as new palette" to keep; switching away from a dirty built-in confirms before discarding

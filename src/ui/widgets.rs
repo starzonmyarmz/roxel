@@ -365,6 +365,126 @@ pub fn swatch_grid<R>(
     })
 }
 
+/// Section header row with a right-aligned action (e.g. the palette `…` menu).
+/// Mirrors [`section_header`] but reserves the right edge for `action`. The
+/// caller renders the section body inline after this and closes it with
+/// [`section_divider`] — splitting header and body into two calls lets the
+/// header action and the body each borrow shared state in turn rather than
+/// both at once (which a single two-closure helper could not).
+pub fn section_header_action(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    title: &str,
+    action: impl FnOnce(&mut egui::Ui),
+) {
+    ui.horizontal(|ui| {
+        ui.set_min_height(font::SECTION + 6.0);
+        ui.label(
+            egui::RichText::new(section_header_text(title))
+                .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
+                .size(font::SECTION)
+                .color(theme.text_muted),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), action);
+    });
+    ui.add_space(space::SM);
+}
+
+/// Full-width hairline divider that closes a section opened with
+/// [`section_header_action`]. Paints the same separator [`section`] does.
+pub fn section_divider(ui: &mut egui::Ui, theme: &Theme) {
+    ui.add_space(space::MD);
+    let sep_rect = ui
+        .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
+        .0;
+    let painter = ui.painter();
+    painter.hline(
+        ui.clip_rect().x_range(),
+        painter.round_to_pixel_center(sep_rect.center().y),
+        egui::Stroke::new(stroke::HAIR, theme.border),
+    );
+    ui.add_space(space::MD);
+}
+
+/// Border stroke for a swatch in the given selection state. Matches
+/// [`swatch_button`] so painted cells and button cells read identically.
+fn swatch_outline(theme: &Theme, state: SwatchSelect) -> egui::Stroke {
+    match state {
+        SwatchSelect::Primary | SwatchSelect::Extra => {
+            egui::Stroke::new(stroke::ACCENT, theme.text)
+        }
+        SwatchSelect::None => egui::Stroke::new(stroke::NORMAL, theme.border),
+    }
+}
+
+/// Paint a colour square at an explicit `rect` (no allocation). The palette
+/// grid lays out its own cells — so it can open a gap that shifts swatches
+/// aside mid-drag — and drives interaction via `ui.interact`, so the painter
+/// and the responder are separated here.
+pub fn paint_swatch(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    rect: egui::Rect,
+    color: egui::Color32,
+    corner_radius: u8,
+    state: impl Into<SwatchSelect>,
+) {
+    ui.painter().rect(
+        rect,
+        egui::CornerRadius::same(corner_radius),
+        color,
+        swatch_outline(theme, state.into()),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Paint the `+` "add current colour" affordance at an explicit `rect`.
+/// Surface fill + hair border; the glyph dims when `enabled` is false and the
+/// fill lifts to `surface_hover` when `hovered`.
+pub fn paint_add_swatch(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    rect: egui::Rect,
+    corner_radius: u8,
+    enabled: bool,
+    hovered: bool,
+) {
+    let fill = if enabled && hovered {
+        theme.surface_hover
+    } else {
+        theme.surface
+    };
+    ui.painter().rect(
+        rect,
+        egui::CornerRadius::same(corner_radius),
+        fill,
+        egui::Stroke::new(stroke::HAIR, theme.border),
+        egui::StrokeKind::Inside,
+    );
+    let tint = if enabled {
+        theme.text_dim
+    } else {
+        theme.text_dim.gamma_multiply(0.4)
+    };
+    let img_rect = egui::Rect::from_center_size(rect.center(), icon::sm_square());
+    egui::Image::new(icons::plus())
+        .tint(tint)
+        .paint_at(ui, img_rect);
+}
+
+/// Paint the empty drop slot the swatch grid opens while a swatch is dragged
+/// over it — a recessed `surface` well so neighbours read as shifting to make
+/// room for the incoming swatch.
+pub fn paint_swatch_gap(ui: &mut egui::Ui, theme: &Theme, rect: egui::Rect, corner_radius: u8) {
+    ui.painter().rect(
+        rect,
+        egui::CornerRadius::same(corner_radius),
+        theme.surface,
+        egui::Stroke::new(stroke::HAIR, theme.border),
+        egui::StrokeKind::Inside,
+    );
+}
+
 /// Themed centred-modal `egui::Window` builder. Bold 14 pt title,
 /// non-collapsible, non-resizable, panel-fill frame with 0.5 border and
 /// rounded corners. Caller adds `.show(ctx, |ui| { ... })`.
@@ -474,42 +594,6 @@ pub fn dialog_button(
                 .stroke(btn_stroke)
                 .corner_radius(egui::CornerRadius::same(radius::SM)),
         )
-    })
-    .inner
-}
-
-/// Full-width icon + text button with the look used by inspector action rows
-/// (the "Add current color" button). `width` is the explicit min width — pass
-/// `ui.available_width()` for a panel-filling button.
-pub fn wide_action_button(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    icon: egui::ImageSource<'static>,
-    label: &str,
-    width: f32,
-    enabled: bool,
-) -> egui::Response {
-    let tint = if enabled { theme.text } else { theme.text_dim };
-    let img = egui::Image::new(icon)
-        .fit_to_exact_size(icon::sm_square())
-        .tint(tint);
-    ui.scope(|ui| {
-        ui.spacing_mut().button_padding = pad::ICON;
-        ui.spacing_mut().interact_size = gap::NONE;
-        ui.allocate_ui_with_layout(
-            egui::vec2(width, size::ACTION_ROW_HEIGHT),
-            egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-            |ui| {
-                ui.add_enabled(
-                    enabled,
-                    egui::Button::image_and_text(img, egui::RichText::new(label).size(font::SMALL))
-                        .corner_radius(egui::CornerRadius::same(radius::SM))
-                        .fill(theme.surface)
-                        .stroke(egui::Stroke::new(stroke::HAIR, theme.border)),
-                )
-            },
-        )
-        .inner
     })
     .inner
 }

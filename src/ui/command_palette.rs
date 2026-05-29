@@ -8,7 +8,8 @@ use crate::shapes::ShapePrimitive;
 use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
-    Palette, PaletteChoice, Palettes, next_palette_name, unique_palette_name,
+    DiscardConfirm, Palette, PaletteChoice, Palettes, WorkingPalette, display_colors, edit_colors,
+    next_palette_name, request_select, save_as_new,
 };
 use crate::ui::tokens::{font, gap, height, icon, radius, size, space, stroke, width};
 use crate::ui::{icons, widgets};
@@ -1184,6 +1185,8 @@ pub struct DispatchParams<'w> {
     selection: ResMut<'w, select::Selection>,
     palette_choice: ResMut<'w, PaletteChoice>,
     palettes: ResMut<'w, Palettes>,
+    working: ResMut<'w, WorkingPalette>,
+    discard: ResMut<'w, DiscardConfirm>,
     color: ResMut<'w, CurrentColor>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
@@ -1359,20 +1362,24 @@ pub fn dispatch_command_palette_system(
         CommandAction::OpenChangelog => open_url(CHANGELOG_URL),
         CommandAction::SelectPalette(i) => {
             if i < p.palettes.0.len() {
-                p.palette_choice.0 = i;
+                request_select(i, &mut p.palette_choice, &mut p.working, &mut p.discard);
             }
         }
         CommandAction::AddCurrentColorToPalette => {
             let i = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
-            if let Some(pal) = p.palettes.0.get_mut(i)
-                && !pal.builtin
-                && !pal.colors.contains(&p.color.0)
-            {
-                pal.colors.push(p.color.0);
-                io::palettes::save(&p.palettes.0);
+            if !display_colors(&p.palettes, &p.working, i).contains(&p.color.0) {
+                let persist = {
+                    let (colors, persist) = edit_colors(&mut p.palettes, &mut p.working, i);
+                    colors.push(p.color.0);
+                    persist
+                };
+                if persist {
+                    io::palettes::save(&p.palettes.0);
+                }
             }
         }
         CommandAction::NewPalette => {
+            p.working.clear();
             let name = next_palette_name(&p.palettes.0);
             p.palettes.0.push(Palette {
                 name,
@@ -1383,23 +1390,9 @@ pub fn dispatch_command_palette_system(
             io::palettes::save(&p.palettes.0);
         }
         CommandAction::DuplicatePalette => {
-            let i = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
-            if let Some(src) = p.palettes.0.get(i) {
-                let base = if src.builtin {
-                    src.name.clone()
-                } else {
-                    format!("{} copy", src.name)
-                };
-                let name = unique_palette_name(&p.palettes.0, &base);
-                let copy = Palette {
-                    name,
-                    colors: src.colors.clone(),
-                    builtin: false,
-                };
-                p.palettes.0.push(copy);
-                p.palette_choice.0 = p.palettes.0.len() - 1;
-                io::palettes::save(&p.palettes.0);
-            }
+            p.palette_choice.0 = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
+            save_as_new(&mut p.palettes, &mut p.palette_choice, &mut p.working);
+            io::palettes::save(&p.palettes.0);
         }
         CommandAction::DeletePalette => {
             let i = p.palette_choice.0;
@@ -1431,10 +1424,10 @@ pub fn dispatch_command_palette_system(
                 return;
             };
             let export_name = current.name.clone();
-            let export_colors = current.colors.clone();
+            let export_colors = display_colors(&p.palettes, &p.working, i).to_vec();
             let default_filename = format!(
                 "{}.ase",
-                crate::ui::palette::sanitize_filename(&current.name)
+                crate::ui::palette::sanitize_filename(&export_name)
             );
             p.pending.spawn(async move {
                 rfd::AsyncFileDialog::new()

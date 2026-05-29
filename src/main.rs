@@ -63,10 +63,10 @@ use crate::tools::{
     undo_redo_system,
 };
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, PaletteChoice, Palettes, PendingDialog, PendingImport,
-    RecentFiles, Toasts, UiVisible, command_palette_shortcut_system,
-    dispatch_command_palette_system, poll_dialogs_system, tab_toggle_system, toast_lifetime_system,
-    ui_system,
+    CommandPalette, CurrentProjectPath, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes,
+    PendingDialog, PendingImport, RecentFiles, Toasts, UiVisible, WorkingPalette,
+    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
+    tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 
@@ -126,6 +126,9 @@ fn main() {
         .init_resource::<CurrentProjectPath>()
         .insert_resource(RecentFiles::loaded())
         .init_resource::<PaletteChoice>()
+        .init_resource::<WorkingPalette>()
+        .init_resource::<DiscardConfirm>()
+        .init_resource::<PaletteSwitcher>()
         .insert_resource(Palettes::with_user_loaded())
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()

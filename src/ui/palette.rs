@@ -99,6 +99,144 @@ impl Default for Palettes {
 #[derive(Resource, Default)]
 pub struct PaletteChoice(pub usize);
 
+/// In-session scratch edits to a built-in palette. Built-ins are never
+/// persisted; the first edit copies the built-in's colors here and marks the
+/// buffer dirty. Switching away (guarded by [`DiscardConfirm`]) or saving as a
+/// new palette clears it, so reloading the built-in yields the pristine set.
+#[derive(Resource, Default)]
+pub struct WorkingPalette {
+    /// Index into [`Palettes`] of the built-in being edited, if any.
+    pub source: Option<usize>,
+    pub colors: Vec<[u8; 4]>,
+    pub dirty: bool,
+}
+
+impl WorkingPalette {
+    pub fn clear(&mut self) {
+        self.source = None;
+        self.colors.clear();
+        self.dirty = false;
+    }
+
+    /// True when `idx` is the built-in whose scratch edits are held here.
+    pub fn editing(&self, idx: usize) -> bool {
+        self.source == Some(idx)
+    }
+
+    /// True when there are unsaved scratch edits to `idx`.
+    pub fn is_dirty_for(&self, idx: usize) -> bool {
+        self.dirty && self.source == Some(idx)
+    }
+}
+
+/// Staged discard confirmation. Switching away from a dirty built-in stores the
+/// target palette index here so the UI can confirm before throwing edits away.
+#[derive(Resource, Default)]
+pub struct DiscardConfirm {
+    pub pending: Option<usize>,
+}
+
+/// State for the command-palette-style palette switcher popover (opened from the
+/// inspector's `…` menu). Mirrors `CommandPalette`: open flag, search query,
+/// selected row, and a one-shot focus flag. Drawn by `palette_switcher::draw`.
+#[derive(Resource, Default)]
+pub struct PaletteSwitcher {
+    pub open: bool,
+    pub search: String,
+    pub selected: usize,
+    pub just_opened: bool,
+}
+
+impl PaletteSwitcher {
+    pub fn open_fresh(&mut self) {
+        self.open = true;
+        self.search.clear();
+        self.selected = 0;
+        self.just_opened = true;
+    }
+}
+
+/// Colors to display for palette `idx`: the scratch buffer when a built-in is
+/// being edited, otherwise the palette's own colors.
+pub fn display_colors<'a>(
+    palettes: &'a Palettes,
+    working: &'a WorkingPalette,
+    idx: usize,
+) -> &'a [[u8; 4]] {
+    if working.editing(idx) {
+        &working.colors
+    } else {
+        &palettes.0[idx].colors
+    }
+}
+
+/// Mutable colors for editing palette `idx`. For a built-in, lazily seeds the
+/// scratch buffer from the built-in and marks it dirty. Returns `true` when the
+/// edit should be persisted to disk (user palettes only — built-ins live in the
+/// scratch buffer until saved as a new palette).
+pub fn edit_colors<'a>(
+    palettes: &'a mut Palettes,
+    working: &'a mut WorkingPalette,
+    idx: usize,
+) -> (&'a mut Vec<[u8; 4]>, bool) {
+    if palettes.0[idx].builtin {
+        if !working.editing(idx) {
+            working.colors = palettes.0[idx].colors.clone();
+            working.source = Some(idx);
+        }
+        working.dirty = true;
+        (&mut working.colors, false)
+    } else {
+        (&mut palettes.0[idx].colors, true)
+    }
+}
+
+/// Switch the active palette to `target`, or stage a discard confirmation when
+/// the current palette is a built-in with unsaved scratch edits.
+pub fn request_select(
+    target: usize,
+    choice: &mut PaletteChoice,
+    working: &mut WorkingPalette,
+    discard: &mut DiscardConfirm,
+) {
+    if target == choice.0 {
+        return;
+    }
+    if working.is_dirty_for(choice.0) {
+        discard.pending = Some(target);
+    } else {
+        working.clear();
+        choice.0 = target;
+    }
+}
+
+/// Fork the active palette's current colors (including any scratch edits) into a
+/// new user palette named `"<name> copy"`, select it, and clear the scratch
+/// buffer. Returns the new index. Caller persists via `io::palettes::save`.
+pub fn save_as_new(
+    palettes: &mut Palettes,
+    choice: &mut PaletteChoice,
+    working: &mut WorkingPalette,
+) -> usize {
+    let idx = choice.0;
+    let colors = if working.editing(idx) {
+        working.colors.clone()
+    } else {
+        palettes.0[idx].colors.clone()
+    };
+    let base = format!("{} copy", palettes.0[idx].name);
+    let name = unique_palette_name(&palettes.0, &base);
+    palettes.0.push(Palette {
+        name,
+        colors,
+        builtin: false,
+    });
+    let new_idx = palettes.0.len() - 1;
+    choice.0 = new_idx;
+    working.clear();
+    new_idx
+}
+
 /// Transient UI state for inline rename of the active palette.
 #[derive(Default)]
 pub struct PaletteRenameState {
@@ -111,6 +249,9 @@ pub struct PaletteParams<'w, 's> {
     pub palettes: ResMut<'w, Palettes>,
     pub choice: ResMut<'w, PaletteChoice>,
     pub rename: Local<'s, PaletteRenameState>,
+    pub working: ResMut<'w, WorkingPalette>,
+    pub discard: ResMut<'w, DiscardConfirm>,
+    pub switcher: ResMut<'w, PaletteSwitcher>,
 }
 
 pub fn unique_palette_name(palettes: &[Palette], base: &str) -> String {
@@ -176,5 +317,94 @@ mod tests {
     fn next_palette_name_is_untitled() {
         assert_eq!(next_palette_name(&[]), "Untitled");
         assert_eq!(next_palette_name(&[p("Untitled")]), "Untitled 2");
+    }
+
+    fn builtin(name: &str, colors: Vec<[u8; 4]>) -> Palette {
+        Palette {
+            name: name.into(),
+            colors,
+            builtin: true,
+        }
+    }
+
+    #[test]
+    fn edit_builtin_seeds_scratch_and_marks_dirty() {
+        let mut palettes = Palettes(vec![builtin("Sweetie", vec![[1, 1, 1, 255]])]);
+        let mut working = WorkingPalette::default();
+        let (colors, persist) = edit_colors(&mut palettes, &mut working, 0);
+        colors.push([9, 9, 9, 255]);
+        assert!(!persist, "built-in edits are not persisted");
+        assert!(working.is_dirty_for(0));
+        assert_eq!(working.colors, vec![[1, 1, 1, 255], [9, 9, 9, 255]]);
+        // The built-in itself is untouched.
+        assert_eq!(palettes.0[0].colors, vec![[1, 1, 1, 255]]);
+    }
+
+    #[test]
+    fn edit_user_palette_mutates_in_place_and_persists() {
+        let mut palettes = Palettes(vec![p("Mine")]);
+        let mut working = WorkingPalette::default();
+        let (colors, persist) = edit_colors(&mut palettes, &mut working, 0);
+        colors.push([2, 2, 2, 255]);
+        assert!(persist);
+        assert!(!working.dirty);
+        assert_eq!(palettes.0[0].colors, vec![[2, 2, 2, 255]]);
+    }
+
+    #[test]
+    fn display_colors_prefers_scratch_when_editing() {
+        let mut palettes = Palettes(vec![builtin("B", vec![[1, 1, 1, 255]])]);
+        let mut working = WorkingPalette::default();
+        assert_eq!(display_colors(&palettes, &working, 0), &[[1, 1, 1, 255]]);
+        edit_colors(&mut palettes, &mut working, 0)
+            .0
+            .push([2, 2, 2, 255]);
+        assert_eq!(
+            display_colors(&palettes, &working, 0),
+            &[[1, 1, 1, 255], [2, 2, 2, 255]]
+        );
+    }
+
+    #[test]
+    fn request_select_switches_when_clean() {
+        let mut choice = PaletteChoice(0);
+        let mut working = WorkingPalette::default();
+        let mut discard = DiscardConfirm::default();
+        request_select(2, &mut choice, &mut working, &mut discard);
+        assert_eq!(choice.0, 2);
+        assert_eq!(discard.pending, None);
+    }
+
+    #[test]
+    fn request_select_stages_discard_when_dirty_builtin() {
+        let mut choice = PaletteChoice(0);
+        let mut working = WorkingPalette {
+            source: Some(0),
+            colors: vec![[1, 1, 1, 255]],
+            dirty: true,
+        };
+        let mut discard = DiscardConfirm::default();
+        request_select(3, &mut choice, &mut working, &mut discard);
+        assert_eq!(choice.0, 0, "stays put until confirmed");
+        assert_eq!(discard.pending, Some(3));
+    }
+
+    #[test]
+    fn save_as_new_forks_scratch_into_user_palette() {
+        let mut palettes = Palettes(vec![builtin("Sweetie", vec![[1, 1, 1, 255]])]);
+        let mut choice = PaletteChoice(0);
+        let mut working = WorkingPalette::default();
+        edit_colors(&mut palettes, &mut working, 0)
+            .0
+            .push([7, 7, 7, 255]);
+        let new_idx = save_as_new(&mut palettes, &mut choice, &mut working);
+        assert_eq!(new_idx, 1);
+        assert_eq!(choice.0, 1);
+        let forked = &palettes.0[1];
+        assert_eq!(forked.name, "Sweetie copy");
+        assert!(!forked.builtin);
+        assert_eq!(forked.colors, vec![[1, 1, 1, 255], [7, 7, 7, 255]]);
+        assert!(!working.dirty, "scratch cleared after save");
+        assert_eq!(working.source, None);
     }
 }

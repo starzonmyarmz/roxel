@@ -26,6 +26,7 @@ pub mod font {
 /// nested inside the pill use `INSIDE_PILL = MD = 8` instead of `SM = 6` to
 /// avoid the "punch hole" look where sub-corners read as stamped out.
 pub mod radius {
+    pub const XXS: u8 = 2; // half-size switcher preview swatches
     pub const XS: u8 = 4; // small inner bits (swatch corners)
     pub const SM: u8 = 6; // standalone buttons, command palette rows
     pub const MD: u8 = 8; // menus, popups, hero swatch, INSIDE_PILL
@@ -109,8 +110,10 @@ pub mod gap {
 pub mod pad {
     use super::Vec2;
     pub const NONE: Vec2 = Vec2::new(0.0, 0.0); // icon-only buttons
-    pub const ICON: Vec2 = Vec2::new(8.0, 0.0); // wide_action_button row
+    #[allow(dead_code)] // reserved icon+text row padding; kept for the token grid
+    pub const ICON: Vec2 = Vec2::new(8.0, 0.0);
     pub const BUTTON: Vec2 = Vec2::new(12.0, 4.0); // chip_button
+    pub const MENU: Vec2 = Vec2::new(8.0, 8.0); // popover menu items (… palette actions)
     pub const DEFAULT: Vec2 = Vec2::new(12.0, 8.0); // global default
     pub const DIALOG: Vec2 = Vec2::new(16.0, 8.0); // modal action buttons
     #[allow(dead_code)] // adopted once egui exposes a tooltip frame override
@@ -149,6 +152,7 @@ pub mod swatch {
     use super::Vec2;
     pub const RECENT: Vec2 = Vec2::new(24.0, 24.0);
     pub const PALETTE: Vec2 = Vec2::new(24.0, 24.0);
+    pub const PREVIEW_SM: Vec2 = Vec2::new(12.0, 20.0); // switcher row preview swatches — narrow and tall
     #[allow(dead_code)] // tool rail uses a Button cell, not a swatch — reserved if that changes
     pub const TOOL: Vec2 = Vec2::new(28.0, 28.0);
     pub const HERO_HEIGHT: f32 = 56.0; // foreground colour swatch height
@@ -177,11 +181,15 @@ pub mod width {
     #[cfg_attr(target_os = "macos", allow(dead_code))] // native muda menu on mac
     pub const TOP_BAR_MENU: f32 = 180.0; // Import / Export submenus
     pub const SIDE_PANEL: f32 = 244.0; // left inspector
+    pub const SIDE_PANEL_MAX: f32 = 468.0; // left inspector drag-resize ceiling
     pub const MODAL_PREFS: f32 = 340.0;
     /// Right-hand control width inside a Preferences row (`MODAL_PREFS` minus
     /// the label column and modal margins).
     pub const PREFS_DROPDOWN: f32 = 200.0;
     pub const MODAL_NEW: f32 = 240.0;
+    /// Discard-edits confirm modal — wider than `MODAL_NEW` so its three
+    /// action buttons (Cancel / Discard / Save as new) fit on one row.
+    pub const MODAL_DISCARD: f32 = 304.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
     pub const COACHMARK: f32 = 256.0;
@@ -254,7 +262,14 @@ mod tests {
 
     #[test]
     fn all_radii_even() {
-        for r in [radius::XS, radius::SM, radius::MD, radius::LG, radius::PILL] {
+        for r in [
+            radius::XXS,
+            radius::XS,
+            radius::SM,
+            radius::MD,
+            radius::LG,
+            radius::PILL,
+        ] {
             assert_eq!(r % 2, 0, "radius {r} is odd");
         }
     }
@@ -289,6 +304,7 @@ mod tests {
             pad::NONE,
             pad::ICON,
             pad::BUTTON,
+            pad::MENU,
             pad::DEFAULT,
             pad::DIALOG,
             gap::NONE,
@@ -310,9 +326,11 @@ mod tests {
             size::CMD_PALETTE_ROW,
             width::TOP_BAR_MENU,
             width::SIDE_PANEL,
+            width::SIDE_PANEL_MAX,
             width::MODAL_PREFS,
             width::PREFS_DROPDOWN,
             width::MODAL_NEW,
+            width::MODAL_DISCARD,
             width::COMMAND_PALETTE,
             width::TOAST,
             width::COACHMARK,

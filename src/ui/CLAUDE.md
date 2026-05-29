@@ -6,7 +6,7 @@ egui surface and styling: anchored panel + floating surfaces, design tokens, the
 
 `apply_egui_style` runs every frame at top of `ui_system` using current `Theme`. `ui_system` runs in `EguiPrimaryContextPass` (not Update). One anchored panel + two floating surfaces:
 
-- **Left inspector** (`SidePanel::left`) — one **Color** section (hero swatch → picker popup, hex readout, recent colors as an unlabeled strip), palette selector with add/dup/rename/delete/reorder + `.ase` import/export, shape options, scene stats. "Status" top section (Size/Voxels/Zoom) always visible. The color-space format (Hex/RGB/…) is **not** in the panel — it lives in Preferences → Color → Format; the picker popup reads `prefs.color_space`.
+- **Left inspector** (`SidePanel::left`) — one **Color** section (hero swatch → picker popup, hex readout, recent colors as an unlabeled strip), palette section (swatch grid ending in a `+` "add current colour" cell; click selects, drag reorders — while dragging, the swatch lifts to a cursor ghost and the rest shift to open a gap at the drop target — right-click removes; the `…` overflow menu sits on the **Palette** title row via `widgets::section_header_action` — switch palette / new / duplicate-or-save-as / rename / delete + `.ase` import-export; no inline dropdown), shape options, scene stats. **Switching palettes opens a Cmd+K-style popover** (`ui/palette_switcher.rs`), not a sidebar dropdown. "Status" top section (Size/Voxels/Zoom) always visible. The color-space format (Hex/RGB/…) is **not** in the panel — it lives in Preferences → Color → Format; the picker popup reads `prefs.color_space`.
 - **Floating tool island** (`ui/floating.rs::tool_island`) — right-center pivot. Icon-only — no captions. Shape picker opens to the left (`Align2::RIGHT_TOP`).
 - **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center, Win/Linux only, gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu.
 
@@ -29,15 +29,15 @@ All values land on a 4-px grid and are even. Token guard tests in `tokens::tests
 ## Widget helpers
 
 Helpers in `src/ui/widgets.rs`:
-- Structural: `section`, `prefs_row`, `modal_window`, `swatch_grid`, `vertical_rule`. Floating-surface: `pill_frame`, `floating_area`, `tool_island`, `pill_menu` (in `ui/floating.rs`).
-- Buttons: `tool_button`, `icon_button`, `icon_only_button`, `wide_action_button`, `dialog_button` (primary = accent), `chip_button`, `swatch_button`.
+- Structural: `section`, `section_header_action` + `section_divider` (section with a right-aligned header action, e.g. the palette `…` menu — content rendered inline between the two so action and content can each borrow shared state in turn), `prefs_row`, `modal_window`, `swatch_grid`, `vertical_rule`. Floating-surface: `pill_frame`, `floating_area`, `tool_island`, `pill_menu` (in `ui/floating.rs`).
+- Buttons: `tool_button`, `icon_button`, `icon_only_button`, `dialog_button` (primary = accent), `chip_button`, `swatch_button`. Swatches: `swatch_button` (egui `Button`); the palette grid no longer uses an allocating swatch widget — it lays out its own cells (`ui.interact` + paint) so a dragged swatch can leave its slot and the rest shift to open a gap. Paint-at-rect helpers back that: `paint_swatch` (state-aware square), `paint_add_swatch` (`+` affordance), `paint_swatch_gap` (the open drop slot).
 - Labels: `stat_row`, `hint_label`, `status_label`, `hex_label`/`hex_string`, `tool_label`, `plane_color_row`.
 
 **Prefer helpers over hand-rolling.** Promote a second call site into `widgets.rs`. Never reach for `egui::Window::new` or hand-painted hlines directly — use `modal_window` and `section`.
 
 ## Icons
 
-`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket`, `pipette`, `shapes`, `box_select`, `move_tool`, `file_plus`, `folder_open`, `save`, `download`, `undo`, `redo`, `plus`, `copy`, `pencil`, `trash`, `upload`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `corner_down_left`, `square`, `circle`, `slash`. Plus dispatchers `shape_primitive(p)` and `tool(t)`.
+`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket`, `pipette`, `shapes`, `box_select`, `move_tool`, `file_plus`, `folder_open`, `save`, `download`, `undo`, `redo`, `plus`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `ellipsis`, `corner_down_left`, `square`, `circle`, `slash`. Plus dispatchers `shape_primitive(p)` and `tool(t)`.
 
 Buttons render icons **only** — never Unicode glyphs or emoji. Add a new function (and SVG to `assets/icons/`) before reaching for text.
 
@@ -45,7 +45,11 @@ Buttons render icons **only** — never Unicode glyphs or emoji. Add a new funct
 
 `ui/palette.rs` — `Palette { name, colors: Vec<[u8; 4]>, builtin }`. `Palettes(Vec<Palette>)` resource: built-ins followed by user palettes loaded from disk via `Palettes::with_user_loaded()`. Built-in set: Sweetie 16, PICO-8, DawnBringer 16 / 32, Endesga 32, NA16, Basic. `PaletteChoice(usize)` indexes the active palette. `PaletteRenameState` drives the rename modal. Helpers: `unique_palette_name`, `next_palette_name`, `sanitize_filename`.
 
-User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating operations must call `io::palettes::save(...)` — no autosave.
+**Built-ins are editable but ephemeral.** Built-ins are never persisted, so the first edit to one copies its colors into the `WorkingPalette` resource (`source`/`colors`/`dirty`) and marks it dirty; the built-in itself is untouched. Switching away from a dirty built-in stages the target index in `DiscardConfirm.pending` so the UI can confirm (Save as new / Discard / Cancel) before throwing scratch away — both the inspector picker and the command-palette `SelectPalette` route through `request_select`. Route all swatch edits through `edit_colors` (returns the mutable colors + a `persist` flag — `true` only for user palettes) and render via `display_colors` (scratch when editing, else the palette's own colors). `save_as_new` forks the current colors (incl. scratch) into a `"<name> copy"` user palette and clears scratch; the caller persists.
+
+**Palette switcher.** `PaletteSwitcher` resource (open/search/selected/just_opened) backs the Cmd+K-style switcher popover drawn by `ui/palette_switcher.rs::draw` (centred-top window, surface-framed search, hidden scrollbar, footer hint — mirrors `command_palette`). Opened via `open_fresh()` from the inspector's `…` menu (skips the click-outside-close guard on the just-opened frame, else the opening click dismisses it). Lists user palettes then a "Built-in" group — group headers spaced apart for distinct bands — each row with a narrow, tall (`swatch::PREVIEW_SM` = 12×20) preview showing as many colours as fit the right ~60% of the row. `draw` returns the chosen global index, routed through `request_select` by `ui_system` so a dirty built-in still confirms. Reuses `command_palette::fuzzy_match` for filtering.
+
+User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating operations must call `io::palettes::save(...)` — no autosave; built-in scratch edits are never saved.
 
 ## Toast notifications
 

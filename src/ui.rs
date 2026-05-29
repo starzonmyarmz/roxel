@@ -3,6 +3,7 @@ mod dialogs;
 mod floating;
 pub(crate) mod icons;
 mod palette;
+mod palette_switcher;
 pub mod toast;
 pub mod tokens;
 mod visibility;
@@ -15,7 +16,9 @@ pub use dialogs::{
     CurrentProjectPath, DialogResult, PendingDialog, PendingImport, RecentFiles,
     poll_dialogs_system, spawn_save, spawn_save_as,
 };
-pub use palette::{Palette, PaletteChoice, Palettes};
+pub use palette::{
+    DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
+};
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
@@ -133,6 +136,9 @@ pub fn ui_system(
         mut palettes,
         choice: mut palette_choice,
         rename: mut palette_rename,
+        mut working,
+        mut discard,
+        mut switcher,
     } = palette_params;
     let PrefsParams {
         mut prefs,
@@ -633,10 +639,12 @@ pub fn ui_system(
         Some(
             egui::SidePanel::left("inspector_panel")
                 .resizable(true)
-                .show_separator_line(false)
+                // Keep the separator visible — it's the only grab affordance for
+                // the resize handle. Hidden, the panel reads as locked.
+                .show_separator_line(true)
                 .default_width(width::SIDE_PANEL)
                 .min_width(width::SIDE_PANEL)
-                .max_width(468.0)
+                .max_width(width::SIDE_PANEL_MAX)
                 .frame(
                     egui::Frame::default()
                         .fill(PANEL)
@@ -775,28 +783,174 @@ pub fn ui_system(
                                 if palette_choice.0 >= palettes.0.len() {
                                     palette_choice.0 = 0;
                                 }
-                                let dialog_busy = pending.is_active();
 
-                                // Palette section
-                                widgets::section(ui, &theme, "Palette", |ui| {
-                                    let mut active_idx = palette_choice.0;
-                                    let mut active_is_builtin = palettes.0[active_idx].builtin;
+                                // Palette section — overflow … menu sits on the title row.
+                                {
+                                    let active_idx =
+                                        palette_choice.0.min(palettes.0.len().saturating_sub(1));
+                                    palette_choice.0 = active_idx;
+                                    let active_is_builtin = palettes.0[active_idx].builtin;
 
-                                    // Buffer so widget frames don't overflow and auto-grow the SidePanel.
+                                    // Buffer so the rename field doesn't overflow and grow the panel.
                                     let row_w = (ui.available_width() - 2.0).max(80.0);
-                                    let names: Vec<String> =
-                                        palettes.0.iter().map(|p| p.name.clone()).collect();
-                                    if let Some(i) = widgets::select_dropdown(
-                                        ui,
-                                        &theme,
-                                        "palette_combo",
-                                        row_w,
-                                        &palettes.0[active_idx].name,
-                                        &names,
-                                        active_idx,
-                                    ) {
-                                        palette_choice.0 = i;
-                                    }
+
+                                    widgets::section_header_action(ui, &theme, "Palette", |ui| {
+                                            let menu_resp = widgets::icon_only_button(
+                                                ui,
+                                                &theme,
+                                                icons::ellipsis(),
+                                                true,
+                                            )
+                                            .on_hover_text("Palette actions");
+                                            egui::Popup::menu(&menu_resp)
+                                                .close_behavior(
+                                                    egui::PopupCloseBehavior::CloseOnClick,
+                                                )
+                                                .show(|ui| {
+                                                    // Roomier menu items — wider horizontal
+                                                    // padding so labels breathe off both edges.
+                                                    ui.set_min_width(width::TOP_BAR_MENU);
+                                                    ui.spacing_mut().button_padding =
+                                                        crate::ui::tokens::pad::MENU;
+                                                    if ui.button("Switch palette…").clicked() {
+                                                        switcher.open_fresh();
+                                                    }
+                                                    ui.separator();
+                                                    if ui.button("New palette").clicked() {
+                                                        working.clear();
+                                                        let name =
+                                                            palette::next_palette_name(&palettes.0);
+                                                        palettes.0.push(Palette {
+                                                            name,
+                                                            colors: Vec::new(),
+                                                            builtin: false,
+                                                        });
+                                                        let i = palettes.0.len() - 1;
+                                                        palette_choice.0 = i;
+                                                        palette_rename.editing = Some(i);
+                                                        palette_rename.buf =
+                                                            palettes.0[i].name.clone();
+                                                        io::palettes::save(&palettes.0);
+                                                    }
+                                                    let save_as_label = if active_is_builtin {
+                                                        "Save as new palette"
+                                                    } else {
+                                                        "Duplicate"
+                                                    };
+                                                    if ui.button(save_as_label).clicked() {
+                                                        let i = palette::save_as_new(
+                                                            &mut palettes,
+                                                            &mut palette_choice,
+                                                            &mut working,
+                                                        );
+                                                        palette_rename.editing = Some(i);
+                                                        palette_rename.buf =
+                                                            palettes.0[i].name.clone();
+                                                        io::palettes::save(&palettes.0);
+                                                    }
+                                                    if !active_is_builtin {
+                                                        if ui.button("Rename…").clicked() {
+                                                            palette_rename.editing =
+                                                                Some(active_idx);
+                                                            palette_rename.buf =
+                                                                palettes.0[active_idx].name.clone();
+                                                        }
+                                                        let has_user = palettes
+                                                            .0
+                                                            .iter()
+                                                            .filter(|p| !p.builtin)
+                                                            .count()
+                                                            > 0;
+                                                        if ui
+                                                            .add_enabled(
+                                                                has_user,
+                                                                egui::Button::new("Delete"),
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            palettes.0.remove(active_idx);
+                                                            if palette_choice.0 >= palettes.0.len()
+                                                            {
+                                                                palette_choice.0 = palettes
+                                                                    .0
+                                                                    .len()
+                                                                    .saturating_sub(1);
+                                                            }
+                                                            palette_rename.editing = None;
+                                                            working.clear();
+                                                            io::palettes::save(&palettes.0);
+                                                        }
+                                                    }
+                                                    ui.separator();
+                                                    let dialog_busy = pending.is_active();
+                                                    let safe_idx = palette_choice
+                                                        .0
+                                                        .min(palettes.0.len().saturating_sub(1));
+                                                    let export_name =
+                                                        palettes.0[safe_idx].name.clone();
+                                                    let export_colors = palette::display_colors(
+                                                        &palettes, &working, safe_idx,
+                                                    )
+                                                    .to_vec();
+                                                    let default_filename = format!(
+                                                        "{}.ase",
+                                                        palette::sanitize_filename(&export_name)
+                                                    );
+                                                    if ui
+                                                        .add_enabled(
+                                                            !dialog_busy,
+                                                            egui::Button::new("Export .ase…"),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        pending.spawn(async move {
+                                                            rfd::AsyncFileDialog::new()
+                                                                .add_filter(
+                                                                    "Adobe Swatch Exchange",
+                                                                    &["ase"],
+                                                                )
+                                                                .set_file_name(&default_filename)
+                                                                .save_file()
+                                                                .await
+                                                                .map(|f| {
+                                                                    DialogResult::ExportAse(
+                                                                        f.path().to_path_buf(),
+                                                                        export_name,
+                                                                        export_colors,
+                                                                    )
+                                                                })
+                                                        });
+                                                    }
+                                                    if ui
+                                                        .add_enabled(
+                                                            !dialog_busy,
+                                                            egui::Button::new("Import .ase…"),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        pending.spawn(async move {
+                                                            rfd::AsyncFileDialog::new()
+                                                                .add_filter(
+                                                                    "Adobe Swatch Exchange",
+                                                                    &["ase"],
+                                                                )
+                                                                .pick_file()
+                                                                .await
+                                                                .map(|f| {
+                                                                    DialogResult::ImportAse(
+                                                                        f.path().to_path_buf(),
+                                                                    )
+                                                                })
+                                                        });
+                                                    }
+                                                });
+                                    });
+
+                                    // Refresh — menu may have changed the selection.
+                                    let active_idx =
+                                        palette_choice.0.min(palettes.0.len().saturating_sub(1));
+                                    palette_choice.0 = active_idx;
+                                    let active_is_builtin = palettes.0[active_idx].builtin;
 
                                     if palette_rename.editing == Some(active_idx)
                                         && !active_is_builtin
@@ -848,319 +1002,281 @@ pub fn ui_system(
                                         });
                                     }
 
-                                    ui.add_space(space::SX);
-                                    // Toolbar: palette mgmt left, .ase IO right
-                                    ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                        if widgets::icon_only_button(
-                                            ui,
-                                            &theme,
-                                            icons::plus(),
-                                            true,
-                                        )
-                                        .on_hover_text("New palette")
-                                        .clicked()
-                                        {
-                                            let name = palette::next_palette_name(&palettes.0);
-                                            palettes.0.push(Palette {
-                                                name,
-                                                colors: Vec::new(),
-                                                builtin: false,
-                                            });
-                                            palette_choice.0 = palettes.0.len() - 1;
-                                            palette_rename.editing = Some(palette_choice.0);
-                                            palette_rename.buf =
-                                                palettes.0[palette_choice.0].name.clone();
-                                            io::palettes::save(&palettes.0);
-                                        }
-                                        if widgets::icon_only_button(
-                                            ui,
-                                            &theme,
-                                            icons::copy(),
-                                            true,
-                                        )
-                                        .on_hover_text("Duplicate palette")
-                                        .clicked()
-                                        {
-                                            let src = &palettes.0[active_idx];
-                                            let base = if src.builtin {
-                                                src.name.clone()
-                                            } else {
-                                                format!("{} copy", src.name)
-                                            };
-                                            let name =
-                                                palette::unique_palette_name(&palettes.0, &base);
-                                            let copy = Palette {
-                                                name,
-                                                colors: src.colors.clone(),
-                                                builtin: false,
-                                            };
-                                            palettes.0.push(copy);
-                                            palette_choice.0 = palettes.0.len() - 1;
-                                            io::palettes::save(&palettes.0);
-                                        }
-                                        if widgets::icon_only_button(
-                                            ui,
-                                            &theme,
-                                            icons::pencil(),
-                                            !active_is_builtin,
-                                        )
-                                        .on_hover_text(if active_is_builtin {
-                                            "Built-in palettes are read-only"
-                                        } else {
-                                            "Rename palette"
-                                        })
-                                        .clicked()
-                                        {
-                                            palette_rename.editing = Some(active_idx);
-                                            palette_rename.buf =
-                                                palettes.0[active_idx].name.clone();
-                                        }
-                                        let has_user =
-                                            palettes.0.iter().filter(|p| !p.builtin).count() > 0;
-                                        let del_enabled = !active_is_builtin && has_user;
-                                        if widgets::icon_only_button(
-                                            ui,
-                                            &theme,
-                                            icons::trash(),
-                                            del_enabled,
-                                        )
-                                        .on_hover_text(if active_is_builtin {
-                                            "Built-in palettes can't be deleted"
-                                        } else {
-                                            "Delete palette"
-                                        })
-                                        .clicked()
-                                        {
-                                            palettes.0.remove(active_idx);
-                                            if palette_choice.0 >= palettes.0.len() {
-                                                palette_choice.0 =
-                                                    palettes.0.len().saturating_sub(1);
-                                            }
-                                            palette_rename.editing = None;
-                                            io::palettes::save(&palettes.0);
-                                        }
-
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                                                let safe_idx = palette_choice
-                                                    .0
-                                                    .min(palettes.0.len().saturating_sub(1));
-                                                let current = &palettes.0[safe_idx];
-                                                let export_name = current.name.clone();
-                                                let export_colors = current.colors.clone();
-                                                let default_filename = format!(
-                                                    "{}.ase",
-                                                    palette::sanitize_filename(&current.name)
-                                                );
-                                                if widgets::icon_only_button(
-                                                    ui,
-                                                    &theme,
-                                                    icons::download(),
-                                                    !dialog_busy,
-                                                )
-                                                .on_hover_text("Export .ase…")
-                                                .clicked()
-                                                {
-                                                    pending.spawn(async move {
-                                                        rfd::AsyncFileDialog::new()
-                                                            .add_filter(
-                                                                "Adobe Swatch Exchange",
-                                                                &["ase"],
-                                                            )
-                                                            .set_file_name(&default_filename)
-                                                            .save_file()
-                                                            .await
-                                                            .map(|f| {
-                                                                DialogResult::ExportAse(
-                                                                    f.path().to_path_buf(),
-                                                                    export_name,
-                                                                    export_colors,
-                                                                )
-                                                            })
-                                                    });
-                                                }
-                                                if widgets::icon_only_button(
-                                                    ui,
-                                                    &theme,
-                                                    icons::upload(),
-                                                    !dialog_busy,
-                                                )
-                                                .on_hover_text("Import .ase…")
-                                                .clicked()
-                                                {
-                                                    pending.spawn(async move {
-                                                        rfd::AsyncFileDialog::new()
-                                                            .add_filter(
-                                                                "Adobe Swatch Exchange",
-                                                                &["ase"],
-                                                            )
-                                                            .pick_file()
-                                                            .await
-                                                            .map(|f| {
-                                                                DialogResult::ImportAse(
-                                                                    f.path().to_path_buf(),
-                                                                )
-                                                            })
-                                                    });
-                                                }
-                                            },
-                                        );
-                                    });
-
-                                    // Refresh — toolbar may have added/removed palettes.
-                                    active_idx =
-                                        palette_choice.0.min(palettes.0.len().saturating_sub(1));
-                                    palette_choice.0 = active_idx;
-                                    active_is_builtin = palettes.0[active_idx].builtin;
-
-                                    if !active_is_builtin {
+                                    // Built-in with unsaved scratch edits: nudge toward the
+                                    // "Save as new palette" action in the … menu.
+                                    if active_is_builtin && working.is_dirty_for(active_idx) {
                                         ui.add_space(space::SX);
-                                        let add_enabled =
-                                            !palettes.0[active_idx].colors.contains(&color.0);
-                                        if widgets::wide_action_button(
-                                            ui,
-                                            &theme,
-                                            icons::plus(),
-                                            "Add current color",
-                                            row_w,
-                                            add_enabled,
-                                        )
-                                        .on_hover_text(if !add_enabled {
-                                            "Color already in palette"
-                                        } else {
-                                            "Add current color as a swatch"
-                                        })
-                                        .clicked()
-                                        {
-                                            palettes.0[active_idx].colors.push(color.0);
-                                            io::palettes::save(&palettes.0);
-                                        }
-                                    }
-
-                                    ui.add_space(space::SM);
-                                    let mut reorder: Option<(usize, usize)> = None;
-                                    let mut remove_idx: Option<usize> = None;
-                                    let active_palette = palettes.0[active_idx].colors.clone();
-                                    let editable = !active_is_builtin;
-                                    if active_palette.is_empty() {
                                         widgets::hint_label(
                                             ui,
                                             &theme,
-                                            if editable {
-                                                "No swatches yet — add the current color above"
-                                            } else {
-                                                "Built-in palette — duplicate to add swatches"
-                                            },
+                                            "Modified — “Save as new palette” in the … menu to keep these edits",
                                         );
+                                    }
+
+                                    let active_colors =
+                                        palette::display_colors(&palettes, &working, active_idx)
+                                            .to_vec();
+
+                                    let add_enabled = !active_colors.contains(&color.0);
+                                    let mut add_clicked = false;
+                                    let mut reorder: Option<(usize, usize)> = None;
+                                    let mut remove_idx: Option<usize> = None;
+
+                                    // Manual grid layout: each cell is painted at a computed
+                                    // rect and interacts via `ui.interact`, instead of letting
+                                    // egui flow the swatches. That lets a dragged swatch leave
+                                    // its slot so the rest shift to open a gap at the drop
+                                    // target — the "make space" feedback. Fixed rows also dodge
+                                    // the wrap bug where click-and-drag cells refuse to wrap in
+                                    // `horizontal_wrapped`.
+                                    let n = active_colors.len();
+                                    let cell = swatch::PALETTE;
+                                    let stepx = cell.x + gap::TIGHT.x;
+                                    let stepy = cell.y + gap::TIGHT.y;
+                                    let avail = ui.available_width();
+                                    let cols = ((avail + gap::TIGHT.x) / stepx).floor().max(1.0)
+                                        as usize;
+                                    let total = n + 1; // colours + trailing `+` cell
+                                    let rows = total.div_ceil(cols);
+                                    let grid_h = (rows as f32 * stepy - gap::TIGHT.y).max(cell.y);
+
+                                    // Drag source set on a previous frame (egui clears the dnd
+                                    // payload on pointer release), clamped to a live index.
+                                    let dragging = egui::DragAndDrop::payload::<usize>(ui.ctx())
+                                        .map(|p| *p)
+                                        .filter(|&d| d < n);
+
+                                    let (grid_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(avail, grid_h),
+                                        egui::Sense::hover(),
+                                    );
+                                    let origin = grid_rect.min;
+                                    let cell_at = |slot: usize| -> egui::Rect {
+                                        let r = slot / cols;
+                                        let c = slot % cols;
+                                        egui::Rect::from_min_size(
+                                            origin
+                                                + egui::vec2(c as f32 * stepx, r as f32 * stepy),
+                                            cell,
+                                        )
+                                    };
+
+                                    // Non-dragged swatches in order; while dragging, a gap is
+                                    // opened at `gap_pos` (an index into this list) under the
+                                    // pointer.
+                                    let others: Vec<usize> =
+                                        (0..n).filter(|&i| Some(i) != dragging).collect();
+                                    let pointer = ui.ctx().pointer_interact_pos();
+                                    let gap_pos: Option<usize> = if dragging.is_some() {
+                                        pointer.map(|p| {
+                                            let rel = p - origin;
+                                            let c = ((rel.x / stepx) + 0.5)
+                                                .floor()
+                                                .clamp(0.0, cols as f32);
+                                            let r = (rel.y / stepy)
+                                                .floor()
+                                                .clamp(0.0, (rows as f32 - 1.0).max(0.0));
+                                            ((r as usize) * cols + c as usize).min(others.len())
+                                        })
                                     } else {
-                                        widgets::swatch_grid(ui, |ui| {
-                                            for (si, c) in active_palette.iter().enumerate() {
+                                        None
+                                    };
+
+                                    enum Slot {
+                                        Color(usize),
+                                        Gap,
+                                        Add,
+                                    }
+                                    let mut slots: Vec<Slot> = Vec::with_capacity(total + 1);
+                                    for (pos, &oi) in others.iter().enumerate() {
+                                        if gap_pos == Some(pos) {
+                                            slots.push(Slot::Gap);
+                                        }
+                                        slots.push(Slot::Color(oi));
+                                    }
+                                    if gap_pos == Some(others.len()) {
+                                        slots.push(Slot::Gap);
+                                    }
+                                    slots.push(Slot::Add);
+
+                                    let base = ui.id();
+                                    for (slot_idx, slot) in slots.iter().enumerate() {
+                                        let rect = cell_at(slot_idx);
+                                        match slot {
+                                            Slot::Gap => widgets::paint_swatch_gap(
+                                                ui,
+                                                &theme,
+                                                rect,
+                                                radius::XS,
+                                            ),
+                                            Slot::Add => {
+                                                let resp = ui.interact(
+                                                    rect,
+                                                    base.with("palette_add"),
+                                                    egui::Sense::click(),
+                                                );
+                                                widgets::paint_add_swatch(
+                                                    ui,
+                                                    &theme,
+                                                    rect,
+                                                    radius::XS,
+                                                    add_enabled,
+                                                    resp.hovered(),
+                                                );
+                                                let resp = resp.on_hover_text(if add_enabled {
+                                                    "Add current color"
+                                                } else {
+                                                    "Color already in palette"
+                                                });
+                                                if add_enabled {
+                                                    if resp.clicked() {
+                                                        add_clicked = true;
+                                                    }
+                                                    resp.on_hover_cursor(
+                                                        egui::CursorIcon::PointingHand,
+                                                    );
+                                                }
+                                            }
+                                            Slot::Color(oi) => {
+                                                let si = *oi;
+                                                let c = active_colors[si];
                                                 let col = egui::Color32::from_rgba_unmultiplied(
                                                     c[0], c[1], c[2], 255,
                                                 );
-                                                let select_state = if color.0 == *c {
+                                                let select_state = if color.0 == c {
                                                     widgets::SwatchSelect::Primary
-                                                } else if extras.contains(*c) {
+                                                } else if extras.contains(c) {
                                                     widgets::SwatchSelect::Extra
                                                 } else {
                                                     widgets::SwatchSelect::None
                                                 };
-                                                let swatch_id =
-                                                    egui::Id::new(("swatch", active_idx, si));
-                                                let mut clicked = false;
-                                                let resp = if editable {
-                                                    ui.dnd_drag_source(swatch_id, si, |ui| {
-                                                        let r = widgets::swatch_button(
-                                                            ui,
-                                                            &theme,
-                                                            col,
-                                                            swatch::PALETTE,
-                                                            radius::XS,
-                                                            select_state,
-                                                        );
-                                                        clicked = r.clicked();
-                                                        r
-                                                    })
-                                                    .response
-                                                } else {
-                                                    let r = widgets::swatch_button(
-                                                        ui,
-                                                        &theme,
-                                                        col,
-                                                        swatch::PALETTE,
-                                                        radius::XS,
-                                                        select_state,
-                                                    );
-                                                    clicked = r.clicked();
-                                                    r
-                                                };
-                                                if clicked {
-                                                    let shift = ui.input(|i| i.modifiers.shift);
+                                                let resp = ui.interact(
+                                                    rect,
+                                                    base.with(("palette_swatch", si)),
+                                                    egui::Sense::click_and_drag(),
+                                                );
+                                                widgets::paint_swatch(
+                                                    ui,
+                                                    &theme,
+                                                    rect,
+                                                    col,
+                                                    radius::XS,
+                                                    select_state,
+                                                );
+                                                if resp.clicked() {
+                                                    let shift =
+                                                        ui.input(|i| i.modifiers.shift);
                                                     color.0 = apply_swatch_click(
                                                         shift,
-                                                        *c,
+                                                        c,
                                                         color.0,
                                                         &mut extras,
                                                     );
                                                 }
-                                                if editable {
-                                                    egui::Popup::context_menu(&resp).show(|ui| {
-                                                        if ui.button("Remove").clicked() {
-                                                            remove_idx = Some(si);
-                                                            ui.close();
-                                                        }
-                                                    });
+                                                if resp.dragged() {
+                                                    egui::DragAndDrop::set_payload(
+                                                        ui.ctx(),
+                                                        si,
+                                                    );
                                                 }
-                                                resp.clone().on_hover_text(format!(
-                                                    "{}{}",
-                                                    widgets::hex_string([c[0], c[1], c[2]]),
-                                                    if editable {
-                                                        "  (drag to reorder, right-click to remove)"
-                                                    } else {
-                                                        ""
-                                                    },
-                                                ));
-                                                if editable {
-                                                    if let (Some(payload), true) = (
-                                                        resp.dnd_release_payload::<usize>(),
-                                                        resp.dnd_hover_payload::<usize>().is_some()
-                                                            || resp
-                                                                .dnd_release_payload::<usize>()
-                                                                .is_some(),
-                                                    ) {
-                                                        let from = *payload;
-                                                        if from != si {
-                                                            reorder = Some((from, si));
-                                                        }
+                                                egui::Popup::context_menu(&resp).show(|ui| {
+                                                    if ui.button("Remove").clicked() {
+                                                        remove_idx = Some(si);
+                                                        ui.close();
                                                     }
+                                                });
+                                                resp.on_hover_text(format!(
+                                                    "{}  (drag to reorder, right-click to remove)",
+                                                    widgets::hex_string([c[0], c[1], c[2]]),
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    // The dragged swatch follows the cursor as a lifted ghost;
+                                    // its interaction id lives here now (it left its grid slot),
+                                    // so the release is detected and committed against the gap.
+                                    if let Some(from) = dragging {
+                                        let c = active_colors[from];
+                                        let col = egui::Color32::from_rgba_unmultiplied(
+                                            c[0], c[1], c[2], 255,
+                                        );
+                                        let ghost_center =
+                                            pointer.unwrap_or_else(|| cell_at(0).center());
+                                        let ghost =
+                                            egui::Rect::from_center_size(ghost_center, cell);
+                                        ui.painter().rect_filled(
+                                            ghost.translate(egui::vec2(0.0, 2.0)),
+                                            egui::CornerRadius::same(radius::XS),
+                                            egui::Color32::from_black_alpha(70),
+                                        );
+                                        ui.painter().rect(
+                                            ghost,
+                                            egui::CornerRadius::same(radius::XS),
+                                            col,
+                                            egui::Stroke::new(stroke::ACCENT, theme.text),
+                                            egui::StrokeKind::Inside,
+                                        );
+                                        ui.ctx()
+                                            .set_cursor_icon(egui::CursorIcon::Grabbing);
+                                        let resp = ui.interact(
+                                            ghost,
+                                            base.with(("palette_swatch", from)),
+                                            egui::Sense::click_and_drag(),
+                                        );
+                                        if resp.dragged() {
+                                            egui::DragAndDrop::set_payload(ui.ctx(), from);
+                                        }
+                                        if resp.drag_stopped() {
+                                            if let Some(to) = gap_pos {
+                                                if to != from {
+                                                    reorder = Some((from, to));
                                                 }
                                             }
-                                        });
+                                        }
                                     }
-                                    if let Some(i) = remove_idx {
-                                        palettes.0[active_idx].colors.remove(i);
-                                        io::palettes::save(&palettes.0);
-                                    }
-                                    if let Some((from, to)) = reorder {
-                                        let colors = &mut palettes.0[active_idx].colors;
-                                        if from < colors.len() && to < colors.len() {
-                                            let c = colors.remove(from);
-                                            colors.insert(to, c);
+
+                                    if add_clicked {
+                                        let (colors, persist) = palette::edit_colors(
+                                            &mut palettes,
+                                            &mut working,
+                                            active_idx,
+                                        );
+                                        colors.push(color.0);
+                                        if persist {
                                             io::palettes::save(&palettes.0);
                                         }
                                     }
-                                    if active_is_builtin && !active_palette.is_empty() {
-                                        ui.add_space(space::SX);
-                                        widgets::hint_label(
-                                            ui,
-                                            &theme,
-                                            "Built-in palette — duplicate to add swatches",
+                                    if let Some(i) = remove_idx {
+                                        let (colors, persist) = palette::edit_colors(
+                                            &mut palettes,
+                                            &mut working,
+                                            active_idx,
                                         );
+                                        if i < colors.len() {
+                                            colors.remove(i);
+                                        }
+                                        if persist {
+                                            io::palettes::save(&palettes.0);
+                                        }
                                     }
-                                });
+                                    if let Some((from, to)) = reorder {
+                                        let (colors, persist) = palette::edit_colors(
+                                            &mut palettes,
+                                            &mut working,
+                                            active_idx,
+                                        );
+                                        if from < colors.len() && to < colors.len() {
+                                            let c = colors.remove(from);
+                                            colors.insert(to, c);
+                                            if persist {
+                                                io::palettes::save(&palettes.0);
+                                            }
+                                        }
+                                    }
+
+                                    widgets::section_divider(ui, &theme);
+                                }
 
                                 // Selection section — only when there's an active region.
                                 if let Some(aabb) = selection.aabb {
@@ -1193,8 +1309,11 @@ pub fn ui_system(
     if let Some(resp) = inspector_resp {
         let rect = resp.response.rect;
         onboarding_anchors.color_palette = Some(rect);
+        // Background order so floating windows (command palette, palette switcher
+        // — both `egui::Window` at `Order::Middle`) render above the edge line
+        // instead of having it slice across them.
         let painter = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Middle,
+            egui::Order::Background,
             egui::Id::new("inspector_panel_edge"),
         ));
         painter.vline(
@@ -1383,6 +1502,59 @@ pub fn ui_system(
             new_project.dialog_open = false;
         } else if cancel_clicked || esc {
             new_project.dialog_open = false;
+        }
+    }
+
+    // Command-palette-style palette switcher (opened from the … menu).
+    if let Some(target) = palette_switcher::draw(ctx, &theme, &mut switcher, &palettes.0) {
+        palette::request_select(target, &mut palette_choice, &mut working, &mut discard);
+    }
+
+    // Discard-edits confirm: switching away from a dirty built-in stages a
+    // target index here so the user can keep their scratch edits first.
+    if let Some(target) = discard.pending {
+        let name = palettes.0[palette_choice.0.min(palettes.0.len().saturating_sub(1))]
+            .name
+            .clone();
+        let mut open = true;
+        let mut save_clicked = false;
+        let mut discard_clicked = false;
+        let mut cancel_clicked = false;
+        widgets::modal_window(ctx, &theme, "Discard edits?", &mut open).show(ctx, |ui| {
+            ui.set_width(width::MODAL_DISCARD);
+            widgets::hint_label(
+                ui,
+                &theme,
+                &format!("“{name}” has unsaved swatches. Save them as a new palette, or discard?"),
+            );
+            ui.add_space(space::SM);
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = space::SX;
+                    if widgets::dialog_button(ui, &theme, "Save as new", true).clicked() {
+                        save_clicked = true;
+                    }
+                    if widgets::dialog_button(ui, &theme, "Discard", false).clicked() {
+                        discard_clicked = true;
+                    }
+                    if widgets::dialog_button(ui, &theme, "Cancel", false).clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+        });
+        if save_clicked {
+            let i = palette::save_as_new(&mut palettes, &mut palette_choice, &mut working);
+            palette_rename.editing = Some(i);
+            palette_rename.buf = palettes.0[i].name.clone();
+            io::palettes::save(&palettes.0);
+            discard.pending = None;
+        } else if discard_clicked {
+            working.clear();
+            palette_choice.0 = target.min(palettes.0.len().saturating_sub(1));
+            discard.pending = None;
+        } else if cancel_clicked || !open {
+            discard.pending = None;
         }
     }
 
