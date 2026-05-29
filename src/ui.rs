@@ -691,7 +691,7 @@ pub fn ui_system(
                                     let design_label = match grid.bounding_box() {
                                         Some((min, max)) => {
                                             let extent = max - min + bevy::math::IVec3::ONE;
-                                            format!("{}×{}×{}", extent.x, extent.y, extent.z)
+                                            format!("{} × {} × {}", extent.x, extent.y, extent.z)
                                         }
                                         None => "—".to_string(),
                                     };

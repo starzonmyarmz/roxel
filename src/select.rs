@@ -613,11 +613,11 @@ pub fn selection_key_action_system(
         selection.clear();
         return;
     }
-    if cmd
-        && keys.just_pressed(KeyCode::KeyA)
-        && let Some((min, max)) = grid.bounding_box()
-    {
-        selection.set_aabb(SelectionAabb { min, max });
+    if cmd && keys.just_pressed(KeyCode::KeyA) {
+        let cells: HashSet<IVec3> = grid.iter_occupied().map(|(p, _)| p).collect();
+        if !cells.is_empty() {
+            selection.set_cells(cells);
+        }
         return;
     }
     if (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete))
