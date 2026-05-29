@@ -12,6 +12,8 @@ egui surface and styling: anchored panel + floating surfaces, design tokens, the
 
 Both floating surfaces share `pill_frame` + `floating_area`. `space::FLOAT_GAP` is canvas-edge inset.
 
+`ui_system` (in `src/ui.rs`) owns the inspector + floating-surface layout. Two self-contained surfaces are split out: the foreground color picker popup body is `ui/color_picker.rs::space_color_picker`, and the three tail modals — Preferences, the new-project sheet, and the discard-edits confirm — are free functions in `ui/modals.rs` (`draw_preferences` / `draw_new_project` / `draw_discard`), called from `ui_system` when each is open. All four modal/popover surfaces (these three plus the two Cmd+K palettes) share `widgets::modal_frame`, render at `Order::Foreground`, and are backed by `widgets::modal_scrim` — a click-blocking full-window dim at `Order::Middle` drawn whenever any modal is open.
+
 **Focus mode**: Backquote (`` ` ``) flips `UiVisible.0` (`ui/visibility.rs`), hiding inspector + floating surfaces. Toasts/modals still render. Backquote (not Tab) avoids egui focus-traversal collision. Gated on `ctx.wants_keyboard_input()` so it types literally into focused fields.
 
 **macOS titlebar**: primary window has `titlebar_transparent` + `titlebar_show_title = false` + `fullsize_content_view`. Inspector reserves `height::MAC_TITLEBAR_GUTTER = 28` px top inner padding on macOS.
@@ -63,7 +65,7 @@ User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating oper
 
 `Preferences` (`theme.rs`) — fields: `theme`, `canvas_bg` (`MatchTheme` resolves via `canvas_match_color` to near-neutral grey, not bluish panel bg, so voxel hues read true — Light `#F2F3F6`, Dark `#1C1C1E`), `show_floor_grid` (master canvas chrome toggle: dot grid + vignette), `show_origin_axes` (RGB triad, auto-fades as voxels appear near origin), `color_space` (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch` — conversions in `src/color_space.rs`; chosen in the Preferences → Color → Format dropdown, consumed by the picker popup), `show_floating_menu_bar` (default `!cfg!(target_os = "macos")`), `last_update_check`, `onboarding_seen`.
 
-Editable color fields backed by `ColorEditBuffer` (`color_space.rs`) live **inside the picker popup** (`space_color_picker`), not the panel — string slots repopulated when `CurrentColor` or active space changes, so keystrokes don't roundtrip through `Color8` mid-edit (which would drop hue on greys / quantise OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
+Editable color fields backed by `ColorEditBuffer` (`color_space.rs`) live **inside the picker popup** (`ui/color_picker.rs::space_color_picker`), not the panel — string slots repopulated when `CurrentColor` or active space changes, so keystrokes don't roundtrip through `Color8` mid-edit (which would drop hue on greys / quantise OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
 
 **Every field after `theme` is `#[serde(default)]`** — any new field must have a default provider or older `preferences.ron` becomes unparseable and reverts to `Default`. Removed fields (`show_floor`, `floor_color`, `show_walls`, `wall_color`, `preview_outline`, `show_y_axis`) are silently dropped by ron's lax deserializer. Guard tests: `theme::tests::preferences_loads_after_floor_fields_removed`, `..._show_y_axis_field_removed`, `..._without_last_update_check`, `..._without_onboarding_seen_field`.
 
