@@ -12,23 +12,34 @@ Release notes.
 
 ## [Unreleased]
 
-- feat(io): file dialogs reopen in the last-used directory across sessions
-- feat(ui): "Check for updates on launch" toggle in Preferences to opt out of the startup check
-- feat(tools): remember the last Shape primitive between launches
-- feat(select): fill a selection with the current color via `F`, the command palette, or the Edit menu
-- feat(menu): surface Fill / Delete / Clear selection in the macOS Edit menu, with native `F` / `⌫` shortcuts gated on text focus
-- chore(deps): refresh Cargo.lock to latest semver-compatible patches
-- feat(ui): group camera Frame/preset items under a View → Camera submenu
-- fix(ui): palette switcher — square 12×12 preview swatches; bolder mixed-case group headers
-- feat(ui): color readout under the swatch is now selectable for copy
-- test(menu): cover `recent_item_label` formatting and no-filename fallback
-- feat(ui): color readouts and swatch tooltips follow the active Color Format; menu checks the active option
-- refactor(ui): recent + palette swatches share one cell/tooltip component; every color reference uses a monospace tooltip
-- fix(ui): palette swatches now hover-highlight like the recent-color strip
-- feat(ui): move Floor Grid + Origin Axes toggles from Preferences to the View menu
-- fix(ui): drop per-color "Pick color" entries from the Cmd+K palette
-- feat(ui): dim backdrop behind open modals; toast colors now follow the theme
-- refactor(ui): UI polish pass — design-token cleanup, shared modal frame, split ui.rs
+## [0.6.3] - 2026-05-29
+
+- chore: bump to 0.6.3
+- feat(select): fill a selection with the current color
+- feat(prefs): persist last dir, shape, and update-check opt-out
+- chore(deps): update Cargo.lock to latest compatible patches
+- feat(ui): nest camera items under a View → Camera submenu
+- fix(ui): refine palette switcher preview swatches and headers
+- feat(ui): make under-swatch color readout selectable
+- test(menu): cover recent_item_label formatting
+- feat(ui): apply Color Format everywhere; finish View menu toggles
+- fix(ui): hover-highlight palette swatches like the recent-color strip
+- fix(ui): remove per-color pick entries from command palette
+- fix(ui): rename "Color Space" menu to "Color Format"
+- fix(ui): enable the Color Space submenu
+- feat(ui): move color-space format from Preferences to the View menu
+- fix(ui): hide tool island under modal; scrim covers full window
+- fix(ui): modal renders above scrim again; hide chrome instead of layering
+- feat(ui): Esc closes the Preferences and Discard modals
+- fix(ui): modal scrim now covers the tool island and gizmo
+- docs: changelog for UI polish pass
+- refactor(ui): split color picker and modals out of ui.rs
+- feat(ui): dim backdrop behind open modals
+- refactor(ui): share one modal_frame across all floating sheets
+- refactor(ui): replace inline literals with design tokens
+- refactor(theme): extract hover_fill, dedupe three inlined blends
+- feat(theme): add semantic status colors, make toasts theme-aware
+- docs: finalize CHANGELOG for v0.6.2 [skip ci]
 
 ## [0.6.2] - 2026-05-29
 
