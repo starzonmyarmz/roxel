@@ -485,7 +485,8 @@ pub fn ui_system(
     }
 
     // ---------- Floating tool island ----------
-    if ui_visible.0 {
+    // Hidden behind a modal (it's egui Foreground, above the Middle scrim).
+    if ui_visible.0 && !modal_open {
         let island_resp = floating::tool_island(ctx, &theme, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             widgets::tool_button(

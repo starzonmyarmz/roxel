@@ -470,7 +470,12 @@ const SCRIM_ALPHA: u8 = 96;
 /// Senses clicks so the pointer can't reach the canvas behind it — no stray
 /// voxels land while a modal is up.
 pub fn modal_scrim(ctx: &egui::Context) {
-    let screen = ctx.viewport_rect();
+    // Full window rect (panels + canvas). `viewport_rect`/`content_rect` both
+    // exclude the side panel, which would leave the inspector undimmed — for a
+    // backdrop we explicitly want the whole window, so `screen_rect` is right
+    // despite its deprecation toward the layout-oriented accessors.
+    #[allow(deprecated)]
+    let screen = ctx.screen_rect();
     egui::Area::new(egui::Id::new("modal_scrim"))
         .order(egui::Order::Middle)
         .fixed_pos(screen.min)
