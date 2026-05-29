@@ -88,7 +88,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Color space
 
-`color_space.rs` — sRGB u8 storage everywhere. `ColorSpace` enum (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch`) selects the picker-popup readout; the active space is a persisted preference (`Preferences.color_space`) chosen from the **View → Color Space** menu (native menu on macOS, floating menu pill on Win/Linux), not an inspector control. Conversions: `parse_hex`, `rgb_to_hsl`/`hsl_to_rgb`, `rgb_to_hsb`/`hsb_to_rgb`, `rgb_to_oklch`/`oklch_to_rgb`. OKLCH path reuses `mesh::srgb_to_linear`/`linear_to_srgb` so the voxel-color pipeline and the inspector roundtrip match. sRGB roundtrip is within ±1/255.
+`color_space.rs` — sRGB u8 storage everywhere. `ColorSpace` enum (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch`) selects the picker-popup readout; the active space is a persisted preference (`Preferences.color_space`) chosen from the **View → Color Format** menu (native menu on macOS, floating menu pill on Win/Linux), not an inspector control. Conversions: `parse_hex`, `rgb_to_hsl`/`hsl_to_rgb`, `rgb_to_hsb`/`hsb_to_rgb`, `rgb_to_oklch`/`oklch_to_rgb`. OKLCH path reuses `mesh::srgb_to_linear`/`linear_to_srgb` so the voxel-color pipeline and the inspector roundtrip match. sRGB roundtrip is within ±1/255.
 
 `ColorEditBuffer` (same file) — string slots per space. Repopulated when `CurrentColor` or active space changes so keystrokes don't roundtrip through `Color8` mid-edit (drops hue on greys / quantises OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
 

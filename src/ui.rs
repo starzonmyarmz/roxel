@@ -400,7 +400,7 @@ pub fn ui_system(
                     egui::Image::new(icons::paint_bucket())
                         .fit_to_exact_size(icon::md_square())
                         .tint(TEXT),
-                    egui::RichText::new("Color Space").size(font::BODY),
+                    egui::RichText::new("Color Format").size(font::BODY),
                     |ui| {
                         ui.set_min_width(width::TOP_BAR_MENU);
                         for space in ColorSpace::ALL {
