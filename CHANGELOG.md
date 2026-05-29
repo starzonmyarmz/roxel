@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(select): selection survives camera orbit/pan — only Esc deselects, not right-click
+- fix(select): marching ants depth-test behind voxels instead of x-raying through
 - fix(select): Cmd+A selects only occupied voxels, not the whole bounding box
 - fix(ui): add spaces around × in sidebar size label
 - fix(ui): hide gizmo in focus mode; show during flyby when UI is visible

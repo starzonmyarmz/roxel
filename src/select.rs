@@ -10,15 +10,14 @@ use std::collections::{HashSet, VecDeque};
 pub const DOUBLE_CLICK_SECS: f64 = 0.4;
 
 /// Gizmo group for selection visuals: marching-ants outline tracing either
-/// the AABB hull or the silhouette of the cell mask. Configured with
-/// `depth_bias = -1.0` so the overlay x-rays through voxels — users need to
-/// see which cells are selected inside a solid block.
+/// the AABB hull or the silhouette of the cell mask. `depth_bias = 0.0` so the
+/// outline depth-tests normally — ants behind voxels are occluded, not x-rayed.
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct SelectionGizmos;
 
 pub fn configure_selection_gizmos(mut store: ResMut<GizmoConfigStore>) {
     let (config, _) = store.config_mut::<SelectionGizmos>();
-    config.depth_bias = -1.0;
+    config.depth_bias = 0.0;
     config.line.width = 1.5;
 }
 
