@@ -316,7 +316,7 @@ fn build_menu() -> MenuStore {
         true,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit7)),
     );
-    let color_space_sub = Submenu::new("Color Space", false);
+    let color_space_sub = Submenu::new("Color Space", true);
     let cs_items: Vec<MenuItem> = ColorSpace::ALL
         .iter()
         .map(|s| MenuItem::new(s.label(), true, None))
