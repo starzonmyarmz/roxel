@@ -340,17 +340,7 @@ pub fn swatch_button(
         SwatchSelect::Primary | SwatchSelect::Extra => {
             egui::Stroke::new(stroke::ACCENT, theme.text)
         }
-        SwatchSelect::None => {
-            let border = match theme.mode {
-                crate::theme::ThemeMode::Dark => {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 36)
-                }
-                crate::theme::ThemeMode::Light => {
-                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 36)
-                }
-            };
-            egui::Stroke::new(stroke::NORMAL, border)
-        }
+        SwatchSelect::None => egui::Stroke::NONE,
     };
     ui.add_sized(
         [size.x, size.y],
