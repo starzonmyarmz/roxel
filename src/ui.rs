@@ -814,155 +814,146 @@ pub fn ui_system(
                                     let row_w = (ui.available_width() - 2.0).max(80.0);
 
                                     widgets::section_header_action(ui, &theme, "Palette", |ui| {
-                                            let menu_resp = widgets::icon_only_button(
-                                                ui,
-                                                &theme,
-                                                icons::ellipsis(),
-                                                true,
-                                            )
-                                            .on_hover_text("Palette actions");
-                                            egui::Popup::menu(&menu_resp)
-                                                .close_behavior(
-                                                    egui::PopupCloseBehavior::CloseOnClick,
-                                                )
-                                                .show(|ui| {
-                                                    // Roomier menu items — wider horizontal
-                                                    // padding so labels breathe off both edges.
-                                                    ui.set_min_width(width::TOP_BAR_MENU);
-                                                    ui.spacing_mut().button_padding =
-                                                        crate::ui::tokens::pad::MENU;
-                                                    if ui.button("Switch palette…").clicked() {
-                                                        switcher.open_fresh();
-                                                    }
-                                                    ui.separator();
-                                                    if ui.button("New palette").clicked() {
-                                                        working.clear();
-                                                        let name =
-                                                            palette::next_palette_name(&palettes.0);
-                                                        palettes.0.push(Palette {
-                                                            name,
-                                                            colors: Vec::new(),
-                                                            builtin: false,
-                                                        });
-                                                        let i = palettes.0.len() - 1;
-                                                        palette_choice.0 = i;
-                                                        palette_rename.editing = Some(i);
-                                                        palette_rename.buf =
-                                                            palettes.0[i].name.clone();
-                                                        io::palettes::save(&palettes.0);
-                                                    }
-                                                    let save_as_label = if active_is_builtin {
-                                                        "Save as new palette"
-                                                    } else {
-                                                        "Duplicate"
-                                                    };
-                                                    if ui.button(save_as_label).clicked() {
-                                                        let i = palette::save_as_new(
-                                                            &mut palettes,
-                                                            &mut palette_choice,
-                                                            &mut working,
-                                                        );
-                                                        palette_rename.editing = Some(i);
-                                                        palette_rename.buf =
-                                                            palettes.0[i].name.clone();
-                                                        io::palettes::save(&palettes.0);
-                                                    }
-                                                    if !active_is_builtin {
-                                                        if ui.button("Rename…").clicked() {
-                                                            palette_rename.editing =
-                                                                Some(active_idx);
-                                                            palette_rename.buf =
-                                                                palettes.0[active_idx].name.clone();
-                                                        }
-                                                        let has_user = palettes
-                                                            .0
-                                                            .iter()
-                                                            .filter(|p| !p.builtin)
-                                                            .count()
-                                                            > 0;
-                                                        if ui
-                                                            .add_enabled(
-                                                                has_user,
-                                                                egui::Button::new("Delete"),
-                                                            )
-                                                            .clicked()
-                                                        {
-                                                            palettes.0.remove(active_idx);
-                                                            if palette_choice.0 >= palettes.0.len()
-                                                            {
-                                                                palette_choice.0 = palettes
-                                                                    .0
-                                                                    .len()
-                                                                    .saturating_sub(1);
-                                                            }
-                                                            palette_rename.editing = None;
-                                                            working.clear();
-                                                            io::palettes::save(&palettes.0);
-                                                        }
-                                                    }
-                                                    ui.separator();
-                                                    let dialog_busy = pending.is_active();
-                                                    let safe_idx = palette_choice
-                                                        .0
-                                                        .min(palettes.0.len().saturating_sub(1));
-                                                    let export_name =
-                                                        palettes.0[safe_idx].name.clone();
-                                                    let export_colors = palette::display_colors(
-                                                        &palettes, &working, safe_idx,
-                                                    )
-                                                    .to_vec();
-                                                    let default_filename = format!(
-                                                        "{}.ase",
-                                                        palette::sanitize_filename(&export_name)
+                                        let menu_resp = widgets::icon_only_button(
+                                            ui,
+                                            &theme,
+                                            icons::ellipsis(),
+                                            true,
+                                        )
+                                        .on_hover_text("Palette actions");
+                                        egui::Popup::menu(&menu_resp)
+                                            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                                            .show(|ui| {
+                                                // Roomier menu items — wider horizontal
+                                                // padding so labels breathe off both edges.
+                                                ui.set_min_width(width::TOP_BAR_MENU);
+                                                ui.spacing_mut().button_padding =
+                                                    crate::ui::tokens::pad::MENU;
+                                                if ui.button("Switch palette…").clicked() {
+                                                    switcher.open_fresh();
+                                                }
+                                                ui.separator();
+                                                if ui.button("New palette").clicked() {
+                                                    working.clear();
+                                                    let name =
+                                                        palette::next_palette_name(&palettes.0);
+                                                    palettes.0.push(Palette {
+                                                        name,
+                                                        colors: Vec::new(),
+                                                        builtin: false,
+                                                    });
+                                                    let i = palettes.0.len() - 1;
+                                                    palette_choice.0 = i;
+                                                    palette_rename.editing = Some(i);
+                                                    palette_rename.buf = palettes.0[i].name.clone();
+                                                    io::palettes::save(&palettes.0);
+                                                }
+                                                let save_as_label = if active_is_builtin {
+                                                    "Save as new palette"
+                                                } else {
+                                                    "Duplicate"
+                                                };
+                                                if ui.button(save_as_label).clicked() {
+                                                    let i = palette::save_as_new(
+                                                        &mut palettes,
+                                                        &mut palette_choice,
+                                                        &mut working,
                                                     );
+                                                    palette_rename.editing = Some(i);
+                                                    palette_rename.buf = palettes.0[i].name.clone();
+                                                    io::palettes::save(&palettes.0);
+                                                }
+                                                if !active_is_builtin {
+                                                    if ui.button("Rename…").clicked() {
+                                                        palette_rename.editing = Some(active_idx);
+                                                        palette_rename.buf =
+                                                            palettes.0[active_idx].name.clone();
+                                                    }
+                                                    let has_user = palettes
+                                                        .0
+                                                        .iter()
+                                                        .filter(|p| !p.builtin)
+                                                        .count()
+                                                        > 0;
                                                     if ui
                                                         .add_enabled(
-                                                            !dialog_busy,
-                                                            egui::Button::new("Export .ase…"),
+                                                            has_user,
+                                                            egui::Button::new("Delete"),
                                                         )
                                                         .clicked()
                                                     {
-                                                        pending.spawn(async move {
-                                                            rfd::AsyncFileDialog::new()
-                                                                .add_filter(
-                                                                    "Adobe Swatch Exchange",
-                                                                    &["ase"],
-                                                                )
-                                                                .set_file_name(&default_filename)
-                                                                .save_file()
-                                                                .await
-                                                                .map(|f| {
-                                                                    DialogResult::ExportAse(
-                                                                        f.path().to_path_buf(),
-                                                                        export_name,
-                                                                        export_colors,
-                                                                    )
-                                                                })
-                                                        });
+                                                        palettes.0.remove(active_idx);
+                                                        if palette_choice.0 >= palettes.0.len() {
+                                                            palette_choice.0 =
+                                                                palettes.0.len().saturating_sub(1);
+                                                        }
+                                                        palette_rename.editing = None;
+                                                        working.clear();
+                                                        io::palettes::save(&palettes.0);
                                                     }
-                                                    if ui
-                                                        .add_enabled(
-                                                            !dialog_busy,
-                                                            egui::Button::new("Import .ase…"),
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        pending.spawn(async move {
-                                                            rfd::AsyncFileDialog::new()
-                                                                .add_filter(
-                                                                    "Adobe Swatch Exchange",
-                                                                    &["ase"],
+                                                }
+                                                ui.separator();
+                                                let dialog_busy = pending.is_active();
+                                                let safe_idx = palette_choice
+                                                    .0
+                                                    .min(palettes.0.len().saturating_sub(1));
+                                                let export_name = palettes.0[safe_idx].name.clone();
+                                                let export_colors = palette::display_colors(
+                                                    &palettes, &working, safe_idx,
+                                                )
+                                                .to_vec();
+                                                let default_filename = format!(
+                                                    "{}.ase",
+                                                    palette::sanitize_filename(&export_name)
+                                                );
+                                                if ui
+                                                    .add_enabled(
+                                                        !dialog_busy,
+                                                        egui::Button::new("Export .ase…"),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    pending.spawn(async move {
+                                                        rfd::AsyncFileDialog::new()
+                                                            .add_filter(
+                                                                "Adobe Swatch Exchange",
+                                                                &["ase"],
+                                                            )
+                                                            .set_file_name(&default_filename)
+                                                            .save_file()
+                                                            .await
+                                                            .map(|f| {
+                                                                DialogResult::ExportAse(
+                                                                    f.path().to_path_buf(),
+                                                                    export_name,
+                                                                    export_colors,
                                                                 )
-                                                                .pick_file()
-                                                                .await
-                                                                .map(|f| {
-                                                                    DialogResult::ImportAse(
-                                                                        f.path().to_path_buf(),
-                                                                    )
-                                                                })
-                                                        });
-                                                    }
-                                                });
+                                                            })
+                                                    });
+                                                }
+                                                if ui
+                                                    .add_enabled(
+                                                        !dialog_busy,
+                                                        egui::Button::new("Import .ase…"),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    pending.spawn(async move {
+                                                        rfd::AsyncFileDialog::new()
+                                                            .add_filter(
+                                                                "Adobe Swatch Exchange",
+                                                                &["ase"],
+                                                            )
+                                                            .pick_file()
+                                                            .await
+                                                            .map(|f| {
+                                                                DialogResult::ImportAse(
+                                                                    f.path().to_path_buf(),
+                                                                )
+                                                            })
+                                                    });
+                                                }
+                                            });
                                     });
 
                                     // Refresh — menu may have changed the selection.
@@ -1021,17 +1012,6 @@ pub fn ui_system(
                                         });
                                     }
 
-                                    // Built-in with unsaved scratch edits: nudge toward the
-                                    // "Save as new palette" action in the … menu.
-                                    if active_is_builtin && working.is_dirty_for(active_idx) {
-                                        ui.add_space(space::SX);
-                                        widgets::hint_label(
-                                            ui,
-                                            &theme,
-                                            "Modified — “Save as new palette” in the … menu to keep these edits",
-                                        );
-                                    }
-
                                     let active_colors =
                                         palette::display_colors(&palettes, &working, active_idx)
                                             .to_vec();
@@ -1053,8 +1033,8 @@ pub fn ui_system(
                                     let stepx = cell.x + gap::TIGHT.x;
                                     let stepy = cell.y + gap::TIGHT.y;
                                     let avail = ui.available_width();
-                                    let cols = ((avail + gap::TIGHT.x) / stepx).floor().max(1.0)
-                                        as usize;
+                                    let cols =
+                                        ((avail + gap::TIGHT.x) / stepx).floor().max(1.0) as usize;
                                     let total = n + 1; // colours + trailing `+` cell
                                     let rows = total.div_ceil(cols);
                                     let grid_h = (rows as f32 * stepy - gap::TIGHT.y).max(cell.y);
@@ -1074,8 +1054,7 @@ pub fn ui_system(
                                         let r = slot / cols;
                                         let c = slot % cols;
                                         egui::Rect::from_min_size(
-                                            origin
-                                                + egui::vec2(c as f32 * stepx, r as f32 * stepy),
+                                            origin + egui::vec2(c as f32 * stepx, r as f32 * stepy),
                                             cell,
                                         )
                                     };
@@ -1202,8 +1181,7 @@ pub fn ui_system(
                                                     select_state,
                                                 );
                                                 if resp.clicked() {
-                                                    let shift =
-                                                        ui.input(|i| i.modifiers.shift);
+                                                    let shift = ui.input(|i| i.modifiers.shift);
                                                     color.0 = apply_swatch_click(
                                                         shift,
                                                         c,
@@ -1212,10 +1190,7 @@ pub fn ui_system(
                                                     );
                                                 }
                                                 if resp.dragged() {
-                                                    egui::DragAndDrop::set_payload(
-                                                        ui.ctx(),
-                                                        si,
-                                                    );
+                                                    egui::DragAndDrop::set_payload(ui.ctx(), si);
                                                 }
                                                 egui::Popup::context_menu(&resp).show(|ui| {
                                                     if ui.button("Remove").clicked() {
@@ -1223,10 +1198,14 @@ pub fn ui_system(
                                                         ui.close();
                                                     }
                                                 });
-                                                resp.on_hover_text(format!(
-                                                    "{}  (drag to reorder, right-click to remove)",
-                                                    widgets::hex_string([c[0], c[1], c[2]]),
-                                                ));
+                                                resp.on_hover_ui(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(widgets::hex_string([
+                                                            c[0], c[1], c[2],
+                                                        ]))
+                                                        .monospace(),
+                                                    );
+                                                });
                                             }
                                         }
                                     }
@@ -1255,8 +1234,7 @@ pub fn ui_system(
                                             egui::Stroke::new(stroke::ACCENT, theme.text),
                                             egui::StrokeKind::Inside,
                                         );
-                                        ui.ctx()
-                                            .set_cursor_icon(egui::CursorIcon::Grabbing);
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                         let resp = ui.interact(
                                             ghost,
                                             base.with(("palette_swatch", from)),
@@ -1267,9 +1245,10 @@ pub fn ui_system(
                                         }
                                         if resp.drag_stopped()
                                             && let Some(to) = gap_pos
-                                                && to != from {
-                                                    reorder = Some((from, to));
-                                                }
+                                            && to != from
+                                        {
+                                            reorder = Some((from, to));
+                                        }
                                     }
 
                                     if add_clicked {
