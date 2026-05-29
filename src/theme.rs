@@ -30,6 +30,13 @@ pub struct Theme {
     pub text_dim: egui::Color32,
     pub border: egui::Color32,
     pub faint: egui::Color32,
+    /// Semantic status colors for toasts (and any future status chrome). Tuned
+    /// per mode: dark uses lifted, slightly desaturated hues that read on the
+    /// near-black panel; light uses deeper, more saturated hues so they hold
+    /// contrast against white.
+    pub success: egui::Color32,
+    pub error: egui::Color32,
+    pub info: egui::Color32,
     pub mode: ThemeMode,
 }
 
@@ -52,6 +59,9 @@ impl Theme {
             text_dim: egui::Color32::from_rgb(150, 158, 172),
             border: egui::Color32::from_rgb(0x2C, 0x2D, 0x32),
             faint: egui::Color32::from_rgb(0x1F, 0x20, 0x23),
+            success: egui::Color32::from_rgb(0x4C, 0xAF, 0x66),
+            error: egui::Color32::from_rgb(0xDC, 0x5A, 0x5A),
+            info: egui::Color32::from_rgb(0x48, 0x82, 0xC8),
             mode: ThemeMode::Dark,
         }
     }
@@ -70,6 +80,9 @@ impl Theme {
             text_dim: egui::Color32::from_rgb(110, 120, 135),
             border: egui::Color32::from_rgb(210, 215, 225),
             faint: egui::Color32::from_rgb(248, 249, 251),
+            success: egui::Color32::from_rgb(0x2E, 0x8E, 0x4E),
+            error: egui::Color32::from_rgb(0xC8, 0x40, 0x3A),
+            info: egui::Color32::from_rgb(0x33, 0x6F, 0xC0),
             mode: ThemeMode::Light,
         }
     }
@@ -145,6 +158,39 @@ mod tests {
                 a.r(),
                 a.g(),
                 a.b()
+            );
+        }
+    }
+
+    #[test]
+    fn status_colors_are_hue_dominant_in_both_modes() {
+        // Toasts read their tint from these slots; guard that success stays
+        // green-dominant, error red-dominant, and info blue-dominant so a future
+        // palette edit can't accidentally swap a toast's meaning by hue.
+        for t in [Theme::dark(), Theme::light()] {
+            let s = t.success;
+            assert!(
+                s.g() > s.r() && s.g() > s.b(),
+                "success not green-dominant: r={} g={} b={}",
+                s.r(),
+                s.g(),
+                s.b()
+            );
+            let e = t.error;
+            assert!(
+                e.r() > e.g() && e.r() > e.b(),
+                "error not red-dominant: r={} g={} b={}",
+                e.r(),
+                e.g(),
+                e.b()
+            );
+            let i = t.info;
+            assert!(
+                i.b() > i.r() && i.b() > i.g(),
+                "info not blue-dominant: r={} g={} b={}",
+                i.r(),
+                i.g(),
+                i.b()
             );
         }
     }

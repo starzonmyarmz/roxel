@@ -84,11 +84,9 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
             ui.spacing_mut().item_spacing.y = space::SX;
             for t in toasts.0.iter() {
                 let (accent, icon_src) = match t.kind {
-                    ToastKind::Success => {
-                        (egui::Color32::from_rgb(76, 175, 102), Some(icons::check()))
-                    }
-                    ToastKind::Error => (egui::Color32::from_rgb(220, 90, 90), Some(icons::x())),
-                    ToastKind::Info => (egui::Color32::from_rgb(72, 130, 200), None),
+                    ToastKind::Success => (theme.success, Some(icons::check())),
+                    ToastKind::Error => (theme.error, Some(icons::x())),
+                    ToastKind::Info => (theme.info, None),
                 };
                 let fade = (t.remaining / FADE_WINDOW).clamp(0.0, 1.0);
                 // Tint background: take the kind's accent, fade to 14% alpha
