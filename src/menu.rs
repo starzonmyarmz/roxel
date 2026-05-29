@@ -669,6 +669,40 @@ fn open_changelog() {
         .spawn();
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn recent_label_is_one_indexed_with_filename() {
+        let label = recent_item_label(0, Path::new("/home/user/scene.rox"));
+        assert_eq!(label, "1  scene.rox");
+        let label = recent_item_label(4, Path::new("/tmp/dragon.rox"));
+        assert_eq!(label, "5  dragon.rox");
+    }
+
+    #[test]
+    fn recent_label_strips_directories() {
+        let label = recent_item_label(1, Path::new("/a/b/c/model.rox"));
+        assert_eq!(label, "2  model.rox");
+    }
+
+    #[test]
+    fn recent_label_bare_filename_no_dir() {
+        let label = recent_item_label(0, Path::new("scene.rox"));
+        assert_eq!(label, "1  scene.rox");
+    }
+
+    #[test]
+    fn recent_label_falls_back_to_full_path_when_no_filename() {
+        // A path ending in `..` has no `file_name()`; falls back to the
+        // full path string rather than panicking.
+        let label = recent_item_label(0, Path::new("/a/b/.."));
+        assert_eq!(label, "1  /a/b/..");
+    }
+}
+
 fn spawn_open(pending: &mut PendingDialog) {
     if pending.is_active() {
         return;
