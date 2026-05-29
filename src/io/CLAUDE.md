@@ -50,4 +50,6 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 `update_menu_enabled_system` greys undo/redo when stacks are empty. Open Recent reuses `MAX_RECENT` pre-allocated `MenuItem`s (muda doesn't support clean runtime creation).
 
+**Plain-key (no-modifier) accelerators must be gated on egui focus.** Fill (`F`) and Delete (`⌫`) selection carry native key-equivalents so the menu shows the right-aligned shortcut. AppKit routes a key-equivalent *before* the key reaches the winit view and is blind to egui text focus, so `update_menu_enabled_system` disables those items whenever `ctx.wants_keyboard_input()` (else the hex field couldn't type "f", etc.) — a disabled item won't fire its equivalent. A disabled item also lets the focus-aware `selection_key_action_system` (Win/Linux path) own the key instead. Delete additionally gates on `SelectPhase::Idle`. Esc-bound ops (Clear selection) are deliberately *not* accelerated — Esc is overloaded (modals, flyby, drag-cancel) and stays owned by `tool_input_system`.
+
 Menu mirrors `ui.rs` File/Edit — wire new dialog actions into both unless they are mac-only.

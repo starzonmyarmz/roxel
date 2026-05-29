@@ -12,6 +12,7 @@ use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io::recent::MAX_RECENT;
 use crate::theme::{Preferences, PreferencesWindow, save_preferences};
+use crate::tools::{CurrentColor, ExtraColors, RecentColors, color_pool};
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, new_dialog,
     spawn_save, spawn_save_as,
@@ -36,6 +37,9 @@ pub enum MenuAction {
     ImportGox,
     Undo,
     Redo,
+    FillSelection,
+    DeleteSelectionContents,
+    ClearSelection,
     Cut,
     Copy,
     Paste,
@@ -63,6 +67,9 @@ pub struct MenuStore {
     actions: HashMap<String, MenuAction>,
     undo_item: MenuItem,
     redo_item: MenuItem,
+    fill_selection_item: MenuItem,
+    delete_selection_item: MenuItem,
+    clear_selection_item: MenuItem,
     cut_item: MenuItem,
     copy_item: MenuItem,
     paste_item: MenuItem,
@@ -235,6 +242,24 @@ fn build_menu() -> MenuStore {
             Code::KeyZ,
         )),
     );
+    // Fill (F) and Delete (Backspace) carry native key-equivalents so the menu
+    // shows the right-aligned shortcut. A plain key-equivalent is routed by
+    // AppKit before the key reaches the winit view and is blind to egui text
+    // focus, so `update_menu_enabled_system` disables these items whenever egui
+    // wants the keyboard (hex field needs "f", etc.) — a disabled item won't
+    // fire its equivalent. Clear is left unbound: Esc is overloaded (modals,
+    // flyby, drag-cancel) and must stay owned by tool_input_system.
+    let fill_selection_item = MenuItem::new(
+        "Fill Selection",
+        false,
+        Some(Accelerator::new(None, Code::KeyF)),
+    );
+    let delete_selection_item = MenuItem::new(
+        "Delete Selection Contents",
+        false,
+        Some(Accelerator::new(None, Code::Backspace)),
+    );
+    let clear_selection_item = MenuItem::new("Clear Selection", false, None);
     let cut_item = MenuItem::new(
         "Cut",
         false,
@@ -256,6 +281,10 @@ fn build_menu() -> MenuStore {
         &undo_item,
         &redo_item,
         &PredefinedMenuItem::separator(),
+        &fill_selection_item,
+        &delete_selection_item,
+        &clear_selection_item,
+        &PredefinedMenuItem::separator(),
         &cut_item,
         &copy_item,
         &paste_item,
@@ -268,6 +297,18 @@ fn build_menu() -> MenuStore {
 
     actions.insert(undo_item.id().0.clone(), MenuAction::Undo);
     actions.insert(redo_item.id().0.clone(), MenuAction::Redo);
+    actions.insert(
+        fill_selection_item.id().0.clone(),
+        MenuAction::FillSelection,
+    );
+    actions.insert(
+        delete_selection_item.id().0.clone(),
+        MenuAction::DeleteSelectionContents,
+    );
+    actions.insert(
+        clear_selection_item.id().0.clone(),
+        MenuAction::ClearSelection,
+    );
     actions.insert(cut_item.id().0.clone(), MenuAction::Cut);
     actions.insert(copy_item.id().0.clone(), MenuAction::Copy);
     actions.insert(paste_item.id().0.clone(), MenuAction::Paste);
@@ -420,6 +461,9 @@ fn build_menu() -> MenuStore {
         actions,
         undo_item,
         redo_item,
+        fill_selection_item,
+        delete_selection_item,
+        clear_selection_item,
         cut_item,
         copy_item,
         paste_item,
@@ -449,26 +493,50 @@ pub fn poll_menu_events_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_menu_enabled_system(
     _marker: NonSendMarker,
     store: Option<NonSend<MenuStore>>,
+    mut contexts: bevy_egui::EguiContexts,
     history: Res<History>,
     selection: Res<crate::select::Selection>,
+    select_state: Res<crate::select::SelectState>,
     clipboard: Res<crate::clipboard::Clipboard>,
     grid: Res<VoxelGrid>,
     prefs: Res<Preferences>,
 ) {
     let Some(store) = store else { return };
+    // A focused egui text field (hex input, palette rename, command palette)
+    // must keep its keystrokes — disable the plain-key selection items so
+    // AppKit doesn't fire their F / Backspace equivalents over the field.
+    let egui_wants = contexts
+        .ctx_mut()
+        .map(|c| c.wants_keyboard_input())
+        .unwrap_or(false);
     let undo_on = !history.undo.is_empty();
     let redo_on = !history.redo.is_empty();
     let has_sel = selection.aabb.is_some();
     let has_clip = clipboard.has_stamp();
     let has_voxels = grid.count() > 0;
+    // Idle gate mirrors selection_key_action_system: Backspace only deletes
+    // when no select drag is mid-flight.
+    let idle = select_state.phase == crate::select::SelectPhase::Idle;
+    let fill_on = has_sel && !egui_wants;
+    let delete_on = has_sel && idle && !egui_wants;
     if store.undo_item.is_enabled() != undo_on {
         store.undo_item.set_enabled(undo_on);
     }
     if store.redo_item.is_enabled() != redo_on {
         store.redo_item.set_enabled(redo_on);
+    }
+    if store.fill_selection_item.is_enabled() != fill_on {
+        store.fill_selection_item.set_enabled(fill_on);
+    }
+    if store.delete_selection_item.is_enabled() != delete_on {
+        store.delete_selection_item.set_enabled(delete_on);
+    }
+    if store.clear_selection_item.is_enabled() != has_sel {
+        store.clear_selection_item.set_enabled(has_sel);
     }
     if store.cut_item.is_enabled() != has_sel {
         store.cut_item.set_enabled(has_sel);
@@ -549,6 +617,9 @@ pub struct MenuActionParams<'w> {
     pub prefs: ResMut<'w, Preferences>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
     pub selection: ResMut<'w, crate::select::Selection>,
+    pub color: Res<'w, CurrentColor>,
+    pub extras: Res<'w, ExtraColors>,
+    pub recent_colors: ResMut<'w, RecentColors>,
     pub clipboard: ResMut<'w, crate::clipboard::Clipboard>,
     pub toasts: ResMut<'w, crate::ui::Toasts>,
     pub onboarding: ResMut<'w, crate::onboarding::Onboarding>,
@@ -590,6 +661,26 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ImportGox => spawn_import_gox(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::Undo => p.history.undo(&mut p.grid),
             MenuAction::Redo => p.history.redo(&mut p.grid),
+            MenuAction::FillSelection => {
+                if p.selection.aabb.is_some() {
+                    let pool = color_pool(p.color.0, &p.extras.0);
+                    let used = crate::select::recolor_selection(
+                        &mut p.grid,
+                        &mut p.history,
+                        &p.selection,
+                        &pool,
+                    );
+                    for c in used {
+                        p.recent_colors.push(c);
+                    }
+                }
+            }
+            MenuAction::DeleteSelectionContents => {
+                if p.selection.aabb.is_some() {
+                    crate::select::clear_selection(&mut p.grid, &mut p.history, &p.selection);
+                }
+            }
+            MenuAction::ClearSelection => p.selection.clear(),
             MenuAction::Copy => {
                 if let Some(stamp) = crate::clipboard::copy_selection(&p.grid, &p.selection) {
                     let n = stamp.voxel_count();

@@ -6,7 +6,9 @@ use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
 use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
-use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
+use crate::tools::{
+    CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState, color_pool,
+};
 use crate::ui::palette::{
     DiscardConfirm, Palette, PaletteChoice, Palettes, WorkingPalette, display_colors, edit_colors,
     next_palette_name, request_select, save_as_new,
@@ -88,6 +90,7 @@ pub enum CommandAction {
 
     Undo,
     Redo,
+    FillSelection,
     DeleteSelectionContents,
     ClearSelection,
     CopySelection,
@@ -350,6 +353,14 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         Some("⌘⇧Z"),
         state.has_redo,
         CommandAction::Redo,
+    ));
+    out.push(entry(
+        "Fill selection",
+        Category::Edit,
+        "paint recolor current color voxels",
+        Some("F"),
+        state.has_selection,
+        CommandAction::FillSelection,
     ));
     out.push(entry(
         "Delete selection contents",
@@ -1160,6 +1171,8 @@ pub struct DispatchParams<'w> {
     working: ResMut<'w, WorkingPalette>,
     discard: ResMut<'w, DiscardConfirm>,
     color: ResMut<'w, CurrentColor>,
+    extras: ResMut<'w, ExtraColors>,
+    recent: ResMut<'w, RecentColors>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
     flyby: ResMut<'w, crate::camera::FlybyState>,
@@ -1257,6 +1270,16 @@ pub fn dispatch_command_palette_system(
         ),
         CommandAction::Undo => p.history.undo(&mut p.grid),
         CommandAction::Redo => p.history.redo(&mut p.grid),
+        CommandAction::FillSelection => {
+            if p.selection.aabb.is_some() {
+                let pool = color_pool(p.color.0, &p.extras.0);
+                let used =
+                    select::recolor_selection(&mut p.grid, &mut p.history, &p.selection, &pool);
+                for c in used {
+                    p.recent.push(c);
+                }
+            }
+        }
         CommandAction::DeleteSelectionContents => {
             if p.selection.aabb.is_some() {
                 select::clear_selection(&mut p.grid, &mut p.history, &p.selection);
@@ -1618,6 +1641,26 @@ mod tests {
             .find(|e| matches!(e.action, CommandAction::Undo))
             .expect("undo entry");
         assert!(!undo.enabled);
+    }
+
+    #[test]
+    fn catalog_gates_fill_selection_on_selection() {
+        let palettes = vec![pal("p1", true)];
+        let mut state = dummy(&palettes);
+
+        state.has_selection = false;
+        let fill = build_catalog(&state)
+            .into_iter()
+            .find(|e| matches!(e.action, CommandAction::FillSelection))
+            .expect("fill entry");
+        assert!(!fill.enabled, "disabled without a selection");
+
+        state.has_selection = true;
+        let fill = build_catalog(&state)
+            .into_iter()
+            .find(|e| matches!(e.action, CommandAction::FillSelection))
+            .expect("fill entry");
+        assert!(fill.enabled, "enabled with a selection");
     }
 
     #[test]

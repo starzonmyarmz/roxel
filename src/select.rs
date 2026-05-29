@@ -1,6 +1,8 @@
 use crate::grid::{Color8, VoxelGrid};
 use crate::history::History;
-use crate::tools::{StrokeAnchor, Tool, ToolState};
+use crate::tools::{
+    CurrentColor, ExtraColors, RecentColors, StrokeAnchor, Tool, ToolState, color_pool,
+};
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
 
@@ -579,6 +581,7 @@ pub fn selection_render_system(
 
 /// Backspace/Delete clears voxels inside selection. Esc clears the selection.
 /// Both are gated on egui not capturing keys.
+#[allow(clippy::too_many_arguments)]
 pub fn selection_key_action_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
@@ -587,6 +590,9 @@ pub fn selection_key_action_system(
     mut history: ResMut<History>,
     tool: Res<ToolState>,
     select_state: Res<SelectState>,
+    color: Res<CurrentColor>,
+    extras: Res<ExtraColors>,
+    mut recent: ResMut<RecentColors>,
 ) {
     let egui_wants = contexts
         .ctx_mut()
@@ -624,6 +630,19 @@ pub fn selection_key_action_system(
         && select_state.phase == SelectPhase::Idle
     {
         clear_selection(&mut grid, &mut history, &selection);
+        return;
+    }
+    // F fills the selection with the current color pool (per-cell sampled),
+    // mirroring the Paint tool. Empty cells stay empty.
+    if keys.just_pressed(KeyCode::KeyF)
+        && !cmd
+        && selection.aabb.is_some()
+        && select_state.phase == SelectPhase::Idle
+    {
+        let pool = color_pool(color.0, &extras.0);
+        for c in recolor_selection(&mut grid, &mut history, &selection, &pool) {
+            recent.push(c);
+        }
     }
 }
 

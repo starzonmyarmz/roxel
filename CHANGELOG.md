@@ -15,6 +15,8 @@ Release notes.
 - feat(io): file dialogs reopen in the last-used directory across sessions
 - feat(ui): "Check for updates on launch" toggle in Preferences to opt out of the startup check
 - feat(tools): remember the last Shape primitive between launches
+- feat(select): fill a selection with the current color via `F`, the command palette, or the Edit menu
+- feat(menu): surface Fill / Delete / Clear selection in the macOS Edit menu, with native `F` / `⌫` shortcuts gated on text focus
 - chore(deps): refresh Cargo.lock to latest semver-compatible patches
 - feat(ui): group camera Frame/preset items under a View → Camera submenu
 - fix(ui): palette switcher — square 12×12 preview swatches; bolder mixed-case group headers
