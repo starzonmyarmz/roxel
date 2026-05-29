@@ -93,6 +93,7 @@ pub fn draw(
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
+        .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
         .default_width(width::COMMAND_PALETTE)
         .min_width(width::COMMAND_PALETTE)

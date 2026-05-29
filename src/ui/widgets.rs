@@ -458,6 +458,29 @@ pub fn paint_add_swatch(
         .paint_at(ui, img_rect);
 }
 
+/// Alpha (0–255) of the full-screen dim painted behind an open modal.
+const SCRIM_ALPHA: u8 = 96;
+
+/// Full-screen dim backdrop drawn behind any open modal. Sits at
+/// `Order::Middle` (above the canvas and inspector, below the modal surfaces,
+/// which run at `Order::Foreground`) and senses clicks so the pointer can't
+/// reach the canvas behind it — no stray voxels land while a modal is up. Call
+/// once per frame whenever any modal is open, before drawing the modals.
+pub fn modal_scrim(ctx: &egui::Context) {
+    let screen = ctx.viewport_rect();
+    egui::Area::new(egui::Id::new("modal_scrim"))
+        .order(egui::Order::Middle)
+        .fixed_pos(screen.min)
+        .show(ctx, |ui| {
+            ui.allocate_rect(screen, egui::Sense::click());
+            ui.painter().rect_filled(
+                screen,
+                egui::CornerRadius::ZERO,
+                egui::Color32::from_black_alpha(SCRIM_ALPHA),
+            );
+        });
+}
+
 /// Shared frame for every floating modal surface: modal windows, the command
 /// palette, the palette switcher, and the new-project sheet. Panel fill, no
 /// border, high shadow, `radius::LG` corners — only the inner margin varies
@@ -487,6 +510,7 @@ pub fn modal_window<'a>(theme: &Theme, title: &str, open: &'a mut bool) -> egui:
     .collapsible(false)
     .resizable(false)
     .open(open)
+    .order(egui::Order::Foreground)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
     .frame(modal_frame(theme, pad::MODAL))
 }

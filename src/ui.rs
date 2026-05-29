@@ -1371,6 +1371,18 @@ pub fn ui_system(
         ctx.set_cursor_icon(cursor);
     }
 
+    // Dim the canvas + inspector behind any open modal so the active surface
+    // reads as focused, and block click-through to the canvas. Modals render at
+    // Order::Foreground, above this Middle scrim.
+    let modal_open = prefs_window.open
+        || new_project.dialog_open
+        || switcher.open
+        || discard.pending.is_some()
+        || cmd_palette.open;
+    if modal_open {
+        widgets::modal_scrim(ctx);
+    }
+
     if prefs_window.open {
         let before = *prefs;
         let mut open_flag = true;
