@@ -38,12 +38,29 @@ use crate::tools::{
 };
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
-use crate::ui::tokens::{font, gap, height, radius, space, stroke, swatch, width};
+use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
 use palette::PaletteParams;
+
+/// Top-left of a swatch cell at a fractional grid slot, lerping between the two
+/// bracketing integer cells. Whole slots map straight to the integer cell;
+/// in-between values slide horizontally within a row and diagonally across a
+/// row break. Drives the palette reorder reflow animation.
+fn slot_min_lerp(origin: egui::Pos2, cols: usize, step: egui::Vec2, slot_f: f32) -> egui::Pos2 {
+    let cell_min = |slot: usize| {
+        let r = (slot / cols) as f32;
+        let c = (slot % cols) as f32;
+        origin + egui::vec2(c * step.x, r * step.y)
+    };
+    let lo = slot_f.floor().max(0.0) as usize;
+    let t = slot_f - lo as f32;
+    let a = cell_min(lo);
+    let b = cell_min(lo + 1);
+    a + (b - a) * t
+}
 
 #[derive(SystemParam)]
 pub struct ZoomReadout<'w, 's> {
@@ -1061,6 +1078,16 @@ pub fn ui_system(
                                             cell,
                                         )
                                     };
+                                    // Fractional slot → rect, lerping between the two bracketing
+                                    // integer cells so swatches slide (and wrap diagonally at row
+                                    // ends) while the reorder gap moves under the cursor.
+                                    let step = egui::vec2(stepx, stepy);
+                                    let cell_at_f = |slot_f: f32| -> egui::Rect {
+                                        egui::Rect::from_min_size(
+                                            slot_min_lerp(origin, cols, step, slot_f),
+                                            cell,
+                                        )
+                                    };
 
                                     // Non-dragged swatches in order; while dragging, a gap is
                                     // opened at `gap_pos` (an index into this list) under the
@@ -1102,14 +1129,23 @@ pub fn ui_system(
 
                                     let base = ui.id();
                                     for (slot_idx, slot) in slots.iter().enumerate() {
-                                        let rect = cell_at(slot_idx);
+                                        // Animate each cell from its old slot to its new one so
+                                        // the grid reflows around the moving gap. The gap itself
+                                        // paints nothing — it reads as open space the swatches
+                                        // slide away from.
+                                        let target = slot_idx as f32;
+                                        let anim_id = match slot {
+                                            Slot::Color(oi) => base.with(("swatch_slot", *oi)),
+                                            Slot::Add => base.with("add_slot"),
+                                            Slot::Gap => base.with("gap_slot"),
+                                        };
+                                        let rect = cell_at_f(ui.ctx().animate_value_with_time(
+                                            anim_id,
+                                            target,
+                                            motion::SWATCH_REFLOW,
+                                        ));
                                         match slot {
-                                            Slot::Gap => widgets::paint_swatch_gap(
-                                                ui,
-                                                &theme,
-                                                rect,
-                                                radius::XS,
-                                            ),
+                                            Slot::Gap => {}
                                             Slot::Add => {
                                                 let resp = ui.interact(
                                                     rect,
@@ -1817,4 +1853,45 @@ fn space_color_picker(
 
     ui.data_mut(|d| d.insert_temp(cache_id, (color.0, hue_norm)));
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ORIGIN: egui::Pos2 = egui::Pos2::new(10.0, 20.0);
+    const STEP: egui::Vec2 = egui::Vec2::new(30.0, 40.0);
+    const COLS: usize = 4;
+
+    #[test]
+    fn slot_min_lerp_whole_slots_match_integer_cells() {
+        // Slot 0 sits at the origin; slot `cols` wraps to the next row.
+        assert_eq!(slot_min_lerp(ORIGIN, COLS, STEP, 0.0), ORIGIN);
+        assert_eq!(
+            slot_min_lerp(ORIGIN, COLS, STEP, 2.0),
+            ORIGIN + egui::vec2(2.0 * STEP.x, 0.0)
+        );
+        assert_eq!(
+            slot_min_lerp(ORIGIN, COLS, STEP, COLS as f32),
+            ORIGIN + egui::vec2(0.0, STEP.y)
+        );
+    }
+
+    #[test]
+    fn slot_min_lerp_halfway_within_row_slides_horizontally() {
+        // 0 → 1 is a pure horizontal slide; midpoint is half a step in x only.
+        let mid = slot_min_lerp(ORIGIN, COLS, STEP, 0.5);
+        assert_eq!(mid, ORIGIN + egui::vec2(STEP.x * 0.5, 0.0));
+    }
+
+    #[test]
+    fn slot_min_lerp_across_row_break_slides_diagonally() {
+        // Last cell of row 0 (slot 3) → first of row 1 (slot 4): the lerp moves
+        // left across the row and down a row at once, so x drops and y rises.
+        let a = slot_min_lerp(ORIGIN, COLS, STEP, 3.0);
+        let mid = slot_min_lerp(ORIGIN, COLS, STEP, 3.5);
+        let b = slot_min_lerp(ORIGIN, COLS, STEP, 4.0);
+        assert!(mid.x < a.x && mid.x > b.x);
+        assert!(mid.y > a.y && mid.y < b.y);
+    }
 }

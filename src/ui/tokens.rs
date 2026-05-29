@@ -207,6 +207,13 @@ pub mod width {
     pub const TOOL_ISLAND: f32 = 56.0;
 }
 
+/// Animation durations (seconds). Not on the px grid — these are time, not space.
+pub mod motion {
+    /// Swatch slide when reordering the palette by drag. Short enough to feel
+    /// responsive, long enough that the reflow reads as motion not a jump.
+    pub const SWATCH_REFLOW: f32 = 0.12;
+}
+
 /// Container heights / max-heights.
 pub mod height {
     pub const COMMAND_PALETTE_MAX: f32 = 318.0;

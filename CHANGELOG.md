@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): palette swatches animate into place when dragging to reorder; the drop target is now empty space instead of a gray placeholder
 - fix(ui): thin the left inspector edge — drop egui's redundant 1px separator, keep the hairline
 - fix(ui): unselected palette swatches drop their outline entirely
 - fix(ui): disable egui shape feathering — removes the dark fringe on rounded corners of light-coloured buttons, chips, and menu items

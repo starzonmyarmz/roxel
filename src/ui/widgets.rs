@@ -472,19 +472,6 @@ pub fn paint_add_swatch(
         .paint_at(ui, img_rect);
 }
 
-/// Paint the empty drop slot the swatch grid opens while a swatch is dragged
-/// over it — a recessed `surface` well so neighbours read as shifting to make
-/// room for the incoming swatch.
-pub fn paint_swatch_gap(ui: &mut egui::Ui, theme: &Theme, rect: egui::Rect, corner_radius: u8) {
-    ui.painter().rect(
-        rect,
-        egui::CornerRadius::same(corner_radius),
-        theme.surface,
-        egui::Stroke::new(stroke::HAIR, theme.border),
-        egui::StrokeKind::Inside,
-    );
-}
-
 /// Themed centred-modal `egui::Window` builder. Bold 14 pt title,
 /// non-collapsible, non-resizable, panel-fill frame with 0.5 border and
 /// rounded corners. Caller adds `.show(ctx, |ui| { ... })`.
