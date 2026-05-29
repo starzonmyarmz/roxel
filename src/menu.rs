@@ -330,16 +330,23 @@ fn build_menu() -> MenuStore {
         let _ = color_space_sub.append(item);
     }
 
+    let camera_sub = Submenu::new("Camera", true);
+    camera_sub
+        .append_items(&[
+            &frame_item,
+            &PredefinedMenuItem::separator(),
+            &view_front,
+            &view_back,
+            &view_right,
+            &view_left,
+            &view_top,
+            &PredefinedMenuItem::separator(),
+            &view_iso,
+        ])
+        .expect("append camera menu");
+
     view.append_items(&[
-        &frame_item,
-        &PredefinedMenuItem::separator(),
-        &view_front,
-        &view_back,
-        &view_right,
-        &view_left,
-        &view_top,
-        &PredefinedMenuItem::separator(),
-        &view_iso,
+        &camera_sub,
         &PredefinedMenuItem::separator(),
         &floor_grid_item,
         &origin_axes_item,
