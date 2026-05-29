@@ -6,6 +6,8 @@ use bevy_egui::EguiContexts;
 use bevy_panorbit_camera::PanOrbitCamera;
 use std::f32::consts::FRAC_PI_2;
 
+use crate::ui::UiVisible;
+
 const GIZMO_LAYER: usize = 1;
 const GIZMO_SIZE_PT: f32 = 100.0;
 const GIZMO_MARGIN: f32 = 12.0;
@@ -233,7 +235,7 @@ pub fn update_gizmo_viewport(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut cameras: Query<&mut Camera, With<GizmoCamera>>,
     mut rect_res: ResMut<GizmoRect>,
-    flyby: Res<crate::camera::FlybyState>,
+    ui_visible: Res<UiVisible>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     let Ok(window) = windows.single() else {
@@ -243,10 +245,10 @@ pub fn update_gizmo_viewport(
         return Ok(());
     };
 
-    // Flyby suppresses the orientation cube — it's distracting against the
-    // cinematic orbit and would also pick up the auto-rotation, confusing
-    // the user's sense of "what does this gizmo represent".
-    if flyby.active {
+    // Hide the gizmo in focus mode — it's chrome, so it goes with the rest.
+    // During flyby (+ visible UI) keep it visible so the user can still
+    // orient themselves against the cube.
+    if !ui_visible.0 {
         cam.is_active = false;
         rect_res.0 = None;
         return Ok(());

@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): hide gizmo in focus mode; show during flyby when UI is visible
 - feat(ui): palette swatches animate into place when dragging to reorder; the drop target is now empty space instead of a gray placeholder
 - fix(ui): thin the left inspector edge — drop egui's redundant 1px separator, keep the hairline
 - fix(ui): unselected palette swatches drop their outline entirely
