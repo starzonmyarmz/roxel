@@ -462,15 +462,17 @@ pub fn paint_add_swatch(
 const SCRIM_ALPHA: u8 = 96;
 
 /// Full-screen dim backdrop drawn behind any open modal. Runs at
-/// `Order::Foreground` and must be shown *after* the floating tool island /
-/// menu pill (so it covers them) but *before* the modal surfaces (so they sit
-/// on top). Senses clicks so the pointer can't reach the canvas behind it — no
-/// stray voxels land while a modal is up. Call once per frame whenever any
-/// modal is open, immediately before drawing the modals.
+/// `Order::Middle`: above the canvas and inspector, below the modal surfaces
+/// (which render at `Order::Foreground`, so they always sit on top). The
+/// floating tool island / menu pill (egui `Foreground`) and the gizmo (a
+/// separate Bevy camera) can't be covered by a Middle layer, so `ui_system`
+/// hides those outright while a modal is open rather than relying on the scrim.
+/// Senses clicks so the pointer can't reach the canvas behind it — no stray
+/// voxels land while a modal is up.
 pub fn modal_scrim(ctx: &egui::Context) {
     let screen = ctx.viewport_rect();
     egui::Area::new(egui::Id::new("modal_scrim"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Middle)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             ui.allocate_rect(screen, egui::Sense::click());

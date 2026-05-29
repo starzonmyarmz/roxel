@@ -179,11 +179,23 @@ pub fn ui_system(
     #[allow(non_snake_case)]
     let BORDER = theme.border;
 
+    // True whenever a modal/palette is open. The scrim dims the canvas +
+    // inspector behind the modal; the floating tool island, menu pill, and the
+    // gizmo (`ModalActive`, see `gizmo.rs`) are hidden outright rather than
+    // dimmed, since they render above the Middle scrim and can't be covered by
+    // it.
+    let modal_open = prefs_window.open
+        || new_project.dialog_open
+        || switcher.open
+        || discard.pending.is_some()
+        || cmd_palette.open;
+    modal_active.0 = modal_open;
+
     // ---------- Floating menu pill ----------
     // On macOS the native menu bar (see `menu.rs`) replaces these controls; on
     // Win/Linux the pill sits at top-center and is gated by the user pref.
     #[cfg(not(target_os = "macos"))]
-    if ui_visible.0 && prefs.show_floating_menu_bar {
+    if ui_visible.0 && prefs.show_floating_menu_bar && !modal_open {
         floating::pill_menu(ctx, &theme, |ui| {
             ui.horizontal(|ui| {
                 if widgets::icon_button(ui, &theme, icons::file_plus(), "New")
@@ -1376,19 +1388,9 @@ pub fn ui_system(
         ctx.set_cursor_icon(cursor);
     }
 
-    // Dim everything behind an open modal so the active surface reads as
-    // focused, and block click-through to the canvas. The scrim and the modals
-    // all render at Order::Foreground; the scrim is shown after the floating
-    // tool island (so it covers it) and before the modal surfaces (so they sit
-    // on top). The orientation gizmo is a separate Bevy camera that composites
-    // after egui, so egui can't cover it — `ModalActive` deactivates it instead
-    // (see `gizmo::update_gizmo_viewport`).
-    let modal_open = prefs_window.open
-        || new_project.dialog_open
-        || switcher.open
-        || discard.pending.is_some()
-        || cmd_palette.open;
-    modal_active.0 = modal_open;
+    // Scrim sits at Order::Middle — above the canvas + inspector, below the
+    // Foreground modal surfaces drawn just after. `modal_open` and the hidden
+    // tool island / gizmo were handled near the top of the function.
     if modal_open {
         widgets::modal_scrim(ctx);
     }
