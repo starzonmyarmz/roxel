@@ -836,14 +836,18 @@ pub fn ui_system(
                                     ui.add_space(space::XS);
                                     // Readout for the active color in the chosen format.
                                     ui.vertical_centered(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(
-                                                active_space
-                                                    .format([color.0[0], color.0[1], color.0[2]]),
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    active_space.format([
+                                                        color.0[0], color.0[1], color.0[2],
+                                                    ]),
+                                                )
+                                                .monospace()
+                                                .size(font::SMALL)
+                                                .color(theme.text_dim),
                                             )
-                                            .monospace()
-                                            .size(font::SMALL)
-                                            .color(theme.text_dim),
+                                            .selectable(true),
                                         );
                                     });
 

@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): color readout under the swatch is now selectable for copy
 - test(menu): cover `recent_item_label` formatting and no-filename fallback
 - feat(ui): color readouts and swatch tooltips follow the active Color Format; menu checks the active option
 - refactor(ui): recent + palette swatches share one cell/tooltip component; every color reference uses a monospace tooltip
