@@ -13,8 +13,8 @@ use crate::history::History;
 use crate::io::recent::MAX_RECENT;
 use crate::theme::{Preferences, PreferencesWindow, save_preferences};
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, spawn_save,
-    spawn_save_as,
+    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, new_dialog,
+    spawn_save, spawn_save_as,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -564,7 +564,7 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::NewProject => {
                 p.new_project.dialog_open = true;
             }
-            MenuAction::OpenProject => spawn_open(&mut p.pending),
+            MenuAction::OpenProject => spawn_open(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::OpenRecent(i) => {
                 if let Some(path) = p.recent.0.get(i).cloned() {
                     spawn_open_path(&mut p.pending, path);
@@ -573,17 +573,21 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ClearRecent => {
                 p.recent.clear();
             }
-            MenuAction::SaveProject => spawn_save(&mut p.pending, &p.current_path),
-            MenuAction::SaveProjectAs => spawn_save_as(&mut p.pending, &p.current_path),
-            MenuAction::ExportVox => spawn_export_vox(&mut p.pending),
-            MenuAction::ExportObj => spawn_export_obj(&mut p.pending),
-            MenuAction::ExportPng => spawn_export_png(&mut p.pending),
-            MenuAction::ExportSvg => spawn_export_svg(&mut p.pending),
-            MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending),
-            MenuAction::ExportGox => spawn_export_gox(&mut p.pending),
-            MenuAction::ImportVox => spawn_import_vox(&mut p.pending),
-            MenuAction::ImportQb => spawn_import_qb(&mut p.pending),
-            MenuAction::ImportGox => spawn_import_gox(&mut p.pending),
+            MenuAction::SaveProject => {
+                spawn_save(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
+            }
+            MenuAction::SaveProjectAs => {
+                spawn_save_as(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
+            }
+            MenuAction::ExportVox => spawn_export_vox(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportObj => spawn_export_obj(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportPng => spawn_export_png(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportSvg => spawn_export_svg(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportGox => spawn_export_gox(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ImportVox => spawn_import_vox(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ImportQb => spawn_import_qb(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ImportGox => spawn_import_gox(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::Undo => p.history.undo(&mut p.grid),
             MenuAction::Redo => p.history.redo(&mut p.grid),
             MenuAction::Copy => {
@@ -710,12 +714,12 @@ mod tests {
     }
 }
 
-fn spawn_open(pending: &mut PendingDialog) {
+fn spawn_open(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Roxel project", &["rox"])
             .pick_file()
             .await
@@ -730,12 +734,12 @@ fn spawn_open_path(pending: &mut PendingDialog, path: PathBuf) {
     pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
 }
 
-fn spawn_export_vox(pending: &mut PendingDialog) {
+fn spawn_export_vox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("MagicaVoxel", &["vox"])
             .set_file_name("model.vox")
             .save_file()
@@ -744,12 +748,12 @@ fn spawn_export_vox(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_export_obj(pending: &mut PendingDialog) {
+fn spawn_export_obj(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Wavefront OBJ", &["obj"])
             .set_file_name("model.obj")
             .save_file()
@@ -758,12 +762,12 @@ fn spawn_export_obj(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_export_png(pending: &mut PendingDialog) {
+fn spawn_export_png(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("PNG image", &["png"])
             .set_file_name("roxel.png")
             .save_file()
@@ -772,12 +776,12 @@ fn spawn_export_png(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_export_svg(pending: &mut PendingDialog) {
+fn spawn_export_svg(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("SVG image", &["svg"])
             .set_file_name("roxel.svg")
             .save_file()
@@ -786,12 +790,12 @@ fn spawn_export_svg(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_import_vox(pending: &mut PendingDialog) {
+fn spawn_import_vox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("MagicaVoxel", &["vox"])
             .pick_file()
             .await
@@ -799,12 +803,12 @@ fn spawn_import_vox(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_import_qb(pending: &mut PendingDialog) {
+fn spawn_import_qb(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Qubicle", &["qb"])
             .pick_file()
             .await
@@ -812,12 +816,12 @@ fn spawn_import_qb(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_import_gox(pending: &mut PendingDialog) {
+fn spawn_import_gox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Goxel", &["gox"])
             .pick_file()
             .await
@@ -825,12 +829,12 @@ fn spawn_import_gox(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_export_gltf(pending: &mut PendingDialog) {
+fn spawn_export_gltf(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("glTF binary", &["glb"])
             .set_file_name("model.glb")
             .save_file()
@@ -839,12 +843,12 @@ fn spawn_export_gltf(pending: &mut PendingDialog) {
     });
 }
 
-fn spawn_export_gox(pending: &mut PendingDialog) {
+fn spawn_export_gox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Goxel", &["gox"])
             .set_file_name("model.gox")
             .save_file()

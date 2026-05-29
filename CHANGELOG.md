@@ -12,6 +12,9 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(io): file dialogs reopen in the last-used directory across sessions
+- feat(ui): "Check for updates on launch" toggle in Preferences to opt out of the startup check
+- feat(tools): remember the last Shape primitive between launches
 - chore(deps): refresh Cargo.lock to latest semver-compatible patches
 - feat(ui): group camera Frame/preset items under a View → Camera submenu
 - fix(ui): palette switcher — square 12×12 preview swatches; bolder mixed-case group headers

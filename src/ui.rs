@@ -15,7 +15,7 @@ pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
 pub use dialogs::{
-    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, RecentFiles,
+    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, RecentFiles, new_dialog,
     poll_dialogs_system, spawn_save, spawn_save_as,
 };
 pub use palette::{
@@ -219,8 +219,9 @@ pub fn ui_system(
                     )
                     .clicked()
                 {
+                    let start_dir = prefs.last_dir.clone();
                     pending.spawn(async move {
-                        rfd::AsyncFileDialog::new()
+                        dialogs::new_dialog(&start_dir)
                             .add_filter("Roxel project", &["rox"])
                             .pick_file()
                             .await
@@ -237,7 +238,7 @@ pub fn ui_system(
                     ),
                 );
                 if save_resp.clicked() {
-                    dialogs::spawn_save(&mut pending, &current_path);
+                    dialogs::spawn_save(&mut pending, &current_path, prefs.last_dir.clone());
                 }
                 if ui
                     .add_enabled(
@@ -251,7 +252,7 @@ pub fn ui_system(
                     )
                     .clicked()
                 {
-                    dialogs::spawn_save_as(&mut pending, &current_path);
+                    dialogs::spawn_save_as(&mut pending, &current_path, prefs.last_dir.clone());
                 }
                 ui.menu_image_text_button(
                     egui::Image::new(icons::folder_open())
@@ -264,8 +265,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("MagicaVoxel", &["vox"])
                                     .pick_file()
                                     .await
@@ -277,8 +279,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("Qubicle .qb…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("Qubicle", &["qb"])
                                     .pick_file()
                                     .await
@@ -290,8 +293,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("Goxel", &["gox"])
                                     .pick_file()
                                     .await
@@ -312,8 +316,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("MagicaVoxel", &["vox"])
                                     .set_file_name("model.vox")
                                     .save_file()
@@ -326,8 +331,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("Wavefront .obj…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("Wavefront OBJ", &["obj"])
                                     .set_file_name("model.obj")
                                     .save_file()
@@ -340,8 +346,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("glTF .glb…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("glTF binary", &["glb"])
                                     .set_file_name("model.glb")
                                     .save_file()
@@ -354,8 +361,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("Goxel", &["gox"])
                                     .set_file_name("model.gox")
                                     .save_file()
@@ -368,8 +376,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("PNG image", &["png"])
                                     .set_file_name("roxel.png")
                                     .save_file()
@@ -382,8 +391,9 @@ pub fn ui_system(
                             .add_enabled(!dialog_busy, egui::Button::new("SVG…"))
                             .clicked()
                         {
+                            let start_dir = prefs.last_dir.clone();
                             pending.spawn(async move {
-                                rfd::AsyncFileDialog::new()
+                                dialogs::new_dialog(&start_dir)
                                     .add_filter("SVG image", &["svg"])
                                     .set_file_name("roxel.svg")
                                     .save_file()
@@ -680,6 +690,8 @@ pub fn ui_system(
                                     let r = r.on_hover_text(label);
                                     if r.clicked() {
                                         shape_options.primitive = prim;
+                                        prefs.last_shape = prim;
+                                        crate::theme::save_preferences(&prefs);
                                         if tool.current != Tool::Shape {
                                             tool.previous = tool.current;
                                             tool.current = Tool::Shape;
@@ -1004,8 +1016,9 @@ pub fn ui_system(
                                                     )
                                                     .clicked()
                                                 {
+                                                    let start_dir = prefs.last_dir.clone();
                                                     pending.spawn(async move {
-                                                        rfd::AsyncFileDialog::new()
+                                                        dialogs::new_dialog(&start_dir)
                                                             .add_filter(
                                                                 "Adobe Swatch Exchange",
                                                                 &["ase"],
@@ -1029,8 +1042,9 @@ pub fn ui_system(
                                                     )
                                                     .clicked()
                                                 {
+                                                    let start_dir = prefs.last_dir.clone();
                                                     pending.spawn(async move {
-                                                        rfd::AsyncFileDialog::new()
+                                                        dialogs::new_dialog(&start_dir)
                                                             .add_filter(
                                                                 "Adobe Swatch Exchange",
                                                                 &["ase"],

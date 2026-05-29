@@ -73,6 +73,9 @@ use bevy_panorbit_camera::PanOrbitCamera;
 fn main() {
     let prefs = load_preferences();
     let theme = resolve_theme(prefs.theme);
+    let initial_shape = ShapeOptions {
+        primitive: prefs.last_shape,
+    };
     let initial_canvas = {
         let [r, g, b] = resolve_canvas_color(&prefs, &theme);
         Color::srgb_u8(r, g, b)
@@ -116,7 +119,7 @@ fn main() {
         .init_resource::<crate::color_space::ColorEditBuffer>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
-        .init_resource::<ShapeOptions>()
+        .insert_resource(initial_shape)
         .init_resource::<ShapeState>()
         .init_resource::<MoveDragState>()
         .init_resource::<crate::select::Selection>()

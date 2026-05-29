@@ -170,11 +170,13 @@ pub fn startup_check_system(
         return;
     }
     *done = true;
-    if should_check(
-        prefs.last_update_check,
-        SystemTime::now(),
-        Duration::from_secs(RATE_LIMIT_SECS),
-    ) {
+    if prefs.auto_update_check
+        && should_check(
+            prefs.last_update_check,
+            SystemTime::now(),
+            Duration::from_secs(RATE_LIMIT_SECS),
+        )
+    {
         start_check(&mut state, false);
     }
 }

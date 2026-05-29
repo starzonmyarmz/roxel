@@ -1179,29 +1179,41 @@ pub fn dispatch_command_palette_system(
         CommandAction::NewProject => {
             p.new_project.dialog_open = true;
         }
-        CommandAction::OpenProject => spawn_open(&mut p.pending),
-        CommandAction::SaveProject => super::dialogs::spawn_save(&mut p.pending, &p.current_path),
+        CommandAction::OpenProject => spawn_open(&mut p.pending, p.prefs.last_dir.clone()),
+        CommandAction::SaveProject => {
+            super::dialogs::spawn_save(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
+        }
         CommandAction::SaveProjectAs => {
-            super::dialogs::spawn_save_as(&mut p.pending, &p.current_path)
+            super::dialogs::spawn_save_as(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
         }
         CommandAction::ImportVox => spawn_import(
             &mut p.pending,
             "MagicaVoxel",
             "vox",
             DialogResult::ImportVox,
+            p.prefs.last_dir.clone(),
         ),
-        CommandAction::ImportQb => {
-            spawn_import(&mut p.pending, "Qubicle", "qb", DialogResult::ImportQb)
-        }
-        CommandAction::ImportGox => {
-            spawn_import(&mut p.pending, "Goxel", "gox", DialogResult::ImportGox)
-        }
+        CommandAction::ImportQb => spawn_import(
+            &mut p.pending,
+            "Qubicle",
+            "qb",
+            DialogResult::ImportQb,
+            p.prefs.last_dir.clone(),
+        ),
+        CommandAction::ImportGox => spawn_import(
+            &mut p.pending,
+            "Goxel",
+            "gox",
+            DialogResult::ImportGox,
+            p.prefs.last_dir.clone(),
+        ),
         CommandAction::ExportVox => spawn_export(
             &mut p.pending,
             "MagicaVoxel",
             "vox",
             "model.vox",
             DialogResult::ExportVox,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportObj => spawn_export(
             &mut p.pending,
@@ -1209,6 +1221,7 @@ pub fn dispatch_command_palette_system(
             "obj",
             "model.obj",
             DialogResult::ExportObj,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportGltf => spawn_export(
             &mut p.pending,
@@ -1216,6 +1229,7 @@ pub fn dispatch_command_palette_system(
             "glb",
             "model.glb",
             DialogResult::ExportGltf,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportPng => spawn_export(
             &mut p.pending,
@@ -1223,6 +1237,7 @@ pub fn dispatch_command_palette_system(
             "png",
             "roxel.png",
             DialogResult::ExportPng,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportSvg => spawn_export(
             &mut p.pending,
@@ -1230,6 +1245,7 @@ pub fn dispatch_command_palette_system(
             "svg",
             "roxel.svg",
             DialogResult::ExportSvg,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportGox => spawn_export(
             &mut p.pending,
@@ -1237,6 +1253,7 @@ pub fn dispatch_command_palette_system(
             "gox",
             "model.gox",
             DialogResult::ExportGox,
+            p.prefs.last_dir.clone(),
         ),
         CommandAction::Undo => p.history.undo(&mut p.grid),
         CommandAction::Redo => p.history.redo(&mut p.grid),
@@ -1292,7 +1309,11 @@ pub fn dispatch_command_palette_system(
                 p.tool.current = t;
             }
         }
-        CommandAction::SelectShape(prim) => p.shape.primitive = prim,
+        CommandAction::SelectShape(prim) => {
+            p.shape.primitive = prim;
+            p.prefs.last_shape = prim;
+            crate::theme::save_preferences(&p.prefs);
+        }
         CommandAction::FrameView => {
             let (centroid, radius) =
                 fit_view(&p.grid).unwrap_or((Vec3::ZERO, crate::camera::EMPTY_WORLD_RADIUS));
@@ -1378,8 +1399,9 @@ pub fn dispatch_command_palette_system(
         }
         CommandAction::ImportAse => {
             if !p.pending.is_active() {
+                let start_dir = p.prefs.last_dir.clone();
                 p.pending.spawn(async move {
-                    rfd::AsyncFileDialog::new()
+                    super::dialogs::new_dialog(&start_dir)
                         .add_filter("Adobe Swatch Exchange", &["ase"])
                         .pick_file()
                         .await
@@ -1401,8 +1423,9 @@ pub fn dispatch_command_palette_system(
                 "{}.ase",
                 crate::ui::palette::sanitize_filename(&export_name)
             );
+            let start_dir = p.prefs.last_dir.clone();
             p.pending.spawn(async move {
-                rfd::AsyncFileDialog::new()
+                super::dialogs::new_dialog(&start_dir)
                     .add_filter("Adobe Swatch Exchange", &["ase"])
                     .set_file_name(&default_filename)
                     .save_file()
@@ -1427,12 +1450,12 @@ pub fn dispatch_command_palette_system(
     }
 }
 
-fn spawn_open(pending: &mut PendingDialog) {
+fn spawn_open(pending: &mut PendingDialog, start_dir: Option<std::path::PathBuf>) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        super::dialogs::new_dialog(&start_dir)
             .add_filter("Roxel project", &["rox"])
             .pick_file()
             .await
@@ -1445,12 +1468,13 @@ fn spawn_import(
     label: &'static str,
     ext: &'static str,
     wrap: fn(std::path::PathBuf) -> DialogResult,
+    start_dir: Option<std::path::PathBuf>,
 ) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        super::dialogs::new_dialog(&start_dir)
             .add_filter(label, &[ext])
             .pick_file()
             .await
@@ -1464,12 +1488,13 @@ fn spawn_export(
     ext: &'static str,
     default_name: &'static str,
     wrap: fn(std::path::PathBuf) -> DialogResult,
+    start_dir: Option<std::path::PathBuf>,
 ) {
     if pending.is_active() {
         return;
     }
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        super::dialogs::new_dialog(&start_dir)
             .add_filter(label, &[ext])
             .set_file_name(default_name)
             .save_file()

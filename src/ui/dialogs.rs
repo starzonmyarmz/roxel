@@ -26,6 +26,39 @@ pub enum DialogResult {
     ExportAse(PathBuf, String, Vec<[u8; 4]>),
 }
 
+impl DialogResult {
+    /// The filesystem path the user picked. Every variant carries one as its
+    /// first field; used to remember the containing directory for next time.
+    pub fn path(&self) -> &Path {
+        match self {
+            DialogResult::OpenProject(p)
+            | DialogResult::SaveProject(p)
+            | DialogResult::ExportVox(p)
+            | DialogResult::ExportObj(p)
+            | DialogResult::ExportPng(p)
+            | DialogResult::ExportSvg(p)
+            | DialogResult::ExportGltf(p)
+            | DialogResult::ExportGox(p)
+            | DialogResult::ImportVox(p)
+            | DialogResult::ImportQb(p)
+            | DialogResult::ImportGox(p)
+            | DialogResult::ImportAse(p)
+            | DialogResult::ExportAse(p, _, _) => p,
+        }
+    }
+}
+
+/// Build a fresh async file dialog rooted at the user's last-used directory
+/// (`Preferences.last_dir`) when one is known, so Open/Save/Import/Export
+/// don't restart at the home folder each session.
+pub fn new_dialog(start_dir: &Option<PathBuf>) -> rfd::AsyncFileDialog {
+    let dialog = rfd::AsyncFileDialog::new();
+    match start_dir {
+        Some(dir) => dialog.set_directory(dir),
+        None => dialog,
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 
@@ -86,13 +119,17 @@ fn save_as_default_name(current: &CurrentProjectPath) -> String {
 
 /// Save As: always opens the file dialog. Pre-fills with the current project
 /// file name if known so the user can overwrite without retyping.
-pub fn spawn_save_as(pending: &mut PendingDialog, current: &CurrentProjectPath) {
+pub fn spawn_save_as(
+    pending: &mut PendingDialog,
+    current: &CurrentProjectPath,
+    start_dir: Option<PathBuf>,
+) {
     if pending.is_active() {
         return;
     }
     let suggested = save_as_default_name(current);
     pending.spawn(async move {
-        rfd::AsyncFileDialog::new()
+        new_dialog(&start_dir)
             .add_filter("Roxel project", &["rox"])
             .set_file_name(&suggested)
             .save_file()
@@ -103,7 +140,11 @@ pub fn spawn_save_as(pending: &mut PendingDialog, current: &CurrentProjectPath) 
 
 /// Save: writes to the last-saved path if one is known. Falls through to
 /// Save As when the project has never been saved.
-pub fn spawn_save(pending: &mut PendingDialog, current: &CurrentProjectPath) {
+pub fn spawn_save(
+    pending: &mut PendingDialog,
+    current: &CurrentProjectPath,
+    start_dir: Option<PathBuf>,
+) {
     if pending.is_active() {
         return;
     }
@@ -111,7 +152,7 @@ pub fn spawn_save(pending: &mut PendingDialog, current: &CurrentProjectPath) {
         Some(path) => {
             pending.spawn(async move { Some(DialogResult::SaveProject(path)) });
         }
-        None => spawn_save_as(pending, current),
+        None => spawn_save_as(pending, current, start_dir),
     }
 }
 
@@ -134,6 +175,7 @@ pub fn poll_dialogs_system(
     mut toasts: ResMut<Toasts>,
     mut current_path: ResMut<CurrentProjectPath>,
     mut recent_files: ResMut<RecentFiles>,
+    mut prefs: ResMut<crate::theme::Preferences>,
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -144,6 +186,15 @@ pub fn poll_dialogs_system(
         return;
     };
     pending.0 = None;
+
+    // Remember the directory the user landed in so the next dialog opens there.
+    if let Some(result) = result.as_ref()
+        && let Some(parent) = result.path().parent()
+        && prefs.last_dir.as_deref() != Some(parent)
+    {
+        prefs.last_dir = Some(parent.to_path_buf());
+        crate::theme::save_preferences(&prefs);
+    }
     match result {
         Some(DialogResult::OpenProject(path)) => match io::project::load(&path, &mut grid) {
             Ok(()) => {
@@ -247,5 +298,28 @@ pub fn poll_dialogs_system(
             }
         }
         None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dialog_result_path_returns_embedded_path() {
+        let p = PathBuf::from("/tmp/scenes/model.vox");
+        assert_eq!(DialogResult::ExportVox(p.clone()).path(), p.as_path());
+        assert_eq!(DialogResult::OpenProject(p.clone()).path(), p.as_path());
+        assert_eq!(
+            DialogResult::ExportAse(p.clone(), "pal".into(), vec![]).path(),
+            p.as_path()
+        );
+    }
+
+    #[test]
+    fn dialog_result_path_parent_is_the_last_dir() {
+        // poll_dialogs_system records this parent as Preferences.last_dir.
+        let r = DialogResult::SaveProject(PathBuf::from("/tmp/scenes/a.rox"));
+        assert_eq!(r.path().parent(), Some(std::path::Path::new("/tmp/scenes")));
     }
 }

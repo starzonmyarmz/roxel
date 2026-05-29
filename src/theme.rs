@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use crate::color_space::ColorSpace;
+use crate::shapes::ShapePrimitive;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ThemeMode {
@@ -407,6 +408,63 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_auto_update_check_field() {
+        // preferences.ron written before the update opt-out landed must default
+        // to checking on launch, preserving the prior always-on behavior.
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(p.auto_update_check);
+    }
+
+    #[test]
+    fn preferences_roundtrip_auto_update_check_false() {
+        let prefs = Preferences {
+            auto_update_check: false,
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert!(!parsed.auto_update_check);
+    }
+
+    #[test]
+    fn preferences_loads_without_last_dir_field() {
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(p.last_dir.is_none());
+    }
+
+    #[test]
+    fn preferences_roundtrip_last_dir() {
+        let prefs = Preferences {
+            last_dir: Some(PathBuf::from("/tmp/voxels")),
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert_eq!(parsed.last_dir, Some(PathBuf::from("/tmp/voxels")));
+    }
+
+    #[test]
+    fn preferences_loads_without_last_shape_field() {
+        // Older preferences.ron must default the persisted shape to Rectangle.
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.last_shape, ShapePrimitive::Rectangle);
+    }
+
+    #[test]
+    fn preferences_roundtrip_last_shape() {
+        let prefs = Preferences {
+            last_shape: ShapePrimitive::Ellipse,
+            ..Default::default()
+        };
+        let s = ron::ser::to_string(&prefs).expect("serialize");
+        let parsed: Preferences = ron::from_str(&s).expect("parse");
+        assert_eq!(parsed.last_shape, ShapePrimitive::Ellipse);
+    }
+
+    #[test]
     fn preferences_loads_after_floor_fields_removed() {
         // Older preferences.ron carrying now-removed fields (`show_floor`,
         // `floor_color`, `show_walls`, `wall_color`) must still load. Serde
@@ -430,7 +488,7 @@ mod tests {
     }
 }
 
-#[derive(Resource, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Resource, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct Preferences {
     pub theme: ThemePref,
     #[serde(default = "default_canvas_bg")]
@@ -447,6 +505,21 @@ pub struct Preferences {
     pub onboarding_seen: bool,
     #[serde(default = "default_show_floating_menu_bar")]
     pub show_floating_menu_bar: bool,
+    /// When true, check GitHub Releases for a newer build on startup (rate
+    /// limited). Opt-out toggle in the Preferences window.
+    #[serde(default = "default_auto_update_check")]
+    pub auto_update_check: bool,
+    /// Directory the last file dialog landed in. Seeds the next Open/Save/
+    /// Import/Export dialog so the user doesn't restart at the home folder.
+    #[serde(default)]
+    pub last_dir: Option<PathBuf>,
+    /// Last shape primitive chosen for the Shape tool, restored on launch.
+    #[serde(default)]
+    pub last_shape: ShapePrimitive,
+}
+
+fn default_auto_update_check() -> bool {
+    true
 }
 
 fn default_canvas_bg() -> CanvasBgPref {
@@ -476,6 +549,9 @@ impl Default for Preferences {
             last_update_check: None,
             onboarding_seen: default_onboarding_seen(),
             show_floating_menu_bar: default_show_floating_menu_bar(),
+            auto_update_check: default_auto_update_check(),
+            last_dir: None,
+            last_shape: ShapePrimitive::default(),
         }
     }
 }

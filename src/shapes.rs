@@ -1,6 +1,7 @@
 use bevy::math::IVec3;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum ShapePrimitive {
     #[default]
     Rectangle,

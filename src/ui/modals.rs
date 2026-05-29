@@ -25,7 +25,7 @@ pub fn draw_preferences(
     prefs: &mut Preferences,
     prefs_window: &mut PreferencesWindow,
 ) {
-    let before = *prefs;
+    let before = prefs.clone();
     let mut open_flag = true;
     widgets::modal_window(theme, "Preferences", &mut open_flag).show(ctx, |ui| {
         ui.set_min_width(width::MODAL_PREFS);
@@ -72,6 +72,10 @@ pub fn draw_preferences(
         // Color-space format moved to the View menu (native menu on macOS, the
         // floating menu pill on Win/Linux) — it's a per-view readout choice, not
         // an app preference, so it no longer earns a Preferences row.
+
+        widgets::section(ui, theme, "Updates", |ui| {
+            ui.checkbox(&mut prefs.auto_update_check, "Check for updates on launch");
+        });
     });
     let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
     if !open_flag || esc {
