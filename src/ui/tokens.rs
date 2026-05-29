@@ -157,8 +157,8 @@ pub mod icon {
 pub mod swatch {
     use super::Vec2;
     pub const RECENT: Vec2 = Vec2::new(24.0, 24.0);
-    pub const PALETTE: Vec2 = Vec2::new(12.0, 12.0);
-    pub const PREVIEW_SM: Vec2 = Vec2::new(12.0, 20.0); // switcher row preview swatches — narrow and tall
+    pub const PALETTE: Vec2 = Vec2::new(24.0, 24.0);
+    pub const PREVIEW_SM: Vec2 = Vec2::new(12.0, 12.0); // switcher row preview swatches — square
     #[allow(dead_code)] // tool rail uses a Button cell, not a swatch — reserved if that changes
     pub const TOOL: Vec2 = Vec2::new(28.0, 28.0);
     pub const HERO_HEIGHT: f32 = 56.0; // foreground colour swatch height

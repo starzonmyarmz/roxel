@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): palette switcher — square 12×12 preview swatches; bolder mixed-case group headers
 - feat(ui): color readout under the swatch is now selectable for copy
 - test(menu): cover `recent_item_label` formatting and no-filename fallback
 - feat(ui): color readouts and swatch tooltips follow the active Color Format; menu checks the active option

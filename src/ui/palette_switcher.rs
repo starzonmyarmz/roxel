@@ -219,12 +219,12 @@ fn header_row(ui: &mut egui::Ui, theme: &Theme, label: &str) {
     ui.painter().text(
         rect.left_center() + egui::vec2(space::FIELD_PAD_X, 0.0),
         egui::Align2::LEFT_CENTER,
-        label.to_uppercase(),
+        label,
         egui::FontId::new(
-            font::SECTION,
+            font::BODY,
             egui::FontFamily::Name(crate::theme::INTER_SEMIBOLD_FAMILY.into()),
         ),
-        theme.text_muted,
+        theme.text,
     );
 }
 
@@ -257,7 +257,7 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
         theme.text,
     );
 
-    // Swatch preview (right). Tall, narrow cells (12×24); reserve the right
+    // Swatch preview (right). Square cells (12×12); reserve the right
     // ~60% of the row and show as many as land in it.
     let sw = swatch::PREVIEW_SM.x;
     let sh = swatch::PREVIEW_SM.y;
