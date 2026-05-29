@@ -12,6 +12,9 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): dim backdrop behind open modals; toast colors now follow the theme
+- refactor(ui): UI polish pass — design-token cleanup, shared modal frame, split ui.rs
+
 ## [0.6.2] - 2026-05-29
 
 - chore: bump to 0.6.2
