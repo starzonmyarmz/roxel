@@ -155,6 +155,17 @@ mod tests {
     }
 
     #[test]
+    fn apply_egui_style_disables_feathering() {
+        // bevy_egui 0.39 gamma-converts premultiplied vertex colors, so feathered
+        // shape edges render a dark fringe on light fills. apply_egui_style must
+        // keep feathering off; if a future egui upgrade re-enables it by default,
+        // this guards the regression.
+        let ctx = egui::Context::default();
+        apply_egui_style(&ctx, &Theme::dark());
+        ctx.tessellation_options(|to| assert!(!to.feathering));
+    }
+
+    #[test]
     fn preferences_defaults() {
         let p = Preferences::default();
         assert_eq!(p.theme, ThemePref::System);
@@ -662,4 +673,14 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
         FontId::new(font::BODY, FontFamily::Monospace),
     );
     ctx.set_style(style);
+
+    // Disable shape feathering. bevy_egui 0.39's fragment shader runs the
+    // gamma→linear conversion on egui's *premultiplied* vertex colors, so a
+    // feathered edge with coverage `a` contributes ~linear(c)·a^2.4 instead of
+    // linear(c)·a. With a^2.4 < a the edge under-paints while the premultiplied
+    // blend still subtracts (1-a) of the destination — a dark fringe on
+    // anti-aliased rounded corners, worst on light fills over darker panels.
+    // Killing feathering removes those partial-alpha shape edges; text keeps
+    // its anti-aliasing via the font texture's own alpha, which is unaffected.
+    ctx.tessellation_options_mut(|to| to.feathering = false);
 }

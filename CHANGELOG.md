@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): disable egui shape feathering — removes the dark fringe on rounded corners of light-coloured buttons, chips, and menu items
 - fix(ui): palette swatches wrap into fixed rows instead of running off and forcing the inspector to max width
 - fix(ui): swatch drag-to-reorder and right-click-remove work again; while dragging, the swatch lifts to a cursor ghost and neighbours shift to open a gap at the drop target
 - feat(ui): "add current colour" is now a `+` cell at the end of the swatch grid; the `…` actions menu sits on the Palette title row with roomier item padding
