@@ -12,31 +12,29 @@ Release notes.
 
 ## [Unreleased]
 
-- fix(select): selection survives camera orbit/pan — only Esc deselects, not right-click
-- fix(select): marching ants depth-test behind voxels instead of x-raying through
-- fix(select): Cmd+A selects only occupied voxels, not the whole bounding box
+## [0.6.2] - 2026-05-29
+
+- chore: bump to 0.6.2
+- use monospace font for swatch hover tooltip hex color
+- fix(select): keep selection through camera orbit/pan
+- fix(select): occlude marching ants behind voxels
+- fix(select): select-all picks occupied voxels, not bounding box
 - fix(ui): add spaces around × in sidebar size label
-- fix(ui): hide gizmo in focus mode; show during flyby when UI is visible
-- feat(ui): palette swatches animate into place when dragging to reorder; the drop target is now empty space instead of a gray placeholder
-- fix(ui): thin the left inspector edge — drop egui's redundant 1px separator, keep the hairline
-- fix(ui): unselected palette swatches drop their outline entirely
-- fix(ui): disable egui shape feathering — removes the dark fringe on rounded corners of light-coloured buttons, chips, and menu items
-- fix(ui): palette swatches wrap into fixed rows instead of running off and forcing the inspector to max width
-- fix(ui): swatch drag-to-reorder and right-click-remove work again; while dragging, the swatch lifts to a cursor ghost and neighbours shift to open a gap at the drop target
-- feat(ui): "add current colour" is now a `+` cell at the end of the swatch grid; the `…` actions menu sits on the Palette title row with roomier item padding
-- feat(ui): palette switcher rows preview colours as narrow, tall swatches, with clearer spacing between groups
-- fix(ui): widen the "Discard edits?" modal so Cancel / Discard / Save as new fit on one row instead of clipping
-- fix(ui): palette switcher no longer closes on the click that opened it
-- fix(ui): inspector edge line no longer draws across the command palette / palette switcher
-- fix(render): apply face shade in sRGB space so light-coloured faces are no longer over-darkened on sides and bottom
-- feat(ui): reworked palette panel — palette switching moved to a Cmd+K-style popover; sidebar drops the dropdown for a single `…` actions menu (switch / new / duplicate-or-save-as / rename / delete / .ase)
-- feat(ui): built-in palettes are now editable — edits are scratch and prompt "Save as new palette" to keep; switching away from a dirty built-in confirms before discarding
-- fix(ui): make the left inspector resizable again — restore the separator handle (was hidden, leaving the panel stuck at width)
-- feat(ui): simplified color inspector — one Color section (swatch + hex + recent strip); numeric editing now lives only in the picker popup
-- feat(ui): moved color-space format (Hex/RGB/HSL/HSB/OKLCH) to Preferences → Color → Format
-- feat(ui): overhauled command palette — no title bar, hidden scrollbar, 10-row height, per-key shortcut chips with Lucide modifier icons, search icon in surface frame, redesigned footer chips
-- feat(ui): close command palette by clicking outside the window
-- fix(ui): unify shortcut chip color so Esc, numbers, and Lucide modifier icons share the same primary text color
+- fix(ui): hide gizmo in focus mode, show during flyby
+- chore: clear all clippy warnings
+- Don't switch to eyedropper when Opt is used with Z
+- feat(ui): animate palette swatch reorder, drop gray placeholder
+- fix(ui): thin left inspector edge, drop unselected swatch outline
+- fix(ui): disable egui shape feathering to kill dark corner fringe
+- feat(ui): palette panel rework — Cmd+K switcher, swatch grid, editable built-ins
+- fix(ui): remove semi-transparent border from unselected swatches
+- fix(render): apply face shade in sRGB space
+- feat(ui): simplify color inspector to one Color section
+- fix(ui): remove italics from hint labels
+- docs: add changelog entries for click-outside close and unified shortcut chip color
+- feat(ui): close command palette on click-outside
+- feat(ui): overhaul command palette — no titlebar, per-key shortcut chips, hidden scrollbar, 10-row height
+- docs: finalize CHANGELOG for v0.6.1 [skip ci]
 
 ## [0.6.1] - 2026-05-28
 
