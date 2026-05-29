@@ -413,7 +413,7 @@ fn swatch_outline(theme: &Theme, state: SwatchSelect) -> egui::Stroke {
         SwatchSelect::Primary | SwatchSelect::Extra => {
             egui::Stroke::new(stroke::ACCENT, theme.text)
         }
-        SwatchSelect::None => egui::Stroke::new(stroke::NORMAL, theme.border),
+        SwatchSelect::None => egui::Stroke::NONE,
     }
 }
 

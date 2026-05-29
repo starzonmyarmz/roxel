@@ -639,9 +639,10 @@ pub fn ui_system(
         Some(
             egui::SidePanel::left("inspector_panel")
                 .resizable(true)
-                // Keep the separator visible — it's the only grab affordance for
-                // the resize handle. Hidden, the panel reads as locked.
-                .show_separator_line(true)
+                // egui's separator draws at `noninteractive.bg_stroke` (1.0px) and
+                // stacks on the custom HAIR vline below — reads thick. Suppress it;
+                // the hairline is the edge, the resize grab region still works.
+                .show_separator_line(false)
                 .default_width(width::SIDE_PANEL)
                 .min_width(width::SIDE_PANEL)
                 .max_width(width::SIDE_PANEL_MAX)

@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): thin the left inspector edge — drop egui's redundant 1px separator, keep the hairline
+- fix(ui): unselected palette swatches drop their outline entirely
 - fix(ui): disable egui shape feathering — removes the dark fringe on rounded corners of light-coloured buttons, chips, and menu items
 - fix(ui): palette swatches wrap into fixed rows instead of running off and forcing the inspector to max width
 - fix(ui): swatch drag-to-reorder and right-click-remove work again; while dragging, the swatch lifts to a cursor ghost and neighbours shift to open a gap at the drop target
