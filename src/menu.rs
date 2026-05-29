@@ -1,7 +1,7 @@
 use bevy::ecs::system::{NonSendMarker, SystemParam};
 use bevy::prelude::*;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{AboutMetadata, CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use std::collections::HashMap;
 
 use std::path::PathBuf;
@@ -49,6 +49,8 @@ pub enum MenuAction {
     ViewPreset(CameraPreset),
     FrameView,
     SetColorSpace(ColorSpace),
+    ToggleFloorGrid,
+    ToggleOriginAxes,
 }
 
 const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
@@ -70,8 +72,9 @@ pub struct MenuStore {
     recent_items: Vec<MenuItem>,
     clear_recent_item: MenuItem,
     recent_snapshot: Vec<PathBuf>,
-    #[allow(dead_code)]
-    cs_items: Vec<MenuItem>,
+    cs_items: Vec<CheckMenuItem>,
+    floor_grid_item: CheckMenuItem,
+    origin_axes_item: CheckMenuItem,
 }
 
 pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
@@ -316,10 +319,12 @@ fn build_menu() -> MenuStore {
         true,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit7)),
     );
+    let floor_grid_item = CheckMenuItem::new("Floor Grid", true, true, None);
+    let origin_axes_item = CheckMenuItem::new("Origin Axes", true, true, None);
     let color_space_sub = Submenu::new("Color Format", true);
-    let cs_items: Vec<MenuItem> = ColorSpace::ALL
+    let cs_items: Vec<CheckMenuItem> = ColorSpace::ALL
         .iter()
-        .map(|s| MenuItem::new(s.label(), true, None))
+        .map(|s| CheckMenuItem::new(s.label(), true, *s == ColorSpace::default(), None))
         .collect();
     for item in &cs_items {
         let _ = color_space_sub.append(item);
@@ -335,6 +340,9 @@ fn build_menu() -> MenuStore {
         &view_top,
         &PredefinedMenuItem::separator(),
         &view_iso,
+        &PredefinedMenuItem::separator(),
+        &floor_grid_item,
+        &origin_axes_item,
         &PredefinedMenuItem::separator(),
         &color_space_sub,
     ])
@@ -372,6 +380,11 @@ fn build_menu() -> MenuStore {
             MenuAction::SetColorSpace(*space),
         );
     }
+    actions.insert(floor_grid_item.id().0.clone(), MenuAction::ToggleFloorGrid);
+    actions.insert(
+        origin_axes_item.id().0.clone(),
+        MenuAction::ToggleOriginAxes,
+    );
 
     let window = Submenu::new("Window", true);
     window
@@ -410,6 +423,8 @@ fn build_menu() -> MenuStore {
         clear_recent_item,
         recent_snapshot: Vec::new(),
         cs_items,
+        floor_grid_item,
+        origin_axes_item,
     }
 }
 
@@ -434,6 +449,7 @@ pub fn update_menu_enabled_system(
     selection: Res<crate::select::Selection>,
     clipboard: Res<crate::clipboard::Clipboard>,
     grid: Res<VoxelGrid>,
+    prefs: Res<Preferences>,
 ) {
     let Some(store) = store else { return };
     let undo_on = !history.undo.is_empty();
@@ -461,6 +477,18 @@ pub fn update_menu_enabled_system(
     }
     if store.halve_density_item.is_enabled() != has_voxels {
         store.halve_density_item.set_enabled(has_voxels);
+    }
+    if store.floor_grid_item.is_checked() != prefs.show_floor_grid {
+        store.floor_grid_item.set_checked(prefs.show_floor_grid);
+    }
+    if store.origin_axes_item.is_checked() != prefs.show_origin_axes {
+        store.origin_axes_item.set_checked(prefs.show_origin_axes);
+    }
+    for (i, space) in ColorSpace::ALL.iter().enumerate() {
+        let on = *space == prefs.color_space;
+        if store.cs_items[i].is_checked() != on {
+            store.cs_items[i].set_checked(on);
+        }
     }
 }
 
@@ -622,6 +650,14 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                     p.prefs.color_space = space;
                     save_preferences(&p.prefs);
                 }
+            }
+            MenuAction::ToggleFloorGrid => {
+                p.prefs.show_floor_grid = !p.prefs.show_floor_grid;
+                save_preferences(&p.prefs);
+            }
+            MenuAction::ToggleOriginAxes => {
+                p.prefs.show_origin_axes = !p.prefs.show_origin_axes;
+                save_preferences(&p.prefs);
             }
         }
     }

@@ -1,4 +1,5 @@
 use super::icons;
+use crate::color_space::ColorSpace;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
 use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke};
@@ -47,19 +48,20 @@ pub fn tool_button(
     // motion is reverted in favour of a snappy, predictable hover.
     let neutral_hover = theme.hover_fill();
 
-    // Active tool fills with the full accent — coral wash on the icon was
-    // too subtle for a state this important. White icon over accent reads
-    // unambiguously selected; brightened accent on hover keeps the active
-    // state distinct from a hover preview.
-    let a = theme.accent;
-    let accent_hover = egui::Color32::from_rgb(
-        a.r().saturating_add(12),
-        a.g().saturating_add(12),
-        a.b().saturating_add(12),
-    );
+    // Active tool tints the icon accent (coral) over a faint coral wash. The
+    // wash is an *opaque* blend of accent into the pill ground (`theme.panel`):
+    // a low-alpha accent fill just desaturates to grey over the dark surface,
+    // so blend opaquely to keep the hue. No hover state — selected is terminal,
+    // so the wash holds steady on hover (same fill across all states).
+    let accent_wash = {
+        let t = 0.18;
+        let mix = |bg: u8, fg: u8| (bg as f32 + (fg as f32 - bg as f32) * t).round() as u8;
+        let (a, p) = (theme.accent, theme.panel);
+        egui::Color32::from_rgb(mix(p.r(), a.r()), mix(p.g(), a.g()), mix(p.b(), a.b()))
+    };
 
     let (inactive_fill, hovered_fill, icon_tint) = if active {
-        (theme.accent, accent_hover, egui::Color32::WHITE)
+        (accent_wash, accent_wash, theme.accent)
     } else {
         (egui::Color32::TRANSPARENT, neutral_hover, theme.text)
     };
@@ -422,6 +424,97 @@ pub fn paint_swatch(
         swatch_outline(theme, state.into()),
         egui::StrokeKind::Inside,
     );
+}
+
+/// Mono color readout tooltip in the active format. Single attach point so
+/// every color reference in the sidebar hovers identically (monospace, same
+/// `ColorSpace::format` string the under-swatch readout uses).
+pub fn color_tooltip(resp: egui::Response, space: ColorSpace, rgb: [u8; 3]) -> egui::Response {
+    resp.on_hover_ui(|ui| {
+        ui.label(egui::RichText::new(space.format(rgb)).monospace());
+    })
+}
+
+/// Shared sidebar colour swatch: paints the square with the hover-grow every
+/// sidebar swatch shares and attaches the mono color tooltip. `swatch_cell`
+/// allocates its own cell (recent-color strip); [`swatch_cell_at`] paints at a
+/// caller-supplied rect so the palette grid can open a reorder gap. Both return
+/// the response — the palette layers drag-to-reorder + a remove context menu on
+/// top, which is the only behavioural difference between the two.
+#[allow(clippy::too_many_arguments)]
+pub fn swatch_cell(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    color: egui::Color32,
+    rgb: [u8; 3],
+    size: egui::Vec2,
+    corner_radius: u8,
+    state: impl Into<SwatchSelect>,
+    space: ColorSpace,
+) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    finish_swatch(
+        ui,
+        theme,
+        rect,
+        resp,
+        color,
+        rgb,
+        corner_radius,
+        state.into(),
+        space,
+    )
+}
+
+/// [`swatch_cell`] at an explicit `rect` + `id`, for the palette grid's
+/// self-managed layout.
+#[allow(clippy::too_many_arguments)]
+pub fn swatch_cell_at(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    id: egui::Id,
+    rect: egui::Rect,
+    color: egui::Color32,
+    rgb: [u8; 3],
+    corner_radius: u8,
+    state: impl Into<SwatchSelect>,
+    space: ColorSpace,
+) -> egui::Response {
+    let resp = ui.interact(rect, id, egui::Sense::click_and_drag());
+    finish_swatch(
+        ui,
+        theme,
+        rect,
+        resp,
+        color,
+        rgb,
+        corner_radius,
+        state.into(),
+        space,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_swatch(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    rect: egui::Rect,
+    resp: egui::Response,
+    color: egui::Color32,
+    rgb: [u8; 3],
+    corner_radius: u8,
+    state: SwatchSelect,
+    space: ColorSpace,
+) -> egui::Response {
+    // Painted cells grow by the global hover expansion so they read the same as
+    // egui Button-backed swatches did.
+    let paint_rect = if resp.hovered() {
+        rect.expand(ui.visuals().widgets.hovered.expansion)
+    } else {
+        rect
+    };
+    paint_swatch(ui, theme, paint_rect, color, corner_radius, state);
+    color_tooltip(resp, space, rgb)
 }
 
 /// Paint the `+` "add current colour" affordance at an explicit `rect`.

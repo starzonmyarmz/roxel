@@ -33,6 +33,39 @@ impl ColorSpace {
             Self::Oklch => "OKLCH",
         }
     }
+
+    /// Compact one-line readout of `rgb` in this space. Single source of truth
+    /// for color strings shown outside the editable picker fields — the
+    /// inspector's under-swatch readout and swatch hover tips. Picker edit
+    /// fields use [`ColorEditBuffer::populate`] instead (per-channel slots).
+    pub fn format(self, rgb: [u8; 3]) -> String {
+        match self {
+            Self::Hex => format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]),
+            Self::Rgb => format!("{} {} {}", rgb[0], rgb[1], rgb[2]),
+            Self::Hsl => {
+                let (h, s, l) = rgb_to_hsl(rgb);
+                format!(
+                    "{}° {}% {}%",
+                    h.round() as i32,
+                    s.round() as i32,
+                    l.round() as i32
+                )
+            }
+            Self::Hsb => {
+                let (h, s, v) = rgb_to_hsb(rgb);
+                format!(
+                    "{}° {}% {}%",
+                    h.round() as i32,
+                    s.round() as i32,
+                    v.round() as i32
+                )
+            }
+            Self::Oklch => {
+                let (l, c, h) = rgb_to_oklch(rgb);
+                format!("{}% {:.3} {}°", l.round() as i32, c, h.round() as i32)
+            }
+        }
+    }
 }
 
 // --------- Hex ---------
@@ -353,6 +386,21 @@ mod tests {
 
     fn within(a: u8, b: u8, tol: u8) -> bool {
         a.abs_diff(b) <= tol
+    }
+
+    #[test]
+    fn format_per_space() {
+        assert_eq!(ColorSpace::Hex.format([0xFF, 0x88, 0x00]), "#FF8800");
+        assert_eq!(ColorSpace::Rgb.format([255, 136, 0]), "255 136 0");
+        // Pure red: HSL/HSB hue 0, full sat. Lightness 50 / brightness 100.
+        assert_eq!(ColorSpace::Hsl.format([255, 0, 0]), "0° 100% 50%");
+        assert_eq!(ColorSpace::Hsb.format([255, 0, 0]), "0° 100% 100%");
+        // OKLCH: greys have ~zero chroma, hue arbitrary; just check L=100 white.
+        assert!(
+            ColorSpace::Oklch
+                .format([255, 255, 255])
+                .starts_with("100%")
+        );
     }
 
     #[test]

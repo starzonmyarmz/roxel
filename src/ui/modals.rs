@@ -62,15 +62,12 @@ pub fn draw_preferences(
             }
         });
 
+        // Floor grid + origin axes moved to the View menu (native menu on macOS,
+        // the floating menu pill on Win/Linux). The floating-menu-bar toggle must
+        // stay here — it can't live in the menu it would hide.
+        #[cfg(not(target_os = "macos"))]
         widgets::section(ui, theme, "Visibility", |ui| {
-            ui.checkbox(&mut prefs.show_floor_grid, "Show floor grid");
-            ui.add_space(space::XXS);
-            ui.checkbox(&mut prefs.show_origin_axes, "Show origin axes");
-            #[cfg(not(target_os = "macos"))]
-            {
-                ui.add_space(space::XXS);
-                ui.checkbox(&mut prefs.show_floating_menu_bar, "Show floating menu bar");
-            }
+            ui.checkbox(&mut prefs.show_floating_menu_bar, "Show floating menu bar");
         });
         // Color-space format moved to the View menu (native menu on macOS, the
         // floating menu pill on Win/Linux) — it's a per-view readout choice, not

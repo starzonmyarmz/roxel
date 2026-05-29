@@ -89,6 +89,10 @@ pub fn slash() -> egui::ImageSource<'static> {
 pub fn search() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/search.svg")
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub fn eye() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/eye.svg")
+}
 
 pub fn shape_primitive(p: ShapePrimitive) -> egui::ImageSource<'static> {
     match p {

@@ -397,29 +397,72 @@ pub fn ui_system(
 
                 ui.add_space(space::XS);
                 ui.menu_image_text_button(
+                    egui::Image::new(icons::eye())
+                        .fit_to_exact_size(icon::md_square())
+                        .tint(TEXT),
+                    egui::RichText::new("View").size(font::BODY),
+                    |ui| {
+                        ui.set_min_width(width::TOP_BAR_MENU);
+                        let toggle = |ui: &mut egui::Ui, on: &mut bool, label: &str| -> bool {
+                            let tint = if *on {
+                                theme.accent
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+                            if ui
+                                .add(egui::Button::image_and_text(
+                                    egui::Image::new(icons::check())
+                                        .fit_to_exact_size(icon::sm_square())
+                                        .tint(tint),
+                                    egui::RichText::new(label).size(font::BODY),
+                                ))
+                                .clicked()
+                            {
+                                *on = !*on;
+                                ui.close();
+                                return true;
+                            }
+                            false
+                        };
+                        let mut changed = toggle(ui, &mut prefs.show_floor_grid, "Floor Grid");
+                        changed |= toggle(ui, &mut prefs.show_origin_axes, "Origin Axes");
+                        if changed {
+                            crate::theme::save_preferences(&prefs);
+                        }
+                    },
+                );
+                ui.add_space(space::XS);
+                ui.menu_image_text_button(
                     egui::Image::new(icons::paint_bucket())
                         .fit_to_exact_size(icon::md_square())
                         .tint(TEXT),
                     egui::RichText::new("Color Format").size(font::BODY),
                     |ui| {
                         ui.set_min_width(width::TOP_BAR_MENU);
+                        let mut changed = false;
                         for space in ColorSpace::ALL {
-                            let label = space.label();
-                            let active = space == prefs.color_space;
-                            let resp = if active {
-                                ui.add(
-                                    egui::Button::new(
-                                        egui::RichText::new(label).color(theme.accent),
-                                    )
-                                    .fill(theme.surface),
-                                )
+                            let on = space == prefs.color_space;
+                            let tint = if on {
+                                theme.accent
                             } else {
-                                ui.add(egui::Button::new(label))
+                                egui::Color32::TRANSPARENT
                             };
-                            if resp.clicked() {
+                            if ui
+                                .add(egui::Button::image_and_text(
+                                    egui::Image::new(icons::check())
+                                        .fit_to_exact_size(icon::sm_square())
+                                        .tint(tint),
+                                    egui::RichText::new(space.label()).size(font::BODY),
+                                ))
+                                .clicked()
+                            {
                                 prefs.color_space = space;
+                                changed = true;
                                 ui.close();
                             }
+                        }
+                        if changed {
+                            crate::theme::save_preferences(&prefs);
                         }
                     },
                 );
@@ -791,12 +834,13 @@ pub fn ui_system(
                                         });
 
                                     ui.add_space(space::XS);
-                                    // Hex readout for the active color.
+                                    // Readout for the active color in the chosen format.
                                     ui.vertical_centered(|ui| {
                                         ui.label(
-                                            egui::RichText::new(widgets::hex_string([
-                                                color.0[0], color.0[1], color.0[2],
-                                            ]))
+                                            egui::RichText::new(
+                                                active_space
+                                                    .format([color.0[0], color.0[1], color.0[2]]),
+                                            )
                                             .monospace()
                                             .size(font::SMALL)
                                             .color(theme.text_dim),
@@ -818,13 +862,15 @@ pub fn ui_system(
                                                 } else {
                                                     widgets::SwatchSelect::None
                                                 };
-                                                let resp = widgets::swatch_button(
+                                                let resp = widgets::swatch_cell(
                                                     ui,
                                                     &theme,
                                                     col,
+                                                    [c[0], c[1], c[2]],
                                                     swatch::RECENT,
                                                     radius::XS,
                                                     select_state,
+                                                    active_space,
                                                 );
                                                 if resp.clicked() {
                                                     let shift = ui.input(|i| i.modifiers.shift);
@@ -835,9 +881,6 @@ pub fn ui_system(
                                                         &mut extras,
                                                     );
                                                 }
-                                                resp.on_hover_text(widgets::hex_string([
-                                                    c[0], c[1], c[2],
-                                                ]));
                                             }
                                         });
                                     }
@@ -1152,6 +1195,7 @@ pub fn ui_system(
                                     slots.push(Slot::Add);
 
                                     let base = ui.id();
+                                    let color_fmt = prefs.color_space;
                                     for (slot_idx, slot) in slots.iter().enumerate() {
                                         // Animate each cell from its old slot to its new one so
                                         // the grid reflows around the moving gap. The gap itself
@@ -1211,29 +1255,16 @@ pub fn ui_system(
                                                 } else {
                                                     widgets::SwatchSelect::None
                                                 };
-                                                let resp = ui.interact(
-                                                    rect,
-                                                    base.with(("palette_swatch", si)),
-                                                    egui::Sense::click_and_drag(),
-                                                );
-                                                // Match the recent-color strip's hover: those are
-                                                // egui Buttons that grow by the global hover
-                                                // expansion. The palette grid paints at a fixed
-                                                // rect, so replicate the grow here.
-                                                let paint_rect = if resp.hovered() {
-                                                    rect.expand(
-                                                        ui.visuals().widgets.hovered.expansion,
-                                                    )
-                                                } else {
-                                                    rect
-                                                };
-                                                widgets::paint_swatch(
+                                                let resp = widgets::swatch_cell_at(
                                                     ui,
                                                     &theme,
-                                                    paint_rect,
+                                                    base.with(("palette_swatch", si)),
+                                                    rect,
                                                     col,
+                                                    [c[0], c[1], c[2]],
                                                     radius::XS,
                                                     select_state,
+                                                    color_fmt,
                                                 );
                                                 if resp.clicked() {
                                                     let shift = ui.input(|i| i.modifiers.shift);
@@ -1252,14 +1283,6 @@ pub fn ui_system(
                                                         remove_idx = Some(si);
                                                         ui.close();
                                                     }
-                                                });
-                                                resp.on_hover_ui(|ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(widgets::hex_string([
-                                                            c[0], c[1], c[2],
-                                                        ]))
-                                                        .monospace(),
-                                                    );
                                                 });
                                             }
                                         }

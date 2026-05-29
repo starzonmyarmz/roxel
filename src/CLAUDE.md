@@ -74,7 +74,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Canvas chrome
 
-**No floor plane.** Chrome stack = dot grid + vignette, both gated on `show_floor_grid`.
+**No floor plane.** Chrome stack = dot grid + vignette, both gated on `show_floor_grid`. `show_floor_grid` / `show_origin_axes` are toggled from the **View** menu (native `CheckMenuItem`s on macOS — checked state synced from prefs in `update_menu_enabled_system`; floating pill on Win/Linux), not a Preferences row.
 
 `floor_dots_system` (`main.rs`) — y=0 intersection dots via `FloorDotsGizmos` group (`line.width = 3.0`, `perspective = false`). Each dot is a tiny `+` cross of `tick = 0.05` segments — thick screen-space-constant width makes the short cross render as a round dot. Spacing always 1 voxel (no LOD bands). Window half-extent `(radius * 1.5).clamp(8, 96)` around camera focus; per-dot alpha fades quadratically (`floor_dot_alpha`). No upper radius cap — extreme zoom kills alpha.
 
@@ -88,7 +88,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Color space
 
-`color_space.rs` — sRGB u8 storage everywhere. `ColorSpace` enum (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch`) selects the picker-popup readout; the active space is a persisted preference (`Preferences.color_space`) chosen from the **View → Color Format** menu (native menu on macOS, floating menu pill on Win/Linux), not an inspector control. Conversions: `parse_hex`, `rgb_to_hsl`/`hsl_to_rgb`, `rgb_to_hsb`/`hsb_to_rgb`, `rgb_to_oklch`/`oklch_to_rgb`. OKLCH path reuses `mesh::srgb_to_linear`/`linear_to_srgb` so the voxel-color pipeline and the inspector roundtrip match. sRGB roundtrip is within ±1/255.
+`color_space.rs` — sRGB u8 storage everywhere. `ColorSpace` enum (`Hex`/`Rgb`/`Hsl`/`Hsb`/`Oklch`) selects how colors read out; the active space is a persisted preference (`Preferences.color_space`) chosen from the **View → Color Format** menu (native `CheckMenuItem`s on macOS — the active option is checked, synced from prefs in `update_menu_enabled_system`; floating menu pill on Win/Linux), not an inspector control. `ColorSpace::format(rgb)` is the single source of truth for non-editable color strings (under-swatch readout, swatch/recent/palette hover tips); the picker edit fields use `ColorEditBuffer::populate` per-channel slots instead. `widgets::hex_string` is hex-only and now serves just the Preferences custom-canvas-color row. Conversions: `parse_hex`, `rgb_to_hsl`/`hsl_to_rgb`, `rgb_to_hsb`/`hsb_to_rgb`, `rgb_to_oklch`/`oklch_to_rgb`. OKLCH path reuses `mesh::srgb_to_linear`/`linear_to_srgb` so the voxel-color pipeline and the inspector roundtrip match. sRGB roundtrip is within ±1/255.
 
 `ColorEditBuffer` (same file) — string slots per space. Repopulated when `CurrentColor` or active space changes so keystrokes don't roundtrip through `Color8` mid-edit (drops hue on greys / quantises OKLCH chroma). Commit on `lost_focus`; invalid silently reverts.
 

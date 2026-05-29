@@ -12,7 +12,10 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(ui): color readouts and swatch tooltips follow the active Color Format; menu checks the active option
+- refactor(ui): recent + palette swatches share one cell/tooltip component; every color reference uses a monospace tooltip
 - fix(ui): palette swatches now hover-highlight like the recent-color strip
+- feat(ui): move Floor Grid + Origin Axes toggles from Preferences to the View menu
 - fix(ui): drop per-color "Pick color" entries from the Cmd+K palette
 - feat(ui): dim backdrop behind open modals; toast colors now follow the theme
 - refactor(ui): UI polish pass — design-token cleanup, shared modal frame, split ui.rs
