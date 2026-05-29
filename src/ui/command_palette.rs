@@ -51,7 +51,6 @@ pub enum Category {
     Shape,
     View,
     Palette,
-    Color,
     Preferences,
     Help,
 }
@@ -65,7 +64,6 @@ impl Category {
             Category::Shape => "Shape",
             Category::View => "View",
             Category::Palette => "Palette",
-            Category::Color => "Color",
             Category::Preferences => "Pref",
             Category::Help => "Help",
         }
@@ -116,8 +114,6 @@ pub enum CommandAction {
     DeletePalette,
     ImportAse,
     ExportAse,
-
-    PickColor(Color8),
 
     SetThemePref(ThemePref),
     ToggleShowFloorGrid,
@@ -600,24 +596,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
             true,
             CommandAction::SelectPalette(i),
         ));
-    }
-
-    // Color (one per swatch in the active palette).
-    if let Some(p) = active_palette {
-        for c in &p.colors {
-            if *c == state.current_color {
-                continue;
-            }
-            let hex = widgets::hex_string([c[0], c[1], c[2]]);
-            out.push(entry(
-                &format!("Pick color {hex}"),
-                Category::Color,
-                &p.name,
-                None,
-                true,
-                CommandAction::PickColor(*c),
-            ));
-        }
     }
 
     // Preferences
@@ -1434,7 +1412,6 @@ pub fn dispatch_command_palette_system(
                     })
             });
         }
-        CommandAction::PickColor(c) => p.color.0 = c,
         CommandAction::SetThemePref(t) => {
             p.prefs.theme = t;
             crate::theme::save_preferences(&p.prefs);
@@ -1648,6 +1625,30 @@ mod tests {
         assert!(switches.iter().any(|e| e.label.contains("Beta")));
         assert!(switches.iter().any(|e| e.label.contains("Gamma")));
         assert!(switches.iter().all(|e| !e.label.contains("Alpha")));
+    }
+
+    #[test]
+    fn catalog_has_no_color_pick_entries() {
+        let palettes = vec![pal("Alpha", true), pal("Beta", false)];
+        let shape = ShapeOptions::default();
+        let prefs = Preferences::default();
+        let state = CatalogState {
+            tool: Tool::Brush,
+            shape: &shape,
+            has_undo: false,
+            has_redo: false,
+            has_selection: false,
+            has_clipboard: false,
+            has_voxels: false,
+            dialog_busy: false,
+            palettes: &palettes,
+            palette_choice: 0,
+            current_color: [10, 20, 30, 255],
+            prefs: &prefs,
+            flyby_active: false,
+        };
+        let cat = build_catalog(&state);
+        assert!(cat.iter().all(|e| !e.label.starts_with("Pick color")));
     }
 
     #[test]
