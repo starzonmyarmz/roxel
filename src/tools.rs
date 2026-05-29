@@ -1330,11 +1330,18 @@ pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<T
     let alt_just = keys.just_pressed(KeyCode::AltLeft) || keys.just_pressed(KeyCode::AltRight);
     let alt_released =
         keys.just_released(KeyCode::AltLeft) || keys.just_released(KeyCode::AltRight);
+    let alt_held = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let z_just = keys.just_pressed(KeyCode::KeyZ);
+    let z = keys.pressed(KeyCode::KeyZ);
 
     if alt_just && tool.current != Tool::Eyedropper {
-        tool.previous = tool.current;
-        tool.current = Tool::Eyedropper;
+        if !z {
+            tool.previous = tool.current;
+            tool.current = Tool::Eyedropper;
+        }
     } else if alt_released && tool.current == Tool::Eyedropper {
+        tool.current = tool.previous;
+    } else if z_just && alt_held && tool.current == Tool::Eyedropper {
         tool.current = tool.previous;
     }
 }
