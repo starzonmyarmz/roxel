@@ -9,7 +9,7 @@
 
 use super::command_palette::fuzzy_match;
 use super::palette::{Palette, PaletteSwitcher};
-use super::tokens::{font, gap, height, icon, radius, size, space, stroke, swatch, width};
+use super::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, swatch, width};
 use super::{icons, widgets};
 use crate::theme::Theme;
 use bevy_egui::egui;
@@ -99,13 +99,16 @@ pub fn draw(
         .frame(
             egui::Frame::window(&ctx.style())
                 .fill(theme.panel)
-                .inner_margin(egui::Margin::symmetric(14, 12))
+                .inner_margin(egui::Margin::symmetric(
+                    pad::SEARCH.x as i8,
+                    pad::SEARCH.y as i8,
+                ))
                 .stroke(egui::Stroke::NONE)
                 .shadow(crate::ui::tokens::shadow::high())
                 .corner_radius(egui::CornerRadius::same(radius::LG)),
         )
         .show(ctx, |ui| {
-            ui.set_min_width(width::COMMAND_PALETTE - 28.0);
+            ui.set_min_width(width::COMMAND_PALETTE - pad::SEARCH.x * 2.0);
 
             let margin = egui::Margin::symmetric(space::SM as i8, space::SX as i8);
             let inner = egui::Frame::new()
@@ -223,7 +226,7 @@ fn header_row(ui: &mut egui::Ui, theme: &Theme, label: &str) {
         egui::Sense::hover(),
     );
     ui.painter().text(
-        rect.left_center() + egui::vec2(10.0, 0.0),
+        rect.left_center() + egui::vec2(space::FIELD_PAD_X, 0.0),
         egui::Align2::LEFT_CENTER,
         label.to_uppercase(),
         egui::FontId::new(
@@ -286,8 +289,8 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
 fn footer_hint(ui: &mut egui::Ui, theme: &Theme) {
     let chip_color = theme.text;
     let label_color = theme.text_dim;
-    let chip_h = icon::XS + 8.0;
-    let chip_pad_x = 6.0;
+    let chip_h = icon::XS + space::SM;
+    let chip_pad_x = space::SX;
 
     let icon_chip = |ui: &mut egui::Ui, src: egui::ImageSource<'static>| {
         let w = icon::XS + chip_pad_x * 2.0;

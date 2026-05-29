@@ -38,7 +38,7 @@ use crate::tools::{
 };
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
-use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
+use crate::ui::tokens::{font, gap, height, motion, pad, radius, space, stroke, swatch, width};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -1468,7 +1468,10 @@ pub fn ui_system(
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(theme.panel)
-                    .inner_margin(egui::Margin::symmetric(20, 16))
+                    .inner_margin(egui::Margin::symmetric(
+                        pad::MODAL.x as i8,
+                        pad::MODAL.y as i8,
+                    ))
                     .shadow(crate::ui::tokens::shadow::high())
                     .corner_radius(egui::CornerRadius::same(radius::LG))
                     .show(ui, |ui| {

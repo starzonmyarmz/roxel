@@ -1,6 +1,6 @@
 use crate::theme::Theme;
 use crate::ui::icons;
-use crate::ui::tokens::{font, icon, radius, shadow, space, width};
+use crate::ui::tokens::{font, icon, pad, radius, shadow, space, width};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use std::collections::VecDeque;
@@ -27,6 +27,10 @@ pub const INFO_TTL: f32 = 3.5;
 pub const MAX_TOASTS: usize = 4;
 
 const FADE_WINDOW: f32 = 0.5;
+
+/// Alpha (0–255) of the kind accent blended over the panel for the toast card
+/// fill. Low enough to read as a translucent tint, not a saturated block.
+const TINT_ALPHA: u8 = 36;
 
 #[derive(Resource, Default)]
 pub struct Toasts(pub VecDeque<Toast>);
@@ -74,7 +78,7 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
     // frame since `draw_toasts` is called last in `ui_system`.
     let canvas = ctx.available_rect();
     let center_x = (canvas.min.x + canvas.max.x) * 0.5;
-    let bottom_y = canvas.max.y - 16.0;
+    let bottom_y = canvas.max.y - space::FLOAT_GAP;
     egui::Area::new(egui::Id::new("toast-stack"))
         .order(egui::Order::Foreground)
         .fixed_pos(egui::pos2(center_x, bottom_y))
@@ -94,7 +98,7 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                 // with a side bar. End-of-life fade scales the whole toast's
                 // opacity (fill, shadow, icon, text) so it dissolves uniformly
                 // rather than the bg lerping to panel while text stays opaque.
-                let tinted = blend_alpha(accent, theme.panel, 36);
+                let tinted = blend_alpha(accent, theme.panel, TINT_ALPHA);
                 ui.scope(|ui| {
                     ui.multiply_opacity(fade);
                     egui::Frame::default()
@@ -102,7 +106,10 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
                         .stroke(egui::Stroke::NONE)
                         .shadow(shadow::mid())
                         .corner_radius(egui::CornerRadius::same(radius::MD))
-                        .inner_margin(egui::Margin::symmetric(14, 10))
+                        .inner_margin(egui::Margin::symmetric(
+                            pad::TOAST.x as i8,
+                            pad::TOAST.y as i8,
+                        ))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = space::SM;

@@ -86,6 +86,9 @@ pub mod space {
     /// ("navigate", "run", "close") in the command palette.
     pub const FOOTER_GROUP: f32 = 10.0;
     pub const MD: f32 = 12.0;
+    /// Left text inset for field-like controls (select dropdown trigger, palette
+    /// switcher group headers). Off the 4-px grid by intent, like `FOOTER_GROUP`.
+    pub const FIELD_PAD_X: f32 = 10.0;
     #[allow(dead_code)] // reserved for layout tuning
     pub const LG: f32 = 16.0;
     /// Margin between canvas edge and a floating UI element (pill menu, tool
@@ -118,6 +121,9 @@ pub mod pad {
     pub const DIALOG: Vec2 = Vec2::new(16.0, 8.0); // modal action buttons
     #[allow(dead_code)] // adopted once egui exposes a tooltip frame override
     pub const TOOLTIP: Vec2 = Vec2::new(10.0, 6.0); // tooltip popup inner padding
+    pub const MODAL: Vec2 = Vec2::new(20.0, 16.0); // modal window / new-project inner margin
+    pub const SEARCH: Vec2 = Vec2::new(14.0, 12.0); // command palette + switcher search frame
+    pub const TOAST: Vec2 = Vec2::new(14.0, 10.0); // toast card inner margin
 }
 
 /// Icon `fit_to_exact_size` values. Square — width == height. 4-px grid.
@@ -169,6 +175,7 @@ pub mod stroke {
 pub mod size {
     use super::Vec2;
     pub const RULE_HEIGHT: f32 = 20.0; // vertical_rule
+    pub const TOOL_BUTTON: Vec2 = Vec2::new(40.0, 40.0); // tool_button square
     pub const ICON_BUTTON: Vec2 = Vec2::new(28.0, 26.0); // icon_only_button min
     pub const ACTION_ROW_HEIGHT: f32 = 26.0; // wide_action_button, select_row
     pub const DROPDOWN_HEIGHT: f32 = 28.0;
@@ -314,6 +321,9 @@ mod tests {
             pad::MENU,
             pad::DEFAULT,
             pad::DIALOG,
+            pad::MODAL,
+            pad::SEARCH,
+            pad::TOAST,
             gap::NONE,
             gap::TIGHT,
             gap::DEFAULT,
@@ -353,7 +363,7 @@ mod tests {
         for v in scalars {
             assert_eq!(v as u32 % 2, 0, "size scalar {v} is odd");
         }
-        let vecs = [size::ICON_BUTTON, size::PREFS_LABEL];
+        let vecs = [size::ICON_BUTTON, size::PREFS_LABEL, size::TOOL_BUTTON];
         for v in vecs {
             assert_eq!(v.x as u32 % 2, 0, "size vec x={} is odd", v.x);
             assert_eq!(v.y as u32 % 2, 0, "size vec y={} is odd", v.y);

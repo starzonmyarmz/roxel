@@ -40,7 +40,7 @@ pub fn tool_button(
     shortcut: &str,
 ) -> egui::Response {
     let active = tool.current == kind;
-    let button_size = egui::vec2(40.0, 40.0);
+    let button_size = size::TOOL_BUTTON;
 
     // Static three-state palette — no animation. The animated version stuttered
     // on hover (the visible fill alternated between two greys mid-hover), so
@@ -479,7 +479,10 @@ pub fn modal_window<'a>(
     .frame(
         egui::Frame::window(&ctx.style())
             .fill(theme.panel)
-            .inner_margin(egui::Margin::symmetric(20, 16))
+            .inner_margin(egui::Margin::symmetric(
+                pad::MODAL.x as i8,
+                pad::MODAL.y as i8,
+            ))
             .stroke(egui::Stroke::NONE)
             .shadow(crate::ui::tokens::shadow::high())
             .corner_radius(egui::CornerRadius::same(radius::LG)),
@@ -587,7 +590,7 @@ pub fn select_dropdown(
 ) -> Option<usize> {
     let height = size::DROPDOWN_HEIGHT;
     let chevron_pad = space::SM;
-    let label_pad = 10.0;
+    let label_pad = space::FIELD_PAD_X;
 
     let id = ui.make_persistent_id(id_salt);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -636,7 +639,7 @@ pub fn select_dropdown(
     let mut chosen = None;
     egui::Popup::from_toggle_button_response(&resp)
         .id(id)
-        .gap(4.0)
+        .gap(space::XS)
         .align(egui::RectAlign::BOTTOM_START)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .frame(
@@ -644,7 +647,7 @@ pub fn select_dropdown(
                 .fill(theme.panel)
                 .stroke(egui::Stroke::new(stroke::HAIR, theme.border))
                 .corner_radius(egui::CornerRadius::same(radius::MD))
-                .inner_margin(egui::Margin::same(4)),
+                .inner_margin(egui::Margin::same(space::XS as i8)),
         )
         .width(width)
         .show(|ui| {
@@ -688,7 +691,7 @@ fn select_row(
     ui.painter()
         .rect_filled(rect, egui::CornerRadius::same(radius::XS), fill);
     ui.painter().text(
-        rect.left_center() + egui::vec2(8.0, 0.0),
+        rect.left_center() + egui::vec2(space::SM, 0.0),
         egui::Align2::LEFT_CENTER,
         label,
         egui::FontId::new(font::BODY, egui::FontFamily::Proportional),
