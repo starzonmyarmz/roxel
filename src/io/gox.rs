@@ -31,6 +31,9 @@ const BLOCK_BYTES: usize = BLOCK_VOXELS * 4;
 const BLOCK_I: i32 = BLOCK_SIZE as i32;
 const PNG_MAGIC: [u8; 4] = [0x89, 0x50, 0x4E, 0x47];
 
+/// A 16³ block keyed by its block coord: `((bx, by, bz), raw RGBA bytes)`.
+type BlockEntry = ((i32, i32, i32), Box<[u8; BLOCK_BYTES]>);
+
 pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let mut buf = Vec::new();
     buf.extend_from_slice(b"GOX ");
@@ -63,7 +66,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
         entry[off + 3] = 255;
     }
 
-    let mut entries: Vec<((i32, i32, i32), Box<[u8; BLOCK_BYTES]>)> = blocks.into_iter().collect();
+    let mut entries: Vec<BlockEntry> = blocks.into_iter().collect();
     entries.sort_by_key(|((bx, by, bz), _)| (*bx, *by, *bz));
 
     for (_, data) in &entries {

@@ -87,6 +87,7 @@ pub fn spawn_brush_preview(
     commands.insert_resource(BrushPreviewMaterial(mat));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn brush_preview_system(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,

@@ -40,6 +40,7 @@ pub struct SnapshotSession {
 #[derive(Resource, Default)]
 pub struct SnapshotInProgress(pub bool);
 
+#[allow(clippy::too_many_arguments)]
 pub fn start_snapshot_system(
     mut commands: Commands,
     mut request: ResMut<SnapshotRequest>,

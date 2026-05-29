@@ -117,7 +117,7 @@ fn pack_bin(mesh: &MeshData) -> Vec<u8> {
 }
 
 fn pad_to_4(buf: &mut Vec<u8>) {
-    while buf.len() % 4 != 0 {
+    while !buf.len().is_multiple_of(4) {
         buf.push(0);
     }
 }

@@ -550,6 +550,7 @@ fn shape_commit(
     state.reset();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shape_input(
     options: &ShapeOptions,
     state: &mut ShapeState,
@@ -632,6 +633,7 @@ fn select_commit(state: &mut SelectState, selection: &mut Selection) {
     state.reset();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn select_input(
     state: &mut SelectState,
     selection: &mut Selection,
@@ -704,6 +706,7 @@ fn select_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     pointer: Pointer,
@@ -1093,6 +1096,7 @@ pub fn tool_input_system(
 /// onto that plane and translates the selection contents to that integer
 /// cell. Lives in its own system so the painting/picking flow in
 /// `tool_input_system` stays untouched.
+#[allow(clippy::too_many_arguments)]
 pub fn move_drag_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -1339,9 +1343,7 @@ pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<T
             tool.previous = tool.current;
             tool.current = Tool::Eyedropper;
         }
-    } else if alt_released && tool.current == Tool::Eyedropper {
-        tool.current = tool.previous;
-    } else if z_just && alt_held && tool.current == Tool::Eyedropper {
+    } else if (alt_released || (z_just && alt_held)) && tool.current == Tool::Eyedropper {
         tool.current = tool.previous;
     }
 }

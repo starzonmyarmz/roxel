@@ -56,6 +56,7 @@ fn empty_mesh() -> Mesh {
     m
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn shape_preview_system(
     tool: Res<ToolState>,
     options: Res<ShapeOptions>,

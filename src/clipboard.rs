@@ -168,6 +168,7 @@ pub fn execute_paste(
 /// hovering (`hit.cell + hit.normal`), falling back to the active selection's
 /// AABB min, then to the stamp's original origin. After paste, the selection
 /// updates to the pasted region so the user can nudge with the Move tool.
+#[allow(clippy::too_many_arguments)]
 pub fn clipboard_key_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,

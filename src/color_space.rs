@@ -93,7 +93,7 @@ pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> [u8; 3] {
     };
     let p = 2.0 * l - q;
     let to_u8 = |t: f32| {
-        let t = (t.rem_euclid(1.0)) as f32;
+        let t = t.rem_euclid(1.0);
         let v = if t < 1.0 / 6.0 {
             p + (q - p) * 6.0 * t
         } else if t < 0.5 {
@@ -154,8 +154,9 @@ pub fn hsb_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
 
 // --------- OKLCH ---------
 // References: https://bottosson.github.io/posts/oklab/
-// Coefficients are the standard OKLab matrix.
-
+// Coefficients are the standard OKLab matrix, kept at reference precision
+// (more digits than f32 holds, but copied verbatim from the source above).
+#[allow(clippy::excessive_precision)]
 fn linear_srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
     let m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
@@ -170,6 +171,7 @@ fn linear_srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     )
 }
 
+#[allow(clippy::excessive_precision)]
 fn oklab_to_linear_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
     let m_ = l - 0.1055613458 * a - 0.0638541728 * b;

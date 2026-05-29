@@ -107,6 +107,7 @@ pub struct UiState<'w> {
     pub ui_visible: Res<'w, UiVisible>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn ui_system(
     mut contexts: EguiContexts,
     mut tool: ResMut<ToolState>,
@@ -1264,13 +1265,11 @@ pub fn ui_system(
                                         if resp.dragged() {
                                             egui::DragAndDrop::set_payload(ui.ctx(), from);
                                         }
-                                        if resp.drag_stopped() {
-                                            if let Some(to) = gap_pos {
-                                                if to != from {
+                                        if resp.drag_stopped()
+                                            && let Some(to) = gap_pos
+                                                && to != from {
                                                     reorder = Some((from, to));
                                                 }
-                                            }
-                                        }
                                     }
 
                                     if add_clicked {
@@ -1719,16 +1718,14 @@ fn space_color_picker(
             });
         }
     }
-    if stepped {
-        if let Some(rgb) = color_edit.commit() {
-            color.0 = [rgb[0], rgb[1], rgb[2], 255];
-            // Keep source in sync so the gate above doesn't repopulate and
-            // clobber the stepped buffer with a quantised readback.
-            color_edit.source = color.0;
-            let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
-            hue_norm = h / 360.0;
-            changed = true;
-        }
+    if stepped && let Some(rgb) = color_edit.commit() {
+        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        // Keep source in sync so the gate above doesn't repopulate and
+        // clobber the stepped buffer with a quantised readback.
+        color_edit.source = color.0;
+        let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+        hue_norm = h / 360.0;
+        changed = true;
     }
     if commit_now {
         if let Some(rgb) = color_edit.commit() {

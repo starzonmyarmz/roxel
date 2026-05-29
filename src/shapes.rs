@@ -1,16 +1,11 @@
 use bevy::math::IVec3;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ShapePrimitive {
+    #[default]
     Rectangle,
     Ellipse,
     Line,
-}
-
-impl Default for ShapePrimitive {
-    fn default() -> Self {
-        ShapePrimitive::Rectangle
-    }
 }
 
 fn other_axes(axis: usize) -> (usize, usize) {

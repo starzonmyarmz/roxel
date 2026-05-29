@@ -191,6 +191,7 @@ fn hero_icon(anchor: AnchorId) -> egui::ImageSource<'static> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn onboarding_overlay_system(
     mut contexts: EguiContexts,
     mut onboarding: ResMut<Onboarding>,

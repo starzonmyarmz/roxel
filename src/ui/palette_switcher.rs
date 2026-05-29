@@ -195,16 +195,16 @@ pub fn draw(
 
     // Click outside closes (matches command palette) — but not the opening click,
     // which is still registered this frame and lands on the `…` menu.
-    if let Some(wr) = window_response {
-        if !opened_this_frame {
-            let rect = wr.response.rect;
-            let clicked_outside = ctx.input(|i| {
-                i.pointer.any_click()
-                    && !rect.contains(i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))
-            });
-            if clicked_outside {
-                close_after = true;
-            }
+    if let Some(wr) = window_response
+        && !opened_this_frame
+    {
+        let rect = wr.response.rect;
+        let clicked_outside = ctx.input(|i| {
+            i.pointer.any_click()
+                && !rect.contains(i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))
+        });
+        if clicked_outside {
+            close_after = true;
         }
     }
 

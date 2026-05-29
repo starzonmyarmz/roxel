@@ -122,6 +122,7 @@ fn file_label(p: &Path) -> String {
         .to_string()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn poll_dialogs_system(
     mut pending: ResMut<PendingDialog>,
     mut grid: ResMut<VoxelGrid>,
