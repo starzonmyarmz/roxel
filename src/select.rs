@@ -692,23 +692,31 @@ mod tests {
     }
 
     #[test]
-    fn select_all_uses_grid_bounding_box() {
+    fn select_all_selects_only_occupied_cells() {
         let mut grid = VoxelGrid::default();
         let c = [10, 20, 30, 255];
         grid.set(IVec3::new(-2, 0, 3), Some(c));
         grid.set(IVec3::new(5, 4, -1), Some(c));
-        let (min, max) = grid.bounding_box().expect("bb");
-        let sel = SelectionAabb { min, max };
+        let cells: HashSet<IVec3> = grid.iter_occupied().map(|(p, _)| p).collect();
+        let mut sel = Selection::default();
+        sel.set_cells(cells);
+        // Only the two occupied voxels are selected.
         assert!(sel.contains(IVec3::new(-2, 0, 3)));
         assert!(sel.contains(IVec3::new(5, 4, -1)));
-        assert_eq!(sel.min, IVec3::new(-2, 0, -1));
-        assert_eq!(sel.max, IVec3::new(5, 4, 3));
+        assert_eq!(sel.cells.as_ref().map(|c| c.len()), Some(2));
+        // An empty cell inside the bounding hull is NOT selected.
+        assert!(!sel.contains(IVec3::new(0, 0, 0)));
+        // AABB hull still computed for marching-ants fallback.
+        let aabb = sel.aabb.expect("hull");
+        assert_eq!(aabb.min, IVec3::new(-2, 0, -1));
+        assert_eq!(aabb.max, IVec3::new(5, 4, 3));
     }
 
     #[test]
-    fn select_all_on_empty_grid_returns_none() {
+    fn select_all_on_empty_grid_selects_nothing() {
         let grid = VoxelGrid::default();
-        assert!(grid.bounding_box().is_none());
+        let cells: HashSet<IVec3> = grid.iter_occupied().map(|(p, _)| p).collect();
+        assert!(cells.is_empty());
     }
 
     #[test]

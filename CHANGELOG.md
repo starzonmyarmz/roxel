@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(select): Cmd+A selects only occupied voxels, not the whole bounding box
 - fix(ui): add spaces around × in sidebar size label
 - fix(ui): hide gizmo in focus mode; show during flyby when UI is visible
 - feat(ui): palette swatches animate into place when dragging to reorder; the drop target is now empty space instead of a gray placeholder
