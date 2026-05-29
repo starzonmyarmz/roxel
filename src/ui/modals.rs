@@ -4,7 +4,6 @@
 //! is a free function over the resources it touches; `ui_system` calls them
 //! when the corresponding modal is open.
 
-use crate::color_space::ColorSpace;
 use crate::grid::NewProject;
 use crate::io;
 use crate::theme::{
@@ -73,33 +72,9 @@ pub fn draw_preferences(
                 ui.checkbox(&mut prefs.show_floating_menu_bar, "Show floating menu bar");
             }
         });
-
-        // Color-space format for the picker's numeric fields. Demoted here
-        // from the inspector: most users never leave Hex, so it doesn't earn
-        // panel space in a beginner-friendly editor.
-        widgets::section(ui, theme, "Color", |ui| {
-            widgets::prefs_row(ui, theme, "Format", |ui| {
-                let labels: Vec<String> = ColorSpace::ALL
-                    .iter()
-                    .map(|s| s.label().to_string())
-                    .collect();
-                let idx = ColorSpace::ALL
-                    .iter()
-                    .position(|s| *s == prefs.color_space)
-                    .unwrap_or(0);
-                if let Some(i) = widgets::select_dropdown(
-                    ui,
-                    theme,
-                    "prefs_color_space",
-                    width::PREFS_DROPDOWN,
-                    prefs.color_space.label(),
-                    &labels,
-                    idx,
-                ) {
-                    prefs.color_space = ColorSpace::ALL[i];
-                }
-            });
-        });
+        // Color-space format moved to the View menu (native menu on macOS, the
+        // floating menu pill on Win/Linux) — it's a per-view readout choice, not
+        // an app preference, so it no longer earns a Preferences row.
     });
     let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
     if !open_flag || esc {

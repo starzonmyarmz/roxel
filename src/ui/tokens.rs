@@ -178,6 +178,7 @@ pub mod size {
     pub const TOOL_BUTTON: Vec2 = Vec2::new(40.0, 40.0); // tool_button square
     pub const ICON_BUTTON: Vec2 = Vec2::new(28.0, 26.0); // icon_only_button min
     pub const ACTION_ROW_HEIGHT: f32 = 26.0; // wide_action_button, select_row
+    #[allow(dead_code)] // reserved — used by widgets::select_dropdown
     pub const DROPDOWN_HEIGHT: f32 = 28.0;
     pub const PREFS_LABEL: Vec2 = Vec2::new(72.0, 20.0);
     pub const CMD_PALETTE_ROW: f32 = 30.0;
@@ -192,6 +193,7 @@ pub mod width {
     pub const MODAL_PREFS: f32 = 340.0;
     /// Right-hand control width inside a Preferences row (`MODAL_PREFS` minus
     /// the label column and modal margins).
+    #[allow(dead_code)] // reserved — last caller (prefs color format) moved to the View menu
     pub const PREFS_DROPDOWN: f32 = 200.0;
     pub const MODAL_NEW: f32 = 240.0;
     /// Discard-edits confirm modal — wider than `MODAL_NEW` so its three

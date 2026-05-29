@@ -613,6 +613,7 @@ pub fn dialog_button(
 /// click opens a popup of selectable rows. Use in place of `egui::ComboBox`
 /// so the control reads as the same family as `chip_button` and other
 /// surface-fill / hair-border widgets.
+#[allow(dead_code)] // reserved — last caller (prefs color format) moved to the View menu
 pub fn select_dropdown(
     ui: &mut egui::Ui,
     theme: &Theme,
@@ -697,6 +698,7 @@ pub fn select_dropdown(
     chosen
 }
 
+#[allow(dead_code)] // reserved — used by select_dropdown
 fn select_row(
     ui: &mut egui::Ui,
     theme: &Theme,

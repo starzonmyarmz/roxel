@@ -7,10 +7,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::camera::{CameraPreset, PendingViewPreset};
+use crate::color_space::ColorSpace;
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
 use crate::io::recent::MAX_RECENT;
-use crate::theme::PreferencesWindow;
+use crate::theme::{Preferences, PreferencesWindow, save_preferences};
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, spawn_save,
     spawn_save_as,
@@ -47,6 +48,7 @@ pub enum MenuAction {
     ShowCommandPalette,
     ViewPreset(CameraPreset),
     FrameView,
+    SetColorSpace(ColorSpace),
 }
 
 const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
@@ -68,6 +70,8 @@ pub struct MenuStore {
     recent_items: Vec<MenuItem>,
     clear_recent_item: MenuItem,
     recent_snapshot: Vec<PathBuf>,
+    #[allow(dead_code)]
+    cs_items: Vec<MenuItem>,
 }
 
 pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
@@ -312,6 +316,15 @@ fn build_menu() -> MenuStore {
         true,
         Some(Accelerator::new(Some(Modifiers::SUPER), Code::Digit7)),
     );
+    let color_space_sub = Submenu::new("Color Space", false);
+    let cs_items: Vec<MenuItem> = ColorSpace::ALL
+        .iter()
+        .map(|s| MenuItem::new(s.label(), true, None))
+        .collect();
+    for item in &cs_items {
+        let _ = color_space_sub.append(item);
+    }
+
     view.append_items(&[
         &frame_item,
         &PredefinedMenuItem::separator(),
@@ -322,6 +335,8 @@ fn build_menu() -> MenuStore {
         &view_top,
         &PredefinedMenuItem::separator(),
         &view_iso,
+        &PredefinedMenuItem::separator(),
+        &color_space_sub,
     ])
     .expect("append view menu");
     menu.append(&view).expect("append view submenu");
@@ -351,6 +366,12 @@ fn build_menu() -> MenuStore {
         view_iso.id().0.clone(),
         MenuAction::ViewPreset(CameraPreset::Iso),
     );
+    for (i, space) in ColorSpace::ALL.iter().enumerate() {
+        actions.insert(
+            cs_items[i].id().0.clone(),
+            MenuAction::SetColorSpace(*space),
+        );
+    }
 
     let window = Submenu::new("Window", true);
     window
@@ -388,6 +409,7 @@ fn build_menu() -> MenuStore {
         recent_items,
         clear_recent_item,
         recent_snapshot: Vec::new(),
+        cs_items,
     }
 }
 
@@ -489,6 +511,7 @@ pub struct MenuActionParams<'w> {
     pub recent: ResMut<'w, RecentFiles>,
     pub view_preset: ResMut<'w, PendingViewPreset>,
     pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
+    pub prefs: ResMut<'w, Preferences>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
     pub selection: ResMut<'w, crate::select::Selection>,
     pub clipboard: ResMut<'w, crate::clipboard::Clipboard>,
@@ -592,6 +615,12 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                     p.cmd_palette.search.clear();
                     p.cmd_palette.selected = 0;
                     p.cmd_palette.just_opened = true;
+                }
+            }
+            MenuAction::SetColorSpace(space) => {
+                if p.prefs.color_space != space {
+                    p.prefs.color_space = space;
+                    save_preferences(&p.prefs);
                 }
             }
         }

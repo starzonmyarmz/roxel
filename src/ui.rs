@@ -24,6 +24,8 @@ pub use palette::{
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
+#[cfg(not(target_os = "macos"))]
+use crate::color_space::ColorSpace;
 use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::grid::{NewProject, VoxelGrid};
 use crate::history::History;
@@ -389,6 +391,35 @@ pub fn ui_system(
                                     .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
                             });
                             ui.close();
+                        }
+                    },
+                );
+
+                ui.add_space(space::XS);
+                ui.menu_image_text_button(
+                    egui::Image::new(icons::paint_bucket())
+                        .fit_to_exact_size(icon::md_square())
+                        .tint(TEXT),
+                    egui::RichText::new("Color Space").size(font::BODY),
+                    |ui| {
+                        ui.set_min_width(width::TOP_BAR_MENU);
+                        for space in ColorSpace::ALL {
+                            let label = space.label();
+                            let active = space == prefs.color_space;
+                            let resp = if active {
+                                ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new(label).color(theme.accent),
+                                    )
+                                    .fill(theme.surface),
+                                )
+                            } else {
+                                ui.add(egui::Button::new(label))
+                            };
+                            if resp.clicked() {
+                                prefs.color_space = space;
+                                ui.close();
+                            }
                         }
                     },
                 );
