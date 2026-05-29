@@ -108,6 +108,7 @@ fn main() {
             ..default()
         })
         .init_resource::<VoxelGrid>()
+        .init_resource::<crate::ui::ModalActive>()
         .init_resource::<History>()
         .init_resource::<ToolState>()
         .init_resource::<CurrentColor>()

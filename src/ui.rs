@@ -60,6 +60,12 @@ fn slot_min_lerp(origin: egui::Pos2, cols: usize, step: egui::Vec2, slot_f: f32)
     a + (b - a) * t
 }
 
+/// `true` on any frame a modal/palette is open. Set by `ui_system`, read by
+/// `gizmo::update_gizmo_viewport` to deactivate the orientation cube — its
+/// camera composites after egui, so the modal scrim can't cover it otherwise.
+#[derive(Resource, Default)]
+pub struct ModalActive(pub bool);
+
 #[derive(SystemParam)]
 pub struct ZoomReadout<'w, 's> {
     cameras: Query<'w, 's, &'static PanOrbitCamera>,
@@ -122,6 +128,7 @@ pub fn ui_system(
     gizmo_view: GizmoView,
     ui_state: UiState,
     mut cmd_palette: ResMut<CommandPalette>,
+    mut modal_active: ResMut<ModalActive>,
 ) -> Result {
     let ColorParams {
         mut color,
@@ -1369,14 +1376,19 @@ pub fn ui_system(
         ctx.set_cursor_icon(cursor);
     }
 
-    // Dim the canvas + inspector behind any open modal so the active surface
-    // reads as focused, and block click-through to the canvas. Modals render at
-    // Order::Foreground, above this Middle scrim.
+    // Dim everything behind an open modal so the active surface reads as
+    // focused, and block click-through to the canvas. The scrim and the modals
+    // all render at Order::Foreground; the scrim is shown after the floating
+    // tool island (so it covers it) and before the modal surfaces (so they sit
+    // on top). The orientation gizmo is a separate Bevy camera that composites
+    // after egui, so egui can't cover it — `ModalActive` deactivates it instead
+    // (see `gizmo::update_gizmo_viewport`).
     let modal_open = prefs_window.open
         || new_project.dialog_open
         || switcher.open
         || discard.pending.is_some()
         || cmd_palette.open;
+    modal_active.0 = modal_open;
     if modal_open {
         widgets::modal_scrim(ctx);
     }

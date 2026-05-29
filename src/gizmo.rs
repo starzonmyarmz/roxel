@@ -236,6 +236,7 @@ pub fn update_gizmo_viewport(
     mut cameras: Query<&mut Camera, With<GizmoCamera>>,
     mut rect_res: ResMut<GizmoRect>,
     ui_visible: Res<UiVisible>,
+    modal_active: Res<crate::ui::ModalActive>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     let Ok(window) = windows.single() else {
@@ -247,8 +248,9 @@ pub fn update_gizmo_viewport(
 
     // Hide the gizmo in focus mode — it's chrome, so it goes with the rest.
     // During flyby (+ visible UI) keep it visible so the user can still
-    // orient themselves against the cube.
-    if !ui_visible.0 {
+    // orient themselves against the cube. Also hide it behind an open modal:
+    // its camera composites after egui, so the modal scrim can't cover it.
+    if !ui_visible.0 || modal_active.0 {
         cam.is_active = false;
         rect_res.0 = None;
         return Ok(());

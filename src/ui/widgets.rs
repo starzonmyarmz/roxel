@@ -461,15 +461,16 @@ pub fn paint_add_swatch(
 /// Alpha (0–255) of the full-screen dim painted behind an open modal.
 const SCRIM_ALPHA: u8 = 96;
 
-/// Full-screen dim backdrop drawn behind any open modal. Sits at
-/// `Order::Middle` (above the canvas and inspector, below the modal surfaces,
-/// which run at `Order::Foreground`) and senses clicks so the pointer can't
-/// reach the canvas behind it — no stray voxels land while a modal is up. Call
-/// once per frame whenever any modal is open, before drawing the modals.
+/// Full-screen dim backdrop drawn behind any open modal. Runs at
+/// `Order::Foreground` and must be shown *after* the floating tool island /
+/// menu pill (so it covers them) but *before* the modal surfaces (so they sit
+/// on top). Senses clicks so the pointer can't reach the canvas behind it — no
+/// stray voxels land while a modal is up. Call once per frame whenever any
+/// modal is open, immediately before drawing the modals.
 pub fn modal_scrim(ctx: &egui::Context) {
     let screen = ctx.viewport_rect();
     egui::Area::new(egui::Id::new("modal_scrim"))
-        .order(egui::Order::Middle)
+        .order(egui::Order::Foreground)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             ui.allocate_rect(screen, egui::Sense::click());
