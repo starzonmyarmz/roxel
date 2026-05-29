@@ -651,8 +651,13 @@ fn select_input(
 
     if esc || rmb_just {
         if state.phase != SelectPhase::Idle {
+            // Abort in-progress footprint/extrude.
             state.reset();
-        } else {
+            return;
+        }
+        // Idle: Esc deselects, but RMB is reserved for camera orbit/pan —
+        // don't clear the committed selection when the user rotates the view.
+        if esc {
             selection.clear();
         }
         return;
@@ -1682,5 +1687,55 @@ mod tests {
         apply_swatch_click(true, C_G, C_R, &mut e);
         assert!(!e.contains(C_G));
         assert!(e.contains(C_B));
+    }
+
+    #[test]
+    fn select_rmb_in_idle_keeps_committed_selection() {
+        // RMB is camera orbit/pan — must not deselect.
+        let mut state = SelectState::default();
+        let mut selection = Selection::default();
+        selection.set_aabb(SelectionAabb::from_corners(
+            IVec3::ZERO,
+            IVec3::new(1, 1, 1),
+        ));
+        let keys = ButtonInput::<KeyCode>::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Right);
+        select_input(
+            &mut state,
+            &mut selection,
+            &keys,
+            &mouse,
+            &VoxelGrid::default(),
+            Vec3::ZERO,
+            Vec3::Z,
+            false,
+        );
+        assert!(selection.aabb.is_some());
+        assert_eq!(state.phase, SelectPhase::Idle);
+    }
+
+    #[test]
+    fn select_esc_in_idle_clears_selection() {
+        let mut state = SelectState::default();
+        let mut selection = Selection::default();
+        selection.set_aabb(SelectionAabb::from_corners(
+            IVec3::ZERO,
+            IVec3::new(1, 1, 1),
+        ));
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Escape);
+        let mouse = ButtonInput::<MouseButton>::default();
+        select_input(
+            &mut state,
+            &mut selection,
+            &keys,
+            &mouse,
+            &VoxelGrid::default(),
+            Vec3::ZERO,
+            Vec3::Z,
+            false,
+        );
+        assert!(selection.aabb.is_none());
     }
 }
