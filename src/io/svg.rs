@@ -136,8 +136,8 @@ fn shade_color(rgba: [u8; 4], normal: [f32; 3]) -> [u8; 3] {
     let shade = face_shade(normal);
     let mut out = [0u8; 3];
     for i in 0..3 {
-        let s = rgba[i] as f32 / 255.0;
-        let lin = srgb_to_linear(s) * shade;
+        let s = rgba[i] as f32 / 255.0 * shade;
+        let lin = srgb_to_linear(s);
         let s2 = linear_to_srgb(lin.clamp(0.0, 1.0));
         out[i] = (s2.clamp(0.0, 1.0) * 255.0).round() as u8;
     }

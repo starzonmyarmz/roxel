@@ -12,6 +12,10 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(render): apply face shade in sRGB space so light-coloured faces are no longer over-darkened on sides and bottom
+- feat(ui): reworked palette panel — palette switching moved to a Cmd+K-style popover; sidebar drops the dropdown for a single `…` actions menu (switch / new / duplicate-or-save-as / rename / delete / .ase)
+- feat(ui): built-in palettes are now editable — edits are scratch and prompt "Save as new palette" to keep; switching away from a dirty built-in confirms before discarding
+- fix(ui): make the left inspector resizable again — restore the separator handle (was hidden, leaving the panel stuck at width)
 - feat(ui): simplified color inspector — one Color section (swatch + hex + recent strip); numeric editing now lives only in the picker popup
 - feat(ui): moved color-space format (Hex/RGB/HSL/HSB/OKLCH) to Preferences → Color → Format
 - feat(ui): overhauled command palette — no title bar, hidden scrollbar, 10-row height, per-key shortcut chips with Lucide modifier icons, search icon in surface frame, redesigned footer chips

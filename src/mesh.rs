@@ -297,17 +297,12 @@ fn build_mesh_from_quads(quads: Vec<GreedyQuad>) -> Mesh {
     for q in quads {
         let face = &FACES[q.face_idx];
         let rgba = q.color;
-        let base_rgb = [
-            srgb_to_linear(rgba[0] as f32 / 255.0),
-            srgb_to_linear(rgba[1] as f32 / 255.0),
-            srgb_to_linear(rgba[2] as f32 / 255.0),
-        ];
-        let alpha = rgba[3] as f32 / 255.0;
         let shade = face_shade(face.normal);
+        let alpha = rgba[3] as f32 / 255.0;
         let col = [
-            base_rgb[0] * shade,
-            base_rgb[1] * shade,
-            base_rgb[2] * shade,
+            srgb_to_linear((rgba[0] as f32 / 255.0) * shade),
+            srgb_to_linear((rgba[1] as f32 / 255.0) * shade),
+            srgb_to_linear((rgba[2] as f32 / 255.0) * shade),
             alpha,
         ];
 
