@@ -1374,7 +1374,7 @@ pub fn ui_system(
     if prefs_window.open {
         let before = *prefs;
         let mut open_flag = true;
-        widgets::modal_window(ctx, &theme, "Preferences", &mut open_flag).show(ctx, |ui| {
+        widgets::modal_window(&theme, "Preferences", &mut open_flag).show(ctx, |ui| {
             ui.set_min_width(width::MODAL_PREFS);
             widgets::section(ui, &theme, "Appearance", |ui| {
                 widgets::prefs_row(ui, &theme, "Theme", |ui| {
@@ -1466,48 +1466,38 @@ pub fn ui_system(
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                egui::Frame::NONE
-                    .fill(theme.panel)
-                    .inner_margin(egui::Margin::symmetric(
-                        pad::MODAL.x as i8,
-                        pad::MODAL.y as i8,
-                    ))
-                    .shadow(crate::ui::tokens::shadow::high())
-                    .corner_radius(egui::CornerRadius::same(radius::LG))
-                    .show(ui, |ui| {
-                        ui.set_width(width::MODAL_NEW);
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new("New project")
-                                    .family(egui::FontFamily::Name(
-                                        crate::theme::INTER_SEMIBOLD_FAMILY.into(),
-                                    ))
-                                    .size(font::HEADING)
-                                    .color(theme.text),
+                widgets::modal_frame(&theme, pad::MODAL).show(ui, |ui| {
+                    ui.set_width(width::MODAL_NEW);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            egui::RichText::new("New project")
+                                .family(egui::FontFamily::Name(
+                                    crate::theme::INTER_SEMIBOLD_FAMILY.into(),
+                                ))
+                                .size(font::HEADING)
+                                .color(theme.text),
+                        );
+                        ui.add_space(space::XS);
+                        widgets::hint_label(ui, &theme, "Discard unsaved work and start over?");
+                        ui.add_space(space::SM);
+                        ui.horizontal(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.x = space::SX;
+                                    if widgets::dialog_button(ui, &theme, "Create", true).clicked()
+                                    {
+                                        create_clicked = true;
+                                    }
+                                    if widgets::dialog_button(ui, &theme, "Cancel", false).clicked()
+                                    {
+                                        cancel_clicked = true;
+                                    }
+                                },
                             );
-                            ui.add_space(space::XS);
-                            widgets::hint_label(ui, &theme, "Discard unsaved work and start over?");
-                            ui.add_space(space::SM);
-                            ui.horizontal(|ui| {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        ui.spacing_mut().item_spacing.x = space::SX;
-                                        if widgets::dialog_button(ui, &theme, "Create", true)
-                                            .clicked()
-                                        {
-                                            create_clicked = true;
-                                        }
-                                        if widgets::dialog_button(ui, &theme, "Cancel", false)
-                                            .clicked()
-                                        {
-                                            cancel_clicked = true;
-                                        }
-                                    },
-                                );
-                            });
                         });
                     });
+                });
             });
         let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         if create_clicked {
@@ -1533,7 +1523,7 @@ pub fn ui_system(
         let mut save_clicked = false;
         let mut discard_clicked = false;
         let mut cancel_clicked = false;
-        widgets::modal_window(ctx, &theme, "Discard edits?", &mut open).show(ctx, |ui| {
+        widgets::modal_window(&theme, "Discard edits?", &mut open).show(ctx, |ui| {
             ui.set_width(width::MODAL_DISCARD);
             widgets::hint_label(
                 ui,

@@ -817,17 +817,7 @@ pub fn draw(
         .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
         .default_width(width::COMMAND_PALETTE)
         .min_width(width::COMMAND_PALETTE)
-        .frame(
-            egui::Frame::window(&ctx.style())
-                .fill(theme.panel)
-                .inner_margin(egui::Margin::symmetric(
-                    pad::SEARCH.x as i8,
-                    pad::SEARCH.y as i8,
-                ))
-                .stroke(egui::Stroke::NONE)
-                .shadow(crate::ui::tokens::shadow::high())
-                .corner_radius(egui::CornerRadius::same(radius::LG)),
-        )
+        .frame(widgets::modal_frame(theme, pad::SEARCH))
         .show(ctx, |ui| {
             ui.set_min_width(width::COMMAND_PALETTE - pad::SEARCH.x * 2.0);
 

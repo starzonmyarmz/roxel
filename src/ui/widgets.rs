@@ -1,7 +1,7 @@
 use super::icons;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use crate::ui::tokens::{font, gap, icon, pad, radius, size, space, stroke};
+use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke};
 use bevy_egui::egui;
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -458,15 +458,27 @@ pub fn paint_add_swatch(
         .paint_at(ui, img_rect);
 }
 
-/// Themed centred-modal `egui::Window` builder. Bold 14 pt title,
-/// non-collapsible, non-resizable, panel-fill frame with 0.5 border and
-/// rounded corners. Caller adds `.show(ctx, |ui| { ... })`.
-pub fn modal_window<'a>(
-    ctx: &egui::Context,
-    theme: &Theme,
-    title: &str,
-    open: &'a mut bool,
-) -> egui::Window<'a> {
+/// Shared frame for every floating modal surface: modal windows, the command
+/// palette, the palette switcher, and the new-project sheet. Panel fill, no
+/// border, high shadow, `radius::LG` corners — only the inner margin varies
+/// (`pad::MODAL` for sheets, `pad::SEARCH` for the search-style palettes). One
+/// source so the four surfaces can't visually drift apart.
+pub fn modal_frame(theme: &Theme, inner_margin: egui::Vec2) -> egui::Frame {
+    egui::Frame::new()
+        .fill(theme.panel)
+        .stroke(egui::Stroke::NONE)
+        .shadow(shadow::high())
+        .corner_radius(egui::CornerRadius::same(radius::LG))
+        .inner_margin(egui::Margin::symmetric(
+            inner_margin.x as i8,
+            inner_margin.y as i8,
+        ))
+}
+
+/// Themed centred-modal `egui::Window` builder. SemiBold heading title,
+/// non-collapsible, non-resizable, [`modal_frame`] surface. Caller adds
+/// `.show(ctx, |ui| { ... })`.
+pub fn modal_window<'a>(theme: &Theme, title: &str, open: &'a mut bool) -> egui::Window<'a> {
     egui::Window::new(
         egui::RichText::new(title)
             .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
@@ -476,17 +488,7 @@ pub fn modal_window<'a>(
     .resizable(false)
     .open(open)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-    .frame(
-        egui::Frame::window(&ctx.style())
-            .fill(theme.panel)
-            .inner_margin(egui::Margin::symmetric(
-                pad::MODAL.x as i8,
-                pad::MODAL.y as i8,
-            ))
-            .stroke(egui::Stroke::NONE)
-            .shadow(crate::ui::tokens::shadow::high())
-            .corner_radius(egui::CornerRadius::same(radius::LG)),
-    )
+    .frame(modal_frame(theme, pad::MODAL))
 }
 
 /// Toggle chip used by selection rows (Theme: System / Light / Dark). Selected
