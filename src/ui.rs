@@ -1216,10 +1216,21 @@ pub fn ui_system(
                                                     base.with(("palette_swatch", si)),
                                                     egui::Sense::click_and_drag(),
                                                 );
+                                                // Match the recent-color strip's hover: those are
+                                                // egui Buttons that grow by the global hover
+                                                // expansion. The palette grid paints at a fixed
+                                                // rect, so replicate the grow here.
+                                                let paint_rect = if resp.hovered() {
+                                                    rect.expand(
+                                                        ui.visuals().widgets.hovered.expansion,
+                                                    )
+                                                } else {
+                                                    rect
+                                                };
                                                 widgets::paint_swatch(
                                                     ui,
                                                     &theme,
-                                                    rect,
+                                                    paint_rect,
                                                     col,
                                                     radius::XS,
                                                     select_state,

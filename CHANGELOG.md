@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ui): palette swatches now hover-highlight like the recent-color strip
 - fix(ui): drop per-color "Pick color" entries from the Cmd+K palette
 - feat(ui): dim backdrop behind open modals; toast colors now follow the theme
 - refactor(ui): UI polish pass — design-token cleanup, shared modal frame, split ui.rs
