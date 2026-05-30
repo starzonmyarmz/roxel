@@ -6,9 +6,7 @@ use crate::grid::{Color8, NewProject, VoxelGrid};
 use crate::history::History;
 use crate::shapes::ShapePrimitive;
 use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
-use crate::tools::{
-    CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState, color_pool,
-};
+use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
     DiscardConfirm, Palette, PaletteChoice, Palettes, WorkingPalette, display_colors, edit_colors,
     next_palette_name, request_select, save_as_new,
@@ -1167,10 +1165,9 @@ pub struct DispatchParams<'w> {
     working: ResMut<'w, WorkingPalette>,
     discard: ResMut<'w, DiscardConfirm>,
     color: ResMut<'w, CurrentColor>,
-    extras: ResMut<'w, ExtraColors>,
-    recent: ResMut<'w, RecentColors>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
+    open_request: ResMut<'w, super::dialogs::OpenRequest>,
     flyby: ResMut<'w, crate::camera::FlybyState>,
     toasts: ResMut<'w, super::Toasts>,
     view_preset: ResMut<'w, PendingViewPreset>,
@@ -1188,7 +1185,7 @@ pub fn dispatch_command_palette_system(
         CommandAction::NewProject => {
             p.new_project.dialog_open = true;
         }
-        CommandAction::OpenProject => spawn_open(&mut p.pending, p.prefs.last_dir.clone()),
+        CommandAction::OpenProject => p.open_request.requested = true,
         CommandAction::SaveProject => {
             super::dialogs::spawn_save(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
         }
@@ -1457,19 +1454,6 @@ pub fn dispatch_command_palette_system(
             crate::theme::save_preferences(&p.prefs);
         }
     }
-}
-
-fn spawn_open(pending: &mut PendingDialog, start_dir: Option<std::path::PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        super::dialogs::new_dialog(&start_dir)
-            .add_filter("Roxel project", &["rox"])
-            .pick_file()
-            .await
-            .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
-    });
 }
 
 fn spawn_import(

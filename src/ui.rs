@@ -15,8 +15,8 @@ pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
 pub use dialogs::{
-    CurrentProjectPath, DialogResult, PendingDialog, PendingImport, RecentFiles, new_dialog,
-    poll_dialogs_system, spawn_save, spawn_save_as,
+    CurrentProjectPath, DialogResult, DocStatus, OpenRequest, PendingDialog, PendingImport,
+    RecentFiles, new_dialog, poll_dialogs_system, spawn_open, spawn_save, spawn_save_as,
 };
 pub use palette::{
     DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
@@ -107,6 +107,8 @@ pub struct UiState<'w> {
     pub shape_state: Res<'w, ShapeState>,
     pub toasts: Res<'w, Toasts>,
     pub current_path: Res<'w, CurrentProjectPath>,
+    pub doc: Res<'w, DocStatus>,
+    pub open_request: ResMut<'w, OpenRequest>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
@@ -149,6 +151,8 @@ pub fn ui_system(
         shape_state,
         toasts,
         current_path,
+        doc,
+        mut open_request,
         flyby,
         mut color_edit,
         mut updater,
@@ -193,6 +197,7 @@ pub fn ui_system(
     // it.
     let modal_open = prefs_window.open
         || new_project.dialog_open
+        || open_request.confirming
         || switcher.open
         || discard.pending.is_some()
         || cmd_palette.open;
@@ -224,14 +229,9 @@ pub fn ui_system(
                     )
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("Roxel project", &["rox"])
-                            .pick_file()
-                            .await
-                            .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
-                    });
+                    // Route through the guard so an unsaved document prompts
+                    // before the open dialog replaces it.
+                    open_request.requested = true;
                 }
                 let save_resp = ui.add_enabled(
                     !dialog_busy,
@@ -792,6 +792,18 @@ pub fn ui_system(
                                 // Status section (design size, voxel count, zoom)
                                 widgets::section(ui, &theme, "Status", |ui| {
                                     ui.spacing_mut().item_spacing.y = space::XXS;
+                                    let doc_name = current_path
+                                        .0
+                                        .as_ref()
+                                        .and_then(|p| p.file_name())
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("Untitled");
+                                    let file_label = if doc.is_modified(&history) {
+                                        format!("{doc_name} •")
+                                    } else {
+                                        doc_name.to_string()
+                                    };
+                                    widgets::stat_row(ui, &theme, "File", file_label);
                                     let design_label = match grid.bounding_box() {
                                         Some((min, max)) => {
                                             let extent = max - min + bevy::math::IVec3::ONE;
@@ -1537,8 +1549,23 @@ pub fn ui_system(
         modals::draw_preferences(ctx, &theme, &mut prefs, &mut prefs_window);
     }
 
-    if new_project.dialog_open {
+    // Only a modified document earns the discard confirm; a clean New applies
+    // silently via `auto_apply_clean_new_project_system`. Gating the draw here
+    // too means no one-frame confirm flash whatever the system order.
+    if new_project.dialog_open && doc.is_modified(&history) {
         modals::draw_new_project(ctx, &theme, &mut new_project);
+    }
+
+    // Open-project guard: confirm before an unsaved document is replaced.
+    if open_request.confirming {
+        match modals::draw_open_confirm(ctx, &theme) {
+            Some(true) => {
+                open_request.confirming = false;
+                dialogs::spawn_open(&mut pending, prefs.last_dir.clone());
+            }
+            Some(false) => open_request.confirming = false,
+            None => {}
+        }
     }
 
     // Command-palette-style palette switcher (opened from the … menu).

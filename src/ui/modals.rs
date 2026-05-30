@@ -134,6 +134,54 @@ pub fn draw_new_project(ctx: &egui::Context, theme: &Theme, new_project: &mut Ne
     }
 }
 
+/// Open-project guard. Shown when the user triggers "Open…" with unsaved
+/// changes in the current document. Returns `Some(true)` to proceed (discard +
+/// open the file dialog), `Some(false)` to cancel, `None` while still open.
+pub fn draw_open_confirm(ctx: &egui::Context, theme: &Theme) -> Option<bool> {
+    let mut open_clicked = false;
+    let mut cancel_clicked = false;
+    egui::Area::new("open_confirm_modal".into())
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
+                ui.set_width(width::MODAL_NEW);
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("Open project")
+                            .family(egui::FontFamily::Name(
+                                crate::theme::INTER_SEMIBOLD_FAMILY.into(),
+                            ))
+                            .size(font::HEADING)
+                            .color(theme.text),
+                    );
+                    ui.add_space(space::XS);
+                    widgets::hint_label(ui, theme, "Discard unsaved changes and open another?");
+                    ui.add_space(space::SM);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = space::SX;
+                            if widgets::dialog_button(ui, theme, "Open", true).clicked() {
+                                open_clicked = true;
+                            }
+                            if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
+                                cancel_clicked = true;
+                            }
+                        });
+                    });
+                });
+            });
+        });
+    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+    if open_clicked {
+        Some(true)
+    } else if cancel_clicked || esc {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// Discard-edits confirm: switching away from a dirty built-in palette stages a
 /// `target` index so the user can keep their scratch edits first. `target` is
 /// the palette index they were switching to.

@@ -68,6 +68,56 @@ pub struct PendingDialog(pub Option<Task<Option<DialogResult>>>);
 #[derive(Resource, Default)]
 pub struct CurrentProjectPath(pub Option<PathBuf>);
 
+/// Tracks whether the open document has unsaved changes. `saved_state_id` is
+/// the `History::state_id()` captured at the last save / open / new; the doc is
+/// modified when the live state id differs. `forced_dirty` covers content that
+/// has no clean baseline in the history stack — e.g. a `.vox`/`.qb`/`.gox`
+/// import, which replaces the grid but leaves the undo stack empty (state id
+/// `0`), so without this flag it would read as a clean, empty document.
+#[derive(Resource, Default)]
+pub struct DocStatus {
+    pub saved_state_id: u64,
+    pub forced_dirty: bool,
+}
+
+impl DocStatus {
+    /// Mark the current grid state as the saved baseline (clears `forced_dirty`).
+    pub fn mark_saved(&mut self, state_id: u64) {
+        self.saved_state_id = state_id;
+        self.forced_dirty = false;
+    }
+
+    pub fn is_modified(&self, history: &History) -> bool {
+        self.forced_dirty || history.state_id() != self.saved_state_id
+    }
+}
+
+/// A pending "Open project…" request, mirroring `NewProject`'s confirm flow.
+/// Any Open trigger sets `requested`; `resolve_open_request_system` either
+/// spawns the file dialog immediately (clean document) or raises `confirming`
+/// so the discard-confirm modal can guard against losing unsaved work.
+#[derive(Resource, Default)]
+pub struct OpenRequest {
+    pub requested: bool,
+    pub confirming: bool,
+}
+
+/// Spawn the async "Open project…" file dialog rooted at `start_dir`. No-op
+/// while another dialog is in flight. Shared by the request resolver and the
+/// discard-confirm modal so every Open path funnels through one place.
+pub fn spawn_open(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        new_dialog(&start_dir)
+            .add_filter("Roxel project", &["rox"])
+            .pick_file()
+            .await
+            .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
+    });
+}
+
 /// Most-recent-first list of `.rox` paths the user has opened or saved.
 /// Capped at [`crate::io::recent::MAX_RECENT`]; persisted to
 /// `dirs::config_dir()/roxel/recent.ron` whenever an entry is pushed.
@@ -174,6 +224,7 @@ pub fn poll_dialogs_system(
     mut pending_import: ResMut<PendingImport>,
     mut toasts: ResMut<Toasts>,
     mut current_path: ResMut<CurrentProjectPath>,
+    mut doc: ResMut<DocStatus>,
     mut recent_files: ResMut<RecentFiles>,
     mut prefs: ResMut<crate::theme::Preferences>,
     camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
@@ -200,6 +251,7 @@ pub fn poll_dialogs_system(
             Ok(()) => {
                 history.undo.clear();
                 history.redo.clear();
+                doc.mark_saved(history.state_id());
                 pending_import.0 = true;
                 toasts.success(format!("Opened {}", file_label(&path)));
                 current_path.0 = Some(path.clone());
@@ -209,6 +261,7 @@ pub fn poll_dialogs_system(
         },
         Some(DialogResult::SaveProject(path)) => match io::project::save(&path, &grid) {
             Ok(()) => {
+                doc.mark_saved(history.state_id());
                 toasts.success(format!("Saved {}", file_label(&path)));
                 current_path.0 = Some(path.clone());
                 recent_files.push(path);
@@ -251,6 +304,8 @@ pub fn poll_dialogs_system(
             Ok(()) => {
                 history.undo.clear();
                 history.redo.clear();
+                doc.forced_dirty = true;
+                current_path.0 = None;
                 pending_import.0 = true;
                 toasts.success(format!("Imported {}", file_label(&path)));
             }
@@ -260,6 +315,8 @@ pub fn poll_dialogs_system(
             Ok(()) => {
                 history.undo.clear();
                 history.redo.clear();
+                doc.forced_dirty = true;
+                current_path.0 = None;
                 pending_import.0 = true;
                 toasts.success(format!("Imported {}", file_label(&path)));
             }
@@ -269,6 +326,8 @@ pub fn poll_dialogs_system(
             Ok(()) => {
                 history.undo.clear();
                 history.redo.clear();
+                doc.forced_dirty = true;
+                current_path.0 = None;
                 pending_import.0 = true;
                 toasts.success(format!("Imported {}", file_label(&path)));
             }
@@ -321,5 +380,49 @@ mod tests {
         // poll_dialogs_system records this parent as Preferences.last_dir.
         let r = DialogResult::SaveProject(PathBuf::from("/tmp/scenes/a.rox"));
         assert_eq!(r.path().parent(), Some(std::path::Path::new("/tmp/scenes")));
+    }
+
+    #[test]
+    fn doc_status_default_is_clean() {
+        let doc = DocStatus::default();
+        let history = History::default();
+        assert!(!doc.is_modified(&history));
+    }
+
+    #[test]
+    fn doc_status_modified_after_edit_clean_after_save() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let mut doc = DocStatus::default();
+
+        history.begin();
+        history.record(&mut grid, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        history.end();
+        assert!(doc.is_modified(&history), "an edit should mark modified");
+
+        doc.mark_saved(history.state_id());
+        assert!(!doc.is_modified(&history), "save should clear modified");
+
+        // A further edit dirties again; undoing back to the saved state cleans.
+        history.begin();
+        history.record(&mut grid, IVec3::new(1, 0, 0), Some([2, 2, 2, 255]));
+        history.end();
+        assert!(doc.is_modified(&history));
+        history.undo(&mut grid);
+        assert!(!doc.is_modified(&history));
+    }
+
+    #[test]
+    fn doc_status_forced_dirty_overrides_clean_state() {
+        let history = History::default();
+        // e.g. after a .vox import (empty undo stack but unsaved content).
+        let mut doc = DocStatus {
+            forced_dirty: true,
+            ..Default::default()
+        };
+        assert!(doc.is_modified(&history));
+        doc.mark_saved(history.state_id());
+        assert!(!doc.is_modified(&history));
     }
 }

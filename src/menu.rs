@@ -247,8 +247,10 @@ fn build_menu() -> MenuStore {
     // AppKit before the key reaches the winit view and is blind to egui text
     // focus, so `update_menu_enabled_system` disables these items whenever egui
     // wants the keyboard (hex field needs "f", etc.) — a disabled item won't
-    // fire its equivalent. Clear is left unbound: Esc is overloaded (modals,
-    // flyby, drag-cancel) and must stay owned by tool_input_system.
+    // fire its equivalent. On Win/Linux there's no native menu, so `F` is owned
+    // by `selection_key_action_system` instead. Clear is left unbound: Esc is
+    // overloaded (modals, flyby, drag-cancel) and must stay owned by
+    // tool_input_system.
     let fill_selection_item = MenuItem::new(
         "Fill Selection",
         false,
@@ -611,6 +613,7 @@ pub struct MenuActionParams<'w> {
     pub prefs_window: ResMut<'w, PreferencesWindow>,
     pub cmd_palette: ResMut<'w, CommandPalette>,
     pub current_path: Res<'w, CurrentProjectPath>,
+    pub open_request: ResMut<'w, crate::ui::OpenRequest>,
     pub recent: ResMut<'w, RecentFiles>,
     pub view_preset: ResMut<'w, PendingViewPreset>,
     pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
@@ -635,7 +638,7 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::NewProject => {
                 p.new_project.dialog_open = true;
             }
-            MenuAction::OpenProject => spawn_open(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::OpenProject => p.open_request.requested = true,
             MenuAction::OpenRecent(i) => {
                 if let Some(path) = p.recent.0.get(i).cloned() {
                     spawn_open_path(&mut p.pending, path);
@@ -803,19 +806,6 @@ mod tests {
         let label = recent_item_label(0, Path::new("/a/b/.."));
         assert_eq!(label, "1  /a/b/..");
     }
-}
-
-fn spawn_open(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("Roxel project", &["rox"])
-            .pick_file()
-            .await
-            .map(|f| DialogResult::OpenProject(f.path().to_path_buf()))
-    });
 }
 
 fn spawn_open_path(pending: &mut PendingDialog, path: PathBuf) {

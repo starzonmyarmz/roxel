@@ -16,6 +16,10 @@ pub struct Stroke {
     // mid-stroke so freshly placed voxels are invisible to the next pick —
     // prevents runaway stacking. Replaces the old full-grid snapshot.
     pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
+    /// Monotonic id assigned in `end` when the stroke commits. Used by the
+    /// document-dirty check: the editor records the id of the top-of-undo
+    /// stroke at save time, so undoing back to that exact state reads clean.
+    pub id: u64,
 }
 
 #[derive(Resource, Default)]
@@ -23,6 +27,9 @@ pub struct History {
     pub undo: Vec<Stroke>,
     pub redo: Vec<Stroke>,
     pub current: Option<Stroke>,
+    /// Next stroke id to hand out. Never reused, so a committed stroke's id is
+    /// stable for the life of the session even across the `MAX_UNDO` cap.
+    next_id: u64,
 }
 
 const MAX_UNDO: usize = 200;
@@ -77,17 +84,28 @@ impl History {
     }
 
     pub fn end(&mut self) {
-        let Some(stroke) = self.current.take() else {
+        let Some(mut stroke) = self.current.take() else {
             return;
         };
         if stroke.deltas.is_empty() {
             return;
         }
+        self.next_id += 1;
+        stroke.id = self.next_id;
         self.undo.push(stroke);
         if self.undo.len() > MAX_UNDO {
             self.undo.remove(0);
         }
         self.redo.clear();
+    }
+
+    /// Identifies the current document content state: the id of the top-of-undo
+    /// stroke, or `0` when the undo stack is empty (a fresh/cleared document).
+    /// Two calls return equal values iff the grid is in the same edit state, so
+    /// the editor compares this against the id captured at last save to know
+    /// whether there are unsaved changes.
+    pub fn state_id(&self) -> u64 {
+        self.undo.last().map(|s| s.id).unwrap_or(0)
     }
 
     pub fn undo(&mut self, grid: &mut VoxelGrid) {
@@ -275,6 +293,41 @@ mod tests {
         // Pre-stroke state restored.
         assert_eq!(g.get(IVec3::new(0, 0, 0)), Some(red));
         assert!(g.get(IVec3::new(1, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn state_id_zero_on_empty_and_returns_to_saved_after_undo() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        assert_eq!(h.state_id(), 0);
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        h.end();
+        let saved = h.state_id();
+        assert_ne!(saved, 0);
+        // Another edit changes the state id.
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(1, 0, 0), Some([2, 2, 2, 255]));
+        h.end();
+        assert_ne!(h.state_id(), saved);
+        // Undoing back to the saved stroke restores the saved state id.
+        h.undo(&mut g);
+        assert_eq!(h.state_id(), saved);
+    }
+
+    #[test]
+    fn state_id_ids_are_unique_and_monotonic() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let mut prev = 0;
+        for i in 0..5 {
+            h.begin();
+            rec(&mut h, &mut g, IVec3::new(i, 0, 0), Some([1, 1, 1, 255]));
+            h.end();
+            let id = h.state_id();
+            assert!(id > prev, "id {id} not greater than {prev}");
+            prev = id;
+        }
     }
 
     #[test]

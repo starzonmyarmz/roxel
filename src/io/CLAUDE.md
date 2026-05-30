@@ -12,6 +12,8 @@ Sync `rfd::FileDialog` **blocks winit's event loop on macOS** (beachball). All s
 
 Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::FileDialog::*` in egui draw code.**
 
+`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`; `.vox`/`.qb`/`.gox` imports set `doc.forced_dirty` and clear `CurrentProjectPath` (imported-but-unsaved content). The "Open project…" dialog is spawned by `dialogs::spawn_open`, gated by `OpenRequest` so an unsaved document confirms first.
+
 ## Shared helpers — use them, don't reroll
 
 - `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.

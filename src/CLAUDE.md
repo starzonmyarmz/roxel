@@ -112,7 +112,13 @@ Old (`version`, `size`, `voxels`) layout was dropped. ron silently ignores unkno
 
 ## New-project flow
 
-`NewProject { dialog_open, apply }` (`grid.rs`) — confirm-only modal, no grid size. On confirm, `apply = true`; `apply_new_project_system` consumes next frame: `grid.clear()` (drains chunks → mesher despawns), clear history, drain `VoxelChunkMeshes.chunks`, reset camera to origin / `EMPTY_WORLD_RADIUS`. **Don't poke `VoxelGrid` directly from UI** — go through `NewProject.apply`.
+`NewProject { dialog_open, apply }` (`grid.rs`) — confirm-only modal, no grid size. On confirm, `apply = true`; `apply_new_project_system` consumes next frame: `grid.clear()` (drains chunks → mesher despawns), clear history, drain `VoxelChunkMeshes.chunks`, reset camera to origin / `EMPTY_WORLD_RADIUS`, reset `CurrentProjectPath`/`DocStatus`. **Don't poke `VoxelGrid` directly from UI** — go through `NewProject.apply`.
+
+## Document-dirty tracking & save guards
+
+`DocStatus { saved_state_id, forced_dirty }` (`ui/dialogs.rs`) tracks unsaved changes. `History::end` stamps each committed stroke with a monotonic id; `History::state_id()` is the top-of-undo id (`0` when empty). `DocStatus::is_modified(&history)` = `forced_dirty || state_id() != saved_state_id`, so undoing back to the saved state reads clean. Save/Open call `mark_saved(state_id())`; imports set `forced_dirty` (empty undo stack but unsaved content) and clear the path; New resets both.
+
+`window_title_system` reflects file name + `•` in the OS window title (hidden on macOS — see the inspector Status "File" row instead). New is gated: `auto_apply_clean_new_project_system` applies a clean New silently; the confirm modal only draws when modified. Open routes every trigger (native menu, command palette, Win/Linux pill) through `OpenRequest.requested`; `resolve_open_request_system` spawns the dialog when clean or raises `confirming` for the `modals::draw_open_confirm` guard. Recent-file open is **not** guarded yet.
 
 ## Onboarding
 

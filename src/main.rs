@@ -63,10 +63,10 @@ use crate::tools::{
     undo_redo_system,
 };
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes,
-    PendingDialog, PendingImport, RecentFiles, Toasts, UiVisible, WorkingPalette,
-    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
-    tab_toggle_system, toast_lifetime_system, ui_system,
+    CommandPalette, CurrentProjectPath, DiscardConfirm, DocStatus, OpenRequest, PaletteChoice,
+    PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles, Toasts, UiVisible,
+    WorkingPalette, command_palette_shortcut_system, dispatch_command_palette_system,
+    poll_dialogs_system, tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 
@@ -128,6 +128,8 @@ fn main() {
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
         .init_resource::<CurrentProjectPath>()
+        .init_resource::<DocStatus>()
+        .init_resource::<OpenRequest>()
         .insert_resource(RecentFiles::loaded())
         .init_resource::<PaletteChoice>()
         .init_resource::<WorkingPalette>()
@@ -213,7 +215,12 @@ fn main() {
                 .before(floor_dots_system)
                 .before(draw_origin_system)
                 .before(crate::select::selection_render_system),
-            apply_new_project_system.before(regenerate_mesh_system),
+            (
+                auto_apply_clean_new_project_system.before(apply_new_project_system),
+                apply_new_project_system.before(regenerate_mesh_system),
+                resolve_open_request_system,
+                window_title_system,
+            ),
             apply_import_system,
             toast_lifetime_system,
         ),
@@ -287,6 +294,7 @@ fn setup_scene(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_new_project_system(
     mut commands: Commands,
     mut new_project: ResMut<NewProject>,
@@ -295,6 +303,8 @@ fn apply_new_project_system(
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut cameras: Query<&mut PanOrbitCamera>,
     mut recenter: ResMut<RecenterRequest>,
+    mut current_path: ResMut<CurrentProjectPath>,
+    mut doc: ResMut<DocStatus>,
 ) {
     if !std::mem::take(&mut new_project.apply) {
         return;
@@ -303,6 +313,9 @@ fn apply_new_project_system(
     history.undo.clear();
     history.redo.clear();
     history.current = None;
+    // Fresh, untitled, clean document.
+    current_path.0 = None;
+    doc.mark_saved(history.state_id());
 
     // Despawn every chunk entity that was spawned for this scene; the mesher
     // will recreate them as the user paints fresh voxels.
@@ -315,6 +328,74 @@ fn apply_new_project_system(
         cam.target_radius = EMPTY_WORLD_RADIUS;
     }
     recenter.base_focus = Some(Vec3::ZERO);
+}
+
+/// The New-project modal only earns a "discard unsaved work?" prompt when the
+/// document is actually modified. When it's clean, a New request applies
+/// immediately with no confirm flash.
+fn auto_apply_clean_new_project_system(
+    mut new_project: ResMut<NewProject>,
+    doc: Res<DocStatus>,
+    history: Res<History>,
+) {
+    if new_project.dialog_open && !doc.is_modified(&history) {
+        new_project.dialog_open = false;
+        new_project.apply = true;
+    }
+}
+
+/// Resolve a pending "Open project…" request: spawn the file dialog right away
+/// when the document is clean, or raise the discard-confirm modal first when
+/// there are unsaved changes. The modal (in `ui_system`) clears `confirming`
+/// and spawns the dialog itself on confirm.
+fn resolve_open_request_system(
+    mut req: ResMut<OpenRequest>,
+    doc: Res<DocStatus>,
+    history: Res<History>,
+    mut pending: ResMut<PendingDialog>,
+    prefs: Res<Preferences>,
+) {
+    if !req.requested {
+        return;
+    }
+    req.requested = false;
+    if doc.is_modified(&history) {
+        req.confirming = true;
+    } else {
+        crate::ui::spawn_open(&mut pending, prefs.last_dir.clone());
+    }
+}
+
+/// Reflect the open file name + unsaved-changes state in the OS window title.
+/// macOS hides the titlebar text (`titlebar_show_title = false`), so the
+/// in-app indicator lives in the inspector Status row; this still drives the
+/// Win/Linux titlebar and the macOS window menu / Cmd-Tab label.
+fn window_title_system(
+    doc: Res<DocStatus>,
+    history: Res<History>,
+    current_path: Res<CurrentProjectPath>,
+    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+    mut last: Local<Option<String>>,
+) {
+    let name = current_path
+        .0
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("Untitled");
+    let dot = if doc.is_modified(&history) {
+        " •"
+    } else {
+        ""
+    };
+    let title = format!("Roxel — {name}{dot}");
+    if last.as_deref() == Some(title.as_str()) {
+        return;
+    }
+    if let Ok(mut window) = windows.single_mut() {
+        window.title = title.clone();
+        *last = Some(title);
+    }
 }
 
 fn apply_import_system(mut pending: ResMut<PendingImport>) {
