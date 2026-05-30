@@ -9,7 +9,7 @@ pub enum ShapePrimitive {
     Line,
 }
 
-fn other_axes(axis: usize) -> (usize, usize) {
+pub(crate) fn other_axes(axis: usize) -> (usize, usize) {
     match axis {
         0 => (1, 2),
         1 => (0, 2),

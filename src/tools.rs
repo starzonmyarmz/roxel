@@ -227,6 +227,10 @@ pub struct PointerState {
     pub stroking: bool,
     pub anchor: Option<StrokeAnchor>,
     pub last_placed: Option<IVec3>,
+    /// First cell of the active stroke. While Shift is held mid-stroke, brush
+    /// placement locks to a single in-plane axis measured from this origin,
+    /// producing straight rows/columns. `None` outside a stroke.
+    pub stroke_origin: Option<IVec3>,
     /// Distinct colors written during the current stroke. Flushed into
     /// `RecentColors` on stroke end so the Recent grid doesn't reshuffle on
     /// every painted voxel mid-drag.
@@ -513,6 +517,24 @@ pub(crate) fn constrain_shape_corner2(
     IVec3::from_array(out)
 }
 
+/// Lock `target` to a single in-plane axis measured from `origin`, snapping the
+/// weaker of the two in-plane axes back to the origin. `plane_axis` is the
+/// stroke anchor's fixed (face-normal) axis, already pinned. Used while Shift
+/// is held mid brush stroke so placement runs straight along one axis.
+fn axis_lock(origin: IVec3, target: IVec3, plane_axis: usize) -> IVec3 {
+    let (u_axis, v_axis) = crate::shapes::other_axes(plane_axis);
+    let o = origin.to_array();
+    let mut out = target.to_array();
+    let du = (out[u_axis] - o[u_axis]).abs();
+    let dv = (out[v_axis] - o[v_axis]).abs();
+    if du >= dv {
+        out[v_axis] = o[v_axis];
+    } else {
+        out[u_axis] = o[u_axis];
+    }
+    IVec3::from_array(out)
+}
+
 fn shape_commit(
     options: &ShapeOptions,
     state: &mut ShapeState,
@@ -743,6 +765,7 @@ pub fn tool_input_system(
             history.abort(&mut grid);
             state.stroking = false;
             state.anchor = None;
+            state.stroke_origin = None;
             state.stroke_used.clear();
         }
         return;
@@ -766,6 +789,7 @@ pub fn tool_input_system(
         history.end();
         state.stroking = false;
         state.anchor = None;
+        state.stroke_origin = None;
         for c in state.stroke_used.drain(..) {
             recent.push(c);
         }
@@ -1015,10 +1039,15 @@ pub fn tool_input_system(
             _ => AnchorTarget::Picked,
         };
         let (anchor, _) = stroke_anchor_from_hit(&hit, target);
+        let start_cell = match tool.current {
+            Tool::Brush => hit.cell + hit.normal,
+            _ => hit.cell,
+        };
         history.begin();
         state.stroking = true;
         state.anchor = Some(anchor);
         state.last_placed = None;
+        state.stroke_origin = Some(start_cell);
         // Recent push for the stroke happens per-voxel below so multi-color
         // pools surface every color used, not just the primary.
     }
@@ -1051,6 +1080,13 @@ pub fn tool_input_system(
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,
         }
+    };
+
+    // Shift held mid-stroke locks placement to one in-plane axis from the
+    // stroke origin, drawing a straight line; releasing it resumes free draw.
+    let target = match state.stroke_origin {
+        Some(o) if shift => axis_lock(o, target, anchor.axis),
+        _ => target,
     };
 
     if !grid.in_bounds(target) {
@@ -1474,6 +1510,30 @@ mod tests {
         // Front face (Z axis): in-plane is XY. Shift drops Y → motion only on X.
         let d = IVec3::new(4, -5, 99);
         assert_eq!(constrain_move_delta(d, 2, true), IVec3::new(4, 0, 0));
+    }
+
+    #[test]
+    fn axis_lock_keeps_dominant_axis_on_top_face() {
+        // Top face → plane axis=1 (Y), in-plane is XZ. dx=5, dz=2 → X wins, Z snaps.
+        let o = IVec3::new(0, 4, 0);
+        assert_eq!(axis_lock(o, IVec3::new(5, 4, 2), 1), IVec3::new(5, 4, 0));
+        // dz dominant → X snaps to origin.
+        assert_eq!(axis_lock(o, IVec3::new(2, 4, 5), 1), IVec3::new(0, 4, 5));
+    }
+
+    #[test]
+    fn axis_lock_ties_favor_first_in_plane_axis() {
+        // Equal deltas → du >= dv keeps the u (first) axis, snaps v.
+        let o = IVec3::new(1, 4, 1);
+        assert_eq!(axis_lock(o, IVec3::new(4, 4, 4), 1), IVec3::new(4, 4, 1));
+    }
+
+    #[test]
+    fn axis_lock_respects_plane_normal_axis() {
+        // Side face → plane axis=0 (X), in-plane is YZ. Never touches X.
+        let o = IVec3::new(7, 0, 0);
+        assert_eq!(axis_lock(o, IVec3::new(7, 6, 2), 0), IVec3::new(7, 6, 0));
+        assert_eq!(axis_lock(o, IVec3::new(7, 2, 6), 0), IVec3::new(7, 0, 6));
     }
 
     #[test]

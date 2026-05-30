@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(brush): hold Shift mid-stroke to lock the brush to a straight axis line
 - feat(ui): show real-time shape bounds and voxel count while drawing
 - feat(ui): show selection info during drag, not just after commit
 - refactor(shapes): extract `compute_shape_cells` for shared use
