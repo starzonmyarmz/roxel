@@ -1,4 +1,5 @@
 use bevy::asset::RenderAssetUsages;
+use bevy::ecs::system::SystemParam;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
@@ -55,46 +56,59 @@ fn empty_mesh() -> Mesh {
     m
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct ShapePreviewInputs<'w> {
+    tool: Res<'w, ToolState>,
+    options: Res<'w, ShapeOptions>,
+    state: Res<'w, ShapeState>,
+    color: Res<'w, CurrentColor>,
+    extras: Res<'w, ExtraColors>,
+    handles: Res<'w, ShapePreviewHandles>,
+    flyby: Res<'w, crate::camera::FlybyState>,
+    theme: Res<'w, Theme>,
+}
+
+#[derive(SystemParam)]
+pub struct ShapePreviewAssets<'w> {
+    meshes: ResMut<'w, Assets<Mesh>>,
+    materials: ResMut<'w, Assets<StandardMaterial>>,
+}
+
 pub fn shape_preview_system(
-    tool: Res<ToolState>,
-    options: Res<ShapeOptions>,
-    state: Res<ShapeState>,
-    color: Res<CurrentColor>,
-    extras: Res<ExtraColors>,
-    handles: Res<ShapePreviewHandles>,
-    flyby: Res<crate::camera::FlybyState>,
-    theme: Res<Theme>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    inputs: ShapePreviewInputs,
+    mut assets: ShapePreviewAssets,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
     mut gizmos: Gizmos<PreviewGizmos>,
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
-    if flyby.active || tool.current != Tool::Shape || state.phase.is_none() {
+    if inputs.flyby.active || inputs.tool.current != Tool::Shape || inputs.state.phase.is_none() {
         *vis = Visibility::Hidden;
         return;
     }
 
-    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
+    let (Some(anchor), Some(c1), Some(c2)) = (
+        inputs.state.anchor,
+        inputs.state.corner1,
+        inputs.state.corner2,
+    ) else {
         *vis = Visibility::Hidden;
         return;
     };
 
     let cells = compute_shape_cells(
-        options.primitive,
+        inputs.options.primitive,
         c1,
         c2,
         anchor.axis,
-        state.thickness,
-        state.normal_sign,
+        inputs.state.thickness,
+        inputs.state.normal_sign,
     );
 
-    let pool = color_pool(color.0, &extras.0);
+    let pool = color_pool(inputs.color.0, &inputs.extras.0);
     let multi = pool.len() > 1;
 
-    let Some(mesh) = meshes.get_mut(&handles.mesh) else {
+    let Some(mesh) = assets.meshes.get_mut(&inputs.handles.mesh) else {
         *vis = Visibility::Hidden;
         return;
     };
@@ -111,12 +125,12 @@ pub fn shape_preview_system(
     }
     mesh.insert_indices(Indices::U32(indices));
 
-    if let Some(m) = materials.get_mut(&handles.material) {
+    if let Some(m) = assets.materials.get_mut(&inputs.handles.material) {
         if multi {
             // White base lets vertex colors show through unmodified.
             m.base_color = Color::srgba(1.0, 1.0, 1.0, 0.4);
         } else {
-            let c = color.0;
+            let c = inputs.color.0;
             m.base_color = Color::srgba(
                 c[0] as f32 / 255.0,
                 c[1] as f32 / 255.0,
@@ -126,7 +140,7 @@ pub fn shape_preview_system(
         }
     }
 
-    draw_silhouette(&mut gizmos, &cells, accent_outline_color(&theme));
+    draw_silhouette(&mut gizmos, &cells, accent_outline_color(&inputs.theme));
 
     *vis = Visibility::Visible;
 }

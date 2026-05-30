@@ -4,6 +4,7 @@ use crate::io;
 use crate::snapshot::SnapshotRequest;
 use crate::ui::palette::{Palette, PaletteChoice, Palettes};
 use crate::ui::toast::Toasts;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
@@ -213,23 +214,53 @@ fn file_label(p: &Path) -> String {
         .to_string()
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct DialogDoc<'w> {
+    grid: ResMut<'w, VoxelGrid>,
+    history: ResMut<'w, History>,
+    current_path: ResMut<'w, CurrentProjectPath>,
+    doc: ResMut<'w, DocStatus>,
+    recent_files: ResMut<'w, RecentFiles>,
+    pending_import: ResMut<'w, PendingImport>,
+}
+
+#[derive(SystemParam)]
+pub struct DialogSinks<'w> {
+    palettes: ResMut<'w, Palettes>,
+    palette_choice: ResMut<'w, PaletteChoice>,
+    snapshot: ResMut<'w, SnapshotRequest>,
+    prefs: ResMut<'w, crate::theme::Preferences>,
+    toasts: ResMut<'w, Toasts>,
+}
+
+#[derive(SystemParam)]
+pub struct DialogView<'w, 's> {
+    camera: Query<'w, 's, (&'static GlobalTransform, &'static Projection), With<PanOrbitCamera>>,
+    windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+}
+
 pub fn poll_dialogs_system(
     mut pending: ResMut<PendingDialog>,
-    mut grid: ResMut<VoxelGrid>,
-    mut history: ResMut<History>,
-    mut palettes: ResMut<Palettes>,
-    mut palette_choice: ResMut<PaletteChoice>,
-    mut snapshot: ResMut<SnapshotRequest>,
-    mut pending_import: ResMut<PendingImport>,
-    mut toasts: ResMut<Toasts>,
-    mut current_path: ResMut<CurrentProjectPath>,
-    mut doc: ResMut<DocStatus>,
-    mut recent_files: ResMut<RecentFiles>,
-    mut prefs: ResMut<crate::theme::Preferences>,
-    camera: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    doc_params: DialogDoc,
+    sinks: DialogSinks,
+    view: DialogView,
 ) {
+    let DialogDoc {
+        mut grid,
+        mut history,
+        mut current_path,
+        mut doc,
+        mut recent_files,
+        mut pending_import,
+    } = doc_params;
+    let DialogSinks {
+        mut palettes,
+        mut palette_choice,
+        mut snapshot,
+        mut prefs,
+        mut toasts,
+    } = sinks;
+    let DialogView { camera, windows } = view;
     let Some(task) = pending.0.as_mut() else {
         return;
     };

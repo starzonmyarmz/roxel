@@ -118,25 +118,51 @@ pub struct UiState<'w> {
     pub ui_visible: Res<'w, UiVisible>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct UiCore<'w> {
+    pub tool: ResMut<'w, ToolState>,
+    pub pending: ResMut<'w, PendingDialog>,
+    pub theme: Res<'w, Theme>,
+    pub shape_options: ResMut<'w, ShapeOptions>,
+    pub cmd_palette: ResMut<'w, CommandPalette>,
+    pub modal_active: ResMut<'w, ModalActive>,
+}
+
+#[derive(SystemParam)]
+pub struct UiBundles<'w, 's> {
+    pub colors: ColorParams<'w>,
+    pub palette_params: PaletteParams<'w, 's>,
+    pub prefs_params: PrefsParams<'w>,
+    pub input: UiInput<'w>,
+    pub zoom: ZoomReadout<'w, 's>,
+    pub gizmo_view: GizmoView<'w>,
+    pub ui_state: UiState<'w>,
+}
+
 pub fn ui_system(
     mut contexts: EguiContexts,
-    mut tool: ResMut<ToolState>,
-    colors: ColorParams,
     #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<VoxelGrid>,
     #[cfg_attr(target_os = "macos", allow(unused_mut))] mut history: ResMut<History>,
-    mut pending: ResMut<PendingDialog>,
-    palette_params: PaletteParams,
-    theme: Res<Theme>,
-    prefs_params: PrefsParams,
-    mut shape_options: ResMut<ShapeOptions>,
-    input: UiInput,
-    zoom: ZoomReadout,
-    gizmo_view: GizmoView,
-    ui_state: UiState,
-    mut cmd_palette: ResMut<CommandPalette>,
-    mut modal_active: ResMut<ModalActive>,
+    core: UiCore,
+    bundles: UiBundles,
 ) -> Result {
+    let UiCore {
+        mut tool,
+        mut pending,
+        theme,
+        mut shape_options,
+        mut cmd_palette,
+        mut modal_active,
+    } = core;
+    let UiBundles {
+        colors,
+        palette_params,
+        prefs_params,
+        input,
+        zoom,
+        gizmo_view,
+        ui_state,
+    } = bundles;
     let ColorParams {
         mut color,
         mut extras,

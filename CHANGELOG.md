@@ -23,6 +23,7 @@ Release notes.
 - feat(ui): show selection info during drag, not just after commit
 - refactor(shapes): extract `compute_shape_cells` for shared use
 - test(shapes): cover `compute_shape_cells` and `cell_bounds`
+- refactor(ecs): bundle 8+ arg systems into `#[derive(SystemParam)]` structs; drop 12 `too_many_arguments` allows.
 
 ## [0.6.3] - 2026-05-29
 

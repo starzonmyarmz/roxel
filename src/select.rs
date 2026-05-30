@@ -3,6 +3,7 @@ use crate::history::History;
 use crate::tools::{
     CurrentColor, ExtraColors, RecentColors, StrokeAnchor, Tool, ToolState, color_pool,
 };
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
 
@@ -641,18 +642,27 @@ pub fn selection_render_system(
 /// Backspace/Delete clears voxels inside selection. F fills it with the current
 /// color (the Fill tool's selection path, reachable from the keyboard under any
 /// tool). Esc clears the selection. All gated on egui not capturing keys.
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct KeyActionColors<'w> {
+    color: Res<'w, CurrentColor>,
+    extras: Res<'w, ExtraColors>,
+    recent: ResMut<'w, RecentColors>,
+}
+
+#[derive(SystemParam)]
+pub struct SelectGuards<'w> {
+    tool: Res<'w, ToolState>,
+    select_state: Res<'w, SelectState>,
+}
+
 pub fn selection_key_action_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     mut selection: ResMut<Selection>,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
-    tool: Res<ToolState>,
-    select_state: Res<SelectState>,
-    color: Res<CurrentColor>,
-    extras: Res<ExtraColors>,
-    mut recent: ResMut<RecentColors>,
+    guards: SelectGuards,
+    mut colors: KeyActionColors,
 ) {
     let egui_wants = contexts
         .ctx_mut()
@@ -665,7 +675,7 @@ pub fn selection_key_action_system(
         // When the Select tool is active, tool_input_system already handles Esc
         // (it cancels in-progress phases first, then clears the selection on a
         // second press). Avoid clearing twice for the same key event.
-        if tool.current != Tool::Select && selection.aabb.is_some() {
+        if guards.tool.current != Tool::Select && selection.aabb.is_some() {
             selection.clear();
         }
         return;
@@ -687,7 +697,7 @@ pub fn selection_key_action_system(
     }
     if (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete))
         && selection.aabb.is_some()
-        && select_state.phase == SelectPhase::Idle
+        && guards.select_state.phase == SelectPhase::Idle
     {
         clear_selection(&mut grid, &mut history, &selection);
         return;
@@ -698,11 +708,11 @@ pub fn selection_key_action_system(
     if keys.just_pressed(KeyCode::KeyF)
         && !cmd
         && selection.aabb.is_some()
-        && select_state.phase == SelectPhase::Idle
+        && guards.select_state.phase == SelectPhase::Idle
     {
-        let pool = color_pool(color.0, &extras.0);
+        let pool = color_pool(colors.color.0, &colors.extras.0);
         for c in recolor_selection(&mut grid, &mut history, &selection, &pool) {
-            recent.push(c);
+            colors.recent.push(c);
         }
     }
 }

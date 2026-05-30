@@ -10,6 +10,7 @@
 //! `ui_system`; `Viewport` and `GizmoCube` re-use the existing `ViewportRect`
 //! and `GizmoRect` resources to avoid duplicate plumbing.
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
@@ -191,18 +192,27 @@ fn hero_icon(anchor: AnchorId) -> egui::ImageSource<'static> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct TourAnchors<'w> {
+    anchors: Res<'w, OnboardingAnchors>,
+    viewport: Res<'w, ViewportRect>,
+    gizmo: Res<'w, GizmoRect>,
+}
+
+#[derive(SystemParam)]
+pub struct TourModals<'w> {
+    prefs_window: Res<'w, PreferencesWindow>,
+    new_project: Res<'w, NewProject>,
+    cmd_palette: Res<'w, CommandPalette>,
+}
+
 pub fn onboarding_overlay_system(
     mut contexts: EguiContexts,
     mut onboarding: ResMut<Onboarding>,
-    anchors: Res<OnboardingAnchors>,
-    viewport: Res<ViewportRect>,
-    gizmo: Res<GizmoRect>,
+    anchor_params: TourAnchors,
     theme: Res<Theme>,
     mut prefs: ResMut<Preferences>,
-    prefs_window: Res<PreferencesWindow>,
-    new_project: Res<NewProject>,
-    cmd_palette: Res<CommandPalette>,
+    modals: TourModals,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     onboarding.anchors_ready = true;
@@ -218,7 +228,11 @@ pub fn onboarding_overlay_system(
     if !onboarding.active {
         return;
     }
-    if modal_blocks_tour(&prefs_window, &new_project, &cmd_palette) {
+    if modal_blocks_tour(
+        &modals.prefs_window,
+        &modals.new_project,
+        &modals.cmd_palette,
+    ) {
         return;
     }
 
@@ -229,7 +243,12 @@ pub fn onboarding_overlay_system(
         onboarding.pending_persist = true;
         return;
     };
-    let anchor_rect = match resolve_anchor(step.anchor, &anchors, &viewport, &gizmo) {
+    let anchor_rect = match resolve_anchor(
+        step.anchor,
+        &anchor_params.anchors,
+        &anchor_params.viewport,
+        &anchor_params.gizmo,
+    ) {
         Some(r) => r,
         None => {
             if step_idx + 1 >= TOUR_STEPS.len() {

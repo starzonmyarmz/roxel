@@ -23,6 +23,7 @@ mod tools;
 mod ui;
 mod updater;
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
@@ -294,19 +295,23 @@ fn setup_scene(
     });
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+struct ProjectReset<'w> {
+    new_project: ResMut<'w, NewProject>,
+    recenter: ResMut<'w, RecenterRequest>,
+    current_path: ResMut<'w, CurrentProjectPath>,
+    doc: ResMut<'w, DocStatus>,
+}
+
 fn apply_new_project_system(
     mut commands: Commands,
-    mut new_project: ResMut<NewProject>,
+    mut reset: ProjectReset,
     mut grid: ResMut<VoxelGrid>,
     mut history: ResMut<History>,
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut cameras: Query<&mut PanOrbitCamera>,
-    mut recenter: ResMut<RecenterRequest>,
-    mut current_path: ResMut<CurrentProjectPath>,
-    mut doc: ResMut<DocStatus>,
 ) {
-    if !std::mem::take(&mut new_project.apply) {
+    if !std::mem::take(&mut reset.new_project.apply) {
         return;
     }
     grid.clear();
@@ -314,8 +319,8 @@ fn apply_new_project_system(
     history.redo.clear();
     history.current = None;
     // Fresh, untitled, clean document.
-    current_path.0 = None;
-    doc.mark_saved(history.state_id());
+    reset.current_path.0 = None;
+    reset.doc.mark_saved(history.state_id());
 
     // Despawn every chunk entity that was spawned for this scene; the mesher
     // will recreate them as the user paints fresh voxels.
@@ -327,7 +332,7 @@ fn apply_new_project_system(
         cam.target_focus = Vec3::ZERO;
         cam.target_radius = EMPTY_WORLD_RADIUS;
     }
-    recenter.base_focus = Some(Vec3::ZERO);
+    reset.recenter.base_focus = Some(Vec3::ZERO);
 }
 
 /// The New-project modal only earns a "discard unsaved work?" prompt when the

@@ -56,6 +56,25 @@ pub struct BrushColors<'w> {
     pub extras: Res<'w, ExtraColors>,
 }
 
+#[derive(SystemParam)]
+pub struct BrushPreviewInput<'w, 's> {
+    pub keys: Res<'w, ButtonInput<KeyCode>>,
+    pub mouse: Res<'w, ButtonInput<MouseButton>>,
+    pub cameras: Query<'w, 's, (&'static Camera, &'static GlobalTransform), With<PanOrbitCamera>>,
+    pub windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+}
+
+#[derive(SystemParam)]
+pub struct BrushPreviewWorld<'w> {
+    pub grid: Res<'w, VoxelGrid>,
+    pub tool: Res<'w, ToolState>,
+    pub flyby: Res<'w, crate::camera::FlybyState>,
+    pub mat_handle: Res<'w, BrushPreviewMaterial>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub hide: ResMut<'w, PreviewHide>,
+    pub gizmo_view: crate::ui::GizmoView<'w>,
+}
+
 #[derive(Component)]
 pub struct BrushPreview;
 
@@ -87,23 +106,13 @@ pub fn spawn_brush_preview(
     commands.insert_resource(BrushPreviewMaterial(mat));
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn brush_preview_system(
     mut contexts: EguiContexts,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    cameras: Query<(&Camera, &GlobalTransform), With<PanOrbitCamera>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    grid: Res<VoxelGrid>,
-    tool: Res<ToolState>,
+    input: BrushPreviewInput,
+    mut world: BrushPreviewWorld,
     colors: BrushColors,
     gates: StrokeGates,
-    mat_handle: Res<BrushPreviewMaterial>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut hide: ResMut<PreviewHide>,
     mut q: Query<(&mut Transform, &mut Visibility), With<BrushPreview>>,
-    gizmo_view: crate::ui::GizmoView,
-    flyby: Res<crate::camera::FlybyState>,
     mut gizmos: Gizmos<PreviewGizmos>,
 ) {
     let theme = *gates.theme;
@@ -123,43 +132,43 @@ pub fn brush_preview_system(
         hide.set_recolor(None);
     };
 
-    if flyby.active
+    if world.flyby.active
         || egui_wants_pointer
-        || gizmo_view.drag.active
-        || keys.pressed(KeyCode::Space)
-        || mouse.pressed(MouseButton::Right)
+        || world.gizmo_view.drag.active
+        || input.keys.pressed(KeyCode::Space)
+        || input.mouse.pressed(MouseButton::Right)
         || gates.pointer.stroking
     {
-        clear(&mut vis, &mut hide);
+        clear(&mut vis, &mut world.hide);
         return;
     }
-    if let (Some(rect), Ok(window)) = (gizmo_view.rect.0, windows.single())
+    if let (Some(rect), Ok(window)) = (world.gizmo_view.rect.0, input.windows.single())
         && let Some(c) = window.cursor_position()
         && rect.contains(c)
     {
-        clear(&mut vis, &mut hide);
+        clear(&mut vis, &mut world.hide);
         return;
     }
 
-    let Some((origin, dir)) = cursor_ray(&cameras, &windows) else {
-        clear(&mut vis, &mut hide);
+    let Some((origin, dir)) = cursor_ray(&input.cameras, &input.windows) else {
+        clear(&mut vis, &mut world.hide);
         return;
     };
-    let Some(hit) = pick(&grid, origin, dir) else {
-        clear(&mut vis, &mut hide);
+    let Some(hit) = pick(&world.grid, origin, dir) else {
+        clear(&mut vis, &mut world.hide);
         return;
     };
 
-    let show_brush_ghost = match tool.current {
+    let show_brush_ghost = match world.tool.current {
         Tool::Brush => true,
         Tool::Shape => gates.shape.phase.is_none(),
         _ => false,
     };
     if show_brush_ghost {
-        hide.set(None);
-        hide.set_recolor(None);
+        world.hide.set(None);
+        world.hide.set_recolor(None);
         let target = hit.cell + hit.normal;
-        if !grid.in_bounds(target) {
+        if !world.grid.in_bounds(target) {
             *vis = Visibility::Hidden;
             return;
         }
@@ -168,7 +177,7 @@ pub fn brush_preview_system(
         let pos = target.as_vec3() + Vec3::splat(0.5);
         *tf = Transform::from_translation(pos);
         *vis = Visibility::Visible;
-        if let Some(m) = materials.get_mut(&mat_handle.0) {
+        if let Some(m) = world.materials.get_mut(&world.mat_handle.0) {
             m.base_color = Color::srgba(
                 c[0] as f32 / 255.0,
                 c[1] as f32 / 255.0,
@@ -189,31 +198,31 @@ pub fn brush_preview_system(
             accent_outline_color(&theme),
         );
     };
-    match tool.current {
+    match world.tool.current {
         Tool::Erase => {
             *vis = Visibility::Hidden;
-            hide.set_recolor(None);
+            world.hide.set_recolor(None);
             if hit.hit_voxel {
-                hide.set(Some(hit.cell));
+                world.hide.set(Some(hit.cell));
                 emit_target_outline(&mut gizmos, hit.cell);
             } else {
-                hide.set(None);
+                world.hide.set(None);
             }
         }
         Tool::Paint => {
             *vis = Visibility::Hidden;
-            hide.set(None);
+            world.hide.set(None);
             if hit.hit_voxel {
                 let pool = color_pool(color.0, &extras.0);
                 let c = sample_color(hit.cell, &pool);
-                hide.set_recolor(Some((hit.cell, c)));
+                world.hide.set_recolor(Some((hit.cell, c)));
                 emit_target_outline(&mut gizmos, hit.cell);
             } else {
-                hide.set_recolor(None);
+                world.hide.set_recolor(None);
             }
         }
         _ => {
-            clear(&mut vis, &mut hide);
+            clear(&mut vis, &mut world.hide);
         }
     }
 }

@@ -495,17 +495,21 @@ pub fn poll_menu_events_system(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct MenuEnableState<'w> {
+    history: Res<'w, History>,
+    selection: Res<'w, crate::select::Selection>,
+    select_state: Res<'w, crate::select::SelectState>,
+    clipboard: Res<'w, crate::clipboard::Clipboard>,
+    grid: Res<'w, VoxelGrid>,
+    prefs: Res<'w, Preferences>,
+}
+
 pub fn update_menu_enabled_system(
     _marker: NonSendMarker,
     store: Option<NonSend<MenuStore>>,
     mut contexts: bevy_egui::EguiContexts,
-    history: Res<History>,
-    selection: Res<crate::select::Selection>,
-    select_state: Res<crate::select::SelectState>,
-    clipboard: Res<crate::clipboard::Clipboard>,
-    grid: Res<VoxelGrid>,
-    prefs: Res<Preferences>,
+    state: MenuEnableState,
 ) {
     let Some(store) = store else { return };
     // A focused egui text field (hex input, palette rename, command palette)
@@ -515,14 +519,14 @@ pub fn update_menu_enabled_system(
         .ctx_mut()
         .map(|c| c.wants_keyboard_input())
         .unwrap_or(false);
-    let undo_on = !history.undo.is_empty();
-    let redo_on = !history.redo.is_empty();
-    let has_sel = selection.aabb.is_some();
-    let has_clip = clipboard.has_stamp();
-    let has_voxels = grid.count() > 0;
+    let undo_on = !state.history.undo.is_empty();
+    let redo_on = !state.history.redo.is_empty();
+    let has_sel = state.selection.aabb.is_some();
+    let has_clip = state.clipboard.has_stamp();
+    let has_voxels = state.grid.count() > 0;
     // Idle gate mirrors selection_key_action_system: Backspace only deletes
     // when no select drag is mid-flight.
-    let idle = select_state.phase == crate::select::SelectPhase::Idle;
+    let idle = state.select_state.phase == crate::select::SelectPhase::Idle;
     let fill_on = has_sel && !egui_wants;
     let delete_on = has_sel && idle && !egui_wants;
     if store.undo_item.is_enabled() != undo_on {
@@ -555,14 +559,18 @@ pub fn update_menu_enabled_system(
     if store.halve_density_item.is_enabled() != has_voxels {
         store.halve_density_item.set_enabled(has_voxels);
     }
-    if store.floor_grid_item.is_checked() != prefs.show_floor_grid {
-        store.floor_grid_item.set_checked(prefs.show_floor_grid);
+    if store.floor_grid_item.is_checked() != state.prefs.show_floor_grid {
+        store
+            .floor_grid_item
+            .set_checked(state.prefs.show_floor_grid);
     }
-    if store.origin_axes_item.is_checked() != prefs.show_origin_axes {
-        store.origin_axes_item.set_checked(prefs.show_origin_axes);
+    if store.origin_axes_item.is_checked() != state.prefs.show_origin_axes {
+        store
+            .origin_axes_item
+            .set_checked(state.prefs.show_origin_axes);
     }
     for (i, space) in ColorSpace::ALL.iter().enumerate() {
-        let on = *space == prefs.color_space;
+        let on = *space == state.prefs.color_space;
         if store.cs_items[i].is_checked() != on {
             store.cs_items[i].set_checked(on);
         }

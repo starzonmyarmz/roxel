@@ -49,6 +49,26 @@ pub struct ShapeInput<'w> {
     pub state: ResMut<'w, ShapeState>,
 }
 
+#[derive(SystemParam)]
+pub struct MoveEdit<'w> {
+    pub grid: ResMut<'w, VoxelGrid>,
+    pub history: ResMut<'w, History>,
+    pub tool: Res<'w, ToolState>,
+    pub selection: ResMut<'w, Selection>,
+    pub drag: ResMut<'w, MoveDragState>,
+}
+
+#[derive(SystemParam)]
+pub struct ToolEdit<'w> {
+    pub grid: ResMut<'w, VoxelGrid>,
+    pub history: ResMut<'w, History>,
+    pub tool: ResMut<'w, ToolState>,
+    pub color: ResMut<'w, CurrentColor>,
+    pub extras: Res<'w, ExtraColors>,
+    pub recent: ResMut<'w, RecentColors>,
+    pub state: ResMut<'w, PointerState>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Brush,
@@ -742,22 +762,24 @@ fn select_input(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     pointer: Pointer,
     viewport: Viewport,
-    mut grid: ResMut<VoxelGrid>,
-    mut history: ResMut<History>,
-    mut tool: ResMut<ToolState>,
-    mut color: ResMut<CurrentColor>,
-    extras: Res<ExtraColors>,
-    mut recent: ResMut<RecentColors>,
-    mut state: ResMut<PointerState>,
+    edit: ToolEdit,
     shape: ShapeInput,
     select_params: SelectParams,
     gates: InputGates,
 ) {
+    let ToolEdit {
+        mut grid,
+        mut history,
+        mut tool,
+        mut color,
+        extras,
+        mut recent,
+        mut state,
+    } = edit;
     let Pointer { mouse, keys, time } = pointer;
     let Viewport { cameras, windows } = viewport;
     let ShapeInput {
@@ -1181,21 +1203,23 @@ pub fn tool_input_system(
 /// onto that plane and translates the selection contents to that integer
 /// cell. Lives in its own system so the painting/picking flow in
 /// `tool_input_system` stays untouched.
-#[allow(clippy::too_many_arguments)]
 pub fn move_drag_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    cameras: Query<(&Camera, &GlobalTransform), With<bevy_panorbit_camera::PanOrbitCamera>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    mut grid: ResMut<VoxelGrid>,
-    mut history: ResMut<History>,
-    tool: Res<ToolState>,
-    mut selection: ResMut<Selection>,
-    mut drag: ResMut<MoveDragState>,
+    viewport: Viewport,
+    edit: MoveEdit,
     gizmo_drag: Res<crate::gizmo::GizmoDrag>,
     gizmo_rect: Res<crate::gizmo::GizmoRect>,
 ) {
+    let Viewport { cameras, windows } = viewport;
+    let MoveEdit {
+        mut grid,
+        mut history,
+        tool,
+        mut selection,
+        mut drag,
+    } = edit;
     // Bail if tool switched away mid-drag — revert any partial writes.
     if tool.current != Tool::Move {
         if drag.active {

@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::camera::{ClearColorConfig, RenderTarget};
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::ecs::system::SystemParam;
 use bevy::image::Image;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
@@ -40,19 +41,25 @@ pub struct SnapshotSession {
 #[derive(Resource, Default)]
 pub struct SnapshotInProgress(pub bool);
 
-#[allow(clippy::too_many_arguments)]
+#[derive(SystemParam)]
+pub struct SnapshotParams<'w> {
+    request: ResMut<'w, SnapshotRequest>,
+    session: ResMut<'w, SnapshotSession>,
+    in_progress: ResMut<'w, SnapshotInProgress>,
+}
+
 pub fn start_snapshot_system(
     mut commands: Commands,
-    mut request: ResMut<SnapshotRequest>,
-    mut session: ResMut<SnapshotSession>,
-    mut in_progress: ResMut<SnapshotInProgress>,
+    mut snap: SnapshotParams,
     mut toasts: ResMut<Toasts>,
     windows: Query<&Window, With<PrimaryWindow>>,
     main_cam: Query<(&GlobalTransform, &Projection), With<PanOrbitCamera>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(path) = request.0.take() else { return };
-    if session.camera.is_some() {
+    let Some(path) = snap.request.0.take() else {
+        return;
+    };
+    if snap.session.camera.is_some() {
         toasts.error("Snapshot already in progress");
         return;
     }
@@ -85,8 +92,8 @@ pub fn start_snapshot_system(
         Tonemapping::None,
         SnapshotCamera,
     ));
-    session.camera = Some(cam.id());
-    in_progress.0 = true;
+    snap.session.camera = Some(cam.id());
+    snap.in_progress.0 = true;
 
     let path_for_observer = path.clone();
     commands.spawn(Screenshot::image(handle.clone())).observe(
