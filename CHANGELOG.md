@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- perf(grid): cache the scene bounding box so the inspector "Size" row stops re-walking the whole grid every frame; invalidated only when occupancy changes.
+
 - perf(canvas): origin triad probes only the fixed cube around (0,0,0) instead of scanning the whole grid every frame.
 
 - ci(lint): make clippy a hard gate (`-D warnings`, drop `continue-on-error`) and add it to the pre-push hook; clear the existing warnings.

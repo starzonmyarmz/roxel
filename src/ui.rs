@@ -830,7 +830,7 @@ pub fn ui_system(
                                         doc_name.to_string()
                                     };
                                     widgets::stat_row(ui, &theme, "File", file_label);
-                                    let design_label = match grid.bounding_box() {
+                                    let design_label = match grid.bounding_box_cached() {
                                         Some((min, max)) => {
                                             let extent = max - min + bevy::math::IVec3::ONE;
                                             format!("{} × {} × {}", extent.x, extent.y, extent.z)

@@ -83,6 +83,12 @@ pub struct VoxelGrid {
     /// One-shot latch for the large-scene perf warning. Resets when both
     /// counters fall below 80 % of their thresholds.
     pub warned_large: bool,
+    /// Memoized AABB for `bounding_box_cached`. Outer `None` = stale (must
+    /// recompute); inner `Option` is the last computed hull (`None` = empty
+    /// grid). Invalidated only when occupancy changes — recolors leave bounds
+    /// untouched. Lets the per-frame inspector "Size" row skip the full-grid
+    /// walk while the scene is idle.
+    bbox_cache: Option<Option<(IVec3, IVec3)>>,
 }
 
 impl VoxelGrid {
@@ -132,10 +138,14 @@ impl VoxelGrid {
             self.chunks.remove(&coord);
         }
 
-        if delta > 0 {
-            self.total_count = self.total_count.saturating_add(1);
-        } else if delta < 0 {
-            self.total_count = self.total_count.saturating_sub(1);
+        if delta != 0 {
+            // Occupancy changed → the cached hull may have grown or shrunk.
+            self.bbox_cache = None;
+            if delta > 0 {
+                self.total_count = self.total_count.saturating_add(1);
+            } else {
+                self.total_count = self.total_count.saturating_sub(1);
+            }
         }
 
         // Boundary cells change face occlusion in the neighbour chunk across
@@ -173,6 +183,7 @@ impl VoxelGrid {
         self.dirty = true;
         self.total_count = 0;
         self.warned_large = false;
+        self.bbox_cache = Some(None);
     }
 
     #[inline]
@@ -206,6 +217,18 @@ impl VoxelGrid {
             max = max.max(p);
         }
         Some((min, max))
+    }
+
+    /// Memoized [`bounding_box`](Self::bounding_box) for per-frame callers (the
+    /// inspector "Size" row). Recomputes only when occupancy changed since the
+    /// last call; otherwise returns the cached hull without walking the grid.
+    pub fn bounding_box_cached(&mut self) -> Option<(IVec3, IVec3)> {
+        if let Some(cached) = self.bbox_cache {
+            return cached;
+        }
+        let bbox = self.bounding_box();
+        self.bbox_cache = Some(bbox);
+        bbox
     }
 }
 
@@ -314,6 +337,39 @@ mod tests {
     fn bounding_box_none_when_empty() {
         let g = VoxelGrid::default();
         assert!(g.bounding_box().is_none());
+    }
+
+    #[test]
+    fn bounding_box_cached_tracks_occupancy_changes() {
+        let mut g = VoxelGrid::default();
+        // Empty grid: cached hull is None, matches the pure walk.
+        assert_eq!(g.bounding_box_cached(), None);
+
+        g.set(IVec3::new(2, 3, 4), Some([1, 1, 1, 255]));
+        assert_eq!(g.bounding_box_cached(), g.bounding_box());
+        let one = g.bounding_box_cached().unwrap();
+        assert_eq!(one, (IVec3::new(2, 3, 4), IVec3::new(2, 3, 4)));
+
+        // Grow: a new cell must expand the cached hull.
+        g.set(IVec3::new(10, 0, 0), Some([1, 1, 1, 255]));
+        assert_eq!(g.bounding_box_cached(), g.bounding_box());
+        assert_eq!(
+            g.bounding_box_cached().unwrap(),
+            (IVec3::new(2, 0, 0), IVec3::new(10, 3, 4))
+        );
+
+        // Recolor (delta == 0) leaves bounds — cache stays valid.
+        g.set(IVec3::new(10, 0, 0), Some([9, 9, 9, 255]));
+        assert_eq!(g.bounding_box_cached(), g.bounding_box());
+
+        // Shrink: removing the far cell must contract the cached hull.
+        g.set(IVec3::new(10, 0, 0), None);
+        assert_eq!(g.bounding_box_cached(), g.bounding_box());
+        assert_eq!(g.bounding_box_cached().unwrap(), (one.0, one.1));
+
+        // Clear resets to the empty hull.
+        g.clear();
+        assert_eq!(g.bounding_box_cached(), None);
     }
 
     #[test]
