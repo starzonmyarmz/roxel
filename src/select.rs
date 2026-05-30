@@ -1574,8 +1574,10 @@ mod tests {
 
     #[test]
     fn selection_set_aabb_clears_cells() {
-        let mut sel = Selection::default();
-        sel.cells = Some([IVec3::new(0, 0, 0)].into_iter().collect());
+        let mut sel = Selection {
+            cells: Some([IVec3::new(0, 0, 0)].into_iter().collect()),
+            ..Default::default()
+        };
         sel.set_aabb(SelectionAabb::from_corners(
             IVec3::new(0, 0, 0),
             IVec3::new(2, 2, 2),

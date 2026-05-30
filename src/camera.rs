@@ -386,7 +386,10 @@ mod tests {
         for i in 0..400 {
             let t = i as f32 * 0.25;
             let p = flyby_pitch(t);
-            assert!(p >= FLYBY_PITCH_MIN && p <= FLYBY_PITCH_MAX, "t={t} p={p}");
+            assert!(
+                (FLYBY_PITCH_MIN..=FLYBY_PITCH_MAX).contains(&p),
+                "t={t} p={p}"
+            );
         }
     }
 

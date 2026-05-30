@@ -244,7 +244,7 @@ mod tests {
     fn import_rejects_bad_signature() {
         let path = tmp_path("badsig");
         std::fs::write(&path, b"NOPE\x00\x01\x00\x00\x00\x00\x00\x00").expect("write");
-        let err = import(&path).err().expect("expected error");
+        let err = import(&path).expect_err("expected error");
         assert!(err.to_string().contains("not an ASE file"));
         let _ = std::fs::remove_file(&path);
     }

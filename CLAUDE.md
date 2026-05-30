@@ -21,9 +21,9 @@ Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs`. No `
 Tracked in `.githooks/`. Opt in once per clone: `git config core.hooksPath .githooks`.
 
 - `pre-commit` — `cargo fmt --all -- --check`
-- `pre-push` — `cargo test`
+- `pre-push` — `cargo clippy --all-targets --no-deps -- -D warnings`, then `cargo test`
 
-CI re-runs both, so `--no-verify` is caught upstream.
+CI re-runs all three (fmt, clippy `-D warnings`, test), so `--no-verify` is caught upstream. Clippy is a hard gate — keep the tree warning-free.
 
 ## Architecture
 

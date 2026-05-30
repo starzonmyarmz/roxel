@@ -1407,39 +1407,40 @@ pub fn ui_system(
                                 }
 
                                 // Shape section — real-time info while drawing.
-                                if tool.current == Tool::Shape && shape_state.phase.is_some() {
-                                    if let (Some(anchor), Some(c1), Some(c2)) = (
+                                if tool.current == Tool::Shape
+                                    && shape_state.phase.is_some()
+                                    && let (Some(anchor), Some(c1), Some(c2)) = (
                                         shape_state.anchor,
                                         shape_state.corner1,
                                         shape_state.corner2,
-                                    ) {
-                                        let cells = crate::shapes::compute_shape_cells(
-                                            shape_options.primitive,
-                                            c1,
-                                            c2,
-                                            anchor.axis,
-                                            shape_state.thickness,
-                                            shape_state.normal_sign,
-                                        );
-                                        if let Some(bounds) = crate::shapes::cell_bounds(&cells) {
-                                            widgets::section(ui, &theme, "Shape", |ui| {
-                                                widgets::stat_row(
-                                                    ui,
-                                                    &theme,
-                                                    "Bounds",
-                                                    format!(
-                                                        "{} × {} × {}",
-                                                        bounds.x, bounds.y, bounds.z
-                                                    ),
-                                                );
-                                                widgets::stat_row(
-                                                    ui,
-                                                    &theme,
-                                                    "Voxels",
-                                                    cells.len().to_string(),
-                                                );
-                                            });
-                                        }
+                                    )
+                                {
+                                    let cells = crate::shapes::compute_shape_cells(
+                                        shape_options.primitive,
+                                        c1,
+                                        c2,
+                                        anchor.axis,
+                                        shape_state.thickness,
+                                        shape_state.normal_sign,
+                                    );
+                                    if let Some(bounds) = crate::shapes::cell_bounds(&cells) {
+                                        widgets::section(ui, &theme, "Shape", |ui| {
+                                            widgets::stat_row(
+                                                ui,
+                                                &theme,
+                                                "Bounds",
+                                                format!(
+                                                    "{} × {} × {}",
+                                                    bounds.x, bounds.y, bounds.z
+                                                ),
+                                            );
+                                            widgets::stat_row(
+                                                ui,
+                                                &theme,
+                                                "Voxels",
+                                                cells.len().to_string(),
+                                            );
+                                        });
                                     }
                                 }
 

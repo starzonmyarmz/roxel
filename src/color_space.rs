@@ -497,8 +497,10 @@ mod tests {
 
     #[test]
     fn edit_buffer_rgb_accepts_in_range_values() {
-        let mut buf = ColorEditBuffer::default();
-        buf.space = ColorSpace::Rgb;
+        let mut buf = ColorEditBuffer {
+            space: ColorSpace::Rgb,
+            ..Default::default()
+        };
         buf.fields[0] = "255".into();
         buf.fields[1] = "0".into();
         buf.fields[2] = "127".into();
@@ -507,8 +509,10 @@ mod tests {
 
     #[test]
     fn edit_buffer_rgb_rejects_out_of_range() {
-        let mut buf = ColorEditBuffer::default();
-        buf.space = ColorSpace::Rgb;
+        let mut buf = ColorEditBuffer {
+            space: ColorSpace::Rgb,
+            ..Default::default()
+        };
         buf.fields[0] = "999".into();
         buf.fields[1] = "0".into();
         buf.fields[2] = "0".into();

@@ -249,9 +249,8 @@ mod tests {
         let g = crate::grid::VoxelGrid::default();
         let (gt, proj) = test_camera();
         let path = tmp_path("empty");
-        let err = export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0))
-            .err()
-            .expect("expected error");
+        let err =
+            export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0)).expect_err("expected error");
         assert!(err.to_string().contains("Nothing to export"));
     }
 

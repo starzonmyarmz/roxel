@@ -254,8 +254,10 @@ mod tests {
 
     #[test]
     fn set_get_roundtrip_and_dirty_flag() {
-        let mut g = VoxelGrid::default();
-        g.dirty = false;
+        let mut g = VoxelGrid {
+            dirty: false,
+            ..Default::default()
+        };
         let c: Color8 = [10, 20, 30, 255];
         g.set(IVec3::new(1, 2, 3), Some(c));
         assert_eq!(g.get(IVec3::new(1, 2, 3)), Some(c));

@@ -242,6 +242,9 @@ pub mod height {
 
 #[cfg(test)]
 mod tests {
+    // Token invariants compare `const` values, so each `assert!` folds to a
+    // compile-time constant — exactly what these guard tests exist to lock.
+    #![allow(clippy::assertions_on_constants)]
     use super::*;
 
     #[test]

@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- ci(lint): make clippy a hard gate (`-D warnings`, drop `continue-on-error`) and add it to the pre-push hook; clear the existing warnings.
+
 - feat(tools): Paint is now the single recolor tool — drag for freehand, double-click to flood a connected region, click with a selection (or `F`) to fill it.
 - refactor(tools): merge the Fill (bucket) tool into Paint; drop the `G` tool and the spare toolbar slot. Edit → Fill Selection (and its `F` shortcut) stays for discoverability.
 - feat(io): track unsaved changes; Open and New prompt before discarding a modified document.

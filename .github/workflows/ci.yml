@@ -37,7 +37,6 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       CARGO_INCREMENTAL: 0
       CARGO_PROFILE_DEV_DEBUG: 0
@@ -51,7 +50,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - run: cargo clippy --all-targets --no-deps
+      - run: cargo clippy --all-targets --no-deps -- -D warnings
 
   test:
     runs-on: ubuntu-latest
