@@ -523,6 +523,28 @@ fn triad_fade(near_count: usize) -> f32 {
     (1.0 - t).clamp(0.0, 1.0)
 }
 
+/// Counts occupied cells in the fixed 4-cell cube around origin
+/// (`x,z ∈ [-4,4]`, `y ∈ [0,4]`), capped at 8. Probes via bounded `grid.get`
+/// lookups (≤405 cells) instead of `iter_occupied` — the latter walks the
+/// whole scene and only short-circuits once 8 *near-origin* cells turn up, so
+/// a large scene with nothing near (0,0,0) would scan every voxel every frame.
+fn origin_near_count(grid: &VoxelGrid) -> usize {
+    let mut near = 0usize;
+    for x in -4..=4 {
+        for y in 0..=4 {
+            for z in -4..=4 {
+                if grid.get(IVec3::new(x, y, z)).is_some() {
+                    near += 1;
+                    if near >= 8 {
+                        return near;
+                    }
+                }
+            }
+        }
+    }
+    near
+}
+
 /// Dedicated gizmo group for the origin axis triad. Uses `depth_bias = -1.0`
 /// so the lines win against the floor dots (both sit at y≈0) and read clearly
 /// on top.
@@ -546,12 +568,7 @@ fn draw_origin_system(
     if snapshot_active.0 || !prefs.show_origin_axes {
         return;
     }
-    let near = grid
-        .iter_occupied()
-        .filter(|(p, _)| p.x.abs() <= 4 && p.y <= 4 && p.z.abs() <= 4)
-        .take(8)
-        .count();
-    let fade = triad_fade(near);
+    let fade = triad_fade(origin_near_count(&grid));
     if fade < 0.05 {
         return;
     }
@@ -688,5 +705,54 @@ mod tests {
             assert!(f <= prev + 1e-6, "non-monotone at n={n}");
             prev = f;
         }
+    }
+
+    #[test]
+    fn origin_near_count_empty_is_zero() {
+        assert_eq!(origin_near_count(&VoxelGrid::default()), 0);
+    }
+
+    #[test]
+    fn origin_near_count_counts_only_inside_box() {
+        let mut g = VoxelGrid::default();
+        let c: crate::grid::Color8 = [255, 0, 0, 255];
+        // Inside the box (x,z ∈ [-4,4], y ∈ [0,4]).
+        g.set(IVec3::new(0, 0, 0), Some(c));
+        g.set(IVec3::new(-4, 4, 4), Some(c));
+        g.set(IVec3::new(4, 0, -4), Some(c));
+        // Outside on each axis — must not count.
+        g.set(IVec3::new(5, 0, 0), Some(c));
+        g.set(IVec3::new(0, 5, 0), Some(c));
+        g.set(IVec3::new(0, 0, -5), Some(c));
+        assert_eq!(origin_near_count(&g), 3);
+    }
+
+    #[test]
+    fn origin_near_count_caps_at_eight() {
+        let mut g = VoxelGrid::default();
+        let c: crate::grid::Color8 = [0, 255, 0, 255];
+        // Fill more than 8 cells inside the box.
+        let mut placed = 0;
+        'fill: for x in -4..=4 {
+            for z in -4..=4 {
+                g.set(IVec3::new(x, 0, z), Some(c));
+                placed += 1;
+                if placed >= 12 {
+                    break 'fill;
+                }
+            }
+        }
+        assert_eq!(origin_near_count(&g), 8);
+    }
+
+    #[test]
+    fn origin_near_count_does_not_scan_distant_voxels() {
+        // Far-away voxels (the perf-bug scenario) must leave the count at 0,
+        // and we never touch them — bounded probe only reads the origin box.
+        let mut g = VoxelGrid::default();
+        let c: crate::grid::Color8 = [0, 0, 255, 255];
+        g.set(IVec3::new(500, 0, 500), Some(c));
+        g.set(IVec3::new(-300, 10, 200), Some(c));
+        assert_eq!(origin_near_count(&g), 0);
     }
 }

@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- perf(canvas): origin triad probes only the fixed cube around (0,0,0) instead of scanning the whole grid every frame.
+
 - ci(lint): make clippy a hard gate (`-D warnings`, drop `continue-on-error`) and add it to the pre-push hook; clear the existing warnings.
 
 - feat(tools): Paint is now the single recolor tool — drag for freehand, double-click to flood a connected region, click with a selection (or `F`) to fill it.
