@@ -3,7 +3,7 @@ use crate::history::History;
 use crate::picking::{Hit, cursor_ray, pick, pick_with};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
-    connected_same_color, recolor_selection,
+    connected_same_color, fill_region, recolor_selection,
 };
 use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
 use bevy::ecs::system::SystemParam;
@@ -235,6 +235,15 @@ pub struct PointerState {
     /// `RecentColors` on stroke end so the Recent grid doesn't reshuffle on
     /// every painted voxel mid-drag.
     pub stroke_used: Vec<Color8>,
+    /// Cell hit by the previous Paint LMB-press and its timestamp — used to
+    /// detect a double-click (same cell within `DOUBLE_CLICK_SECS`) so Paint can
+    /// flood-fill the connected region. Mirrors `SelectState`'s scheme.
+    pub last_press_cell: Option<IVec3>,
+    pub last_press_secs: f64,
+    /// Color of `last_press_cell` *before* the first click recolored it. The
+    /// double-click flood matches against this so it covers the original region,
+    /// not the single voxel the first click already changed.
+    pub last_press_color: Option<Color8>,
 }
 
 #[derive(Resource, Clone, Copy, Default)]
@@ -946,6 +955,49 @@ pub fn tool_input_system(
         return;
     }
 
+    // Paint click-only paths, handled ahead of the anchor/stroke machinery so
+    // they never enter drag mode. A plain single click on a voxel falls through
+    // to the per-voxel stroke below (freehand recolor).
+    if lmb_just && tool.current == Tool::Paint {
+        // Active selection: a click fills the whole selection (per-cell sampled),
+        // one history stroke. Reachable from the keyboard via `F` too.
+        if selection.aabb.is_some() {
+            let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
+            for c in used {
+                recent.push(c);
+            }
+            return;
+        }
+        // Double-click a voxel → flood-fill its 6-connected same-color region
+        // (mirrors the Select tool's double-click-to-pick-region gesture). The
+        // first click recolored the seed voxel; the flood re-covers it as a
+        // no-op, so the region ends uniformly the current color.
+        if let Some(hit) = pick(&grid, origin, dir)
+            && hit.hit_voxel
+        {
+            let now = time.elapsed_secs_f64();
+            let is_double = state.last_press_cell == Some(hit.cell)
+                && (now - state.last_press_secs) < DOUBLE_CLICK_SECS;
+            if is_double && let Some(orig) = state.last_press_color {
+                // Match the region by the seed's *pre-first-click* color: the
+                // first click already recolored the seed, so a plain
+                // `fill_connected` would only see the new color and spread
+                // nowhere.
+                let used = fill_region(&mut grid, &mut history, hit.cell, orig, &pool);
+                state.last_press_cell = None;
+                for c in used {
+                    recent.push(c);
+                }
+                return;
+            }
+            // First click: remember the seed and its color before the stroke
+            // machinery below recolors it, so a follow-up click can flood.
+            state.last_press_secs = now;
+            state.last_press_cell = Some(hit.cell);
+            state.last_press_color = grid.get(hit.cell);
+        }
+    }
+
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
 
     // Shift + click: draw a 3D line from the last placed voxel to the new target.
@@ -1004,26 +1056,18 @@ pub fn tool_input_system(
         return;
     }
 
-    // Paint/Erase on a voxel inside the active selection → operate on the
-    // whole selection in a single history stroke. Click outside the selection
-    // falls through to normal single-cell stroke behavior.
+    // Erase on a voxel inside the active selection → clear the whole selection
+    // in a single history stroke. Click outside the selection falls through to
+    // normal single-cell stroke behavior. (Recoloring a selection lives on the
+    // Fill tool.)
     if lmb_just
-        && matches!(tool.current, Tool::Paint | Tool::Erase)
+        && tool.current == Tool::Erase
         && selection.aabb.is_some()
         && let Some(hit) = pick(&grid, origin, dir)
         && hit.hit_voxel
         && selection.contains(hit.cell)
     {
-        match tool.current {
-            Tool::Paint => {
-                let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
-                for c in used {
-                    recent.push(c);
-                }
-            }
-            Tool::Erase => clear_selection(&mut grid, &mut history, &selection),
-            _ => {}
-        }
+        clear_selection(&mut grid, &mut history, &selection);
         return;
     }
 

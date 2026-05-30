@@ -339,13 +339,72 @@ pub fn move_selection(
     true
 }
 
-/// 6-connected flood fill from `start` over cells matching `start`'s color.
-/// Returns an empty vec when `start` is empty. Pure: no allocations on the
-/// grid, no history side effects.
-pub fn connected_same_color(grid: &VoxelGrid, start: IVec3) -> Vec<IVec3> {
-    let Some(color) = grid.get(start) else {
+/// Bucket fill: recolor the 6-connected region from `start` over cells equal to
+/// `match_color`, sampling `pool` per cell, in a single history stroke. Returns
+/// the distinct colors used (for the recent-colors strip). The seed is always
+/// included even if it already differs — this is the Paint double-click path,
+/// where the first click recolored the seed before the flood runs, so the
+/// region must be matched by its *original* color rather than the seed's current
+/// one. No-op (empty vec) when the region is already the target color (the
+/// per-cell no-op records dedupe to an empty stroke that `History::end`
+/// discards). Caller guarantees `start` is occupied.
+pub fn fill_region(
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    start: IVec3,
+    match_color: Color8,
+    pool: &[Color8],
+) -> Vec<Color8> {
+    recolor_cells(
+        grid,
+        history,
+        connected_region(grid, start, match_color),
+        pool,
+    )
+}
+
+/// Recolor `cells` by sampling `pool` per cell in one history stroke. Skips
+/// cells already at the target color so a same-color fill is a true no-op (no
+/// recent-color churn; the empty stroke is discarded by `History::end`).
+/// Returns the distinct colors actually written.
+fn recolor_cells(
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    cells: Vec<IVec3>,
+    pool: &[Color8],
+) -> Vec<Color8> {
+    if cells.is_empty() {
         return Vec::new();
-    };
+    }
+    history.begin();
+    let mut used: Vec<Color8> = Vec::new();
+    for cell in cells {
+        let c = crate::tools::sample_color(cell, pool);
+        if grid.get(cell) == Some(c) {
+            continue;
+        }
+        history.record(grid, cell, Some(c));
+        if !used.contains(&c) {
+            used.push(c);
+        }
+    }
+    history.end();
+    used
+}
+
+/// 6-connected flood fill from `start` over cells matching `start`'s color.
+/// Returns an empty vec when `start` is empty. Pure: no grid/history mutation.
+pub fn connected_same_color(grid: &VoxelGrid, start: IVec3) -> Vec<IVec3> {
+    match grid.get(start) {
+        Some(color) => connected_region(grid, start, color),
+        None => Vec::new(),
+    }
+}
+
+/// 6-connected flood from `start` over cells equal to `match_color`. `start` is
+/// always included in the result even if its own color differs. Pure: no
+/// grid/history mutation.
+pub fn connected_region(grid: &VoxelGrid, start: IVec3, match_color: Color8) -> Vec<IVec3> {
     let mut out = Vec::new();
     let mut seen: HashSet<IVec3> = HashSet::new();
     let mut q: VecDeque<IVec3> = VecDeque::new();
@@ -363,7 +422,7 @@ pub fn connected_same_color(grid: &VoxelGrid, start: IVec3) -> Vec<IVec3> {
         out.push(p);
         for d in DIRS {
             let n = p + d;
-            if seen.insert(n) && grid.get(n) == Some(color) {
+            if seen.insert(n) && grid.get(n) == Some(match_color) {
                 q.push_back(n);
             }
         }
@@ -579,8 +638,9 @@ pub fn selection_render_system(
     }
 }
 
-/// Backspace/Delete clears voxels inside selection. Esc clears the selection.
-/// Both are gated on egui not capturing keys.
+/// Backspace/Delete clears voxels inside selection. F fills it with the current
+/// color (the Fill tool's selection path, reachable from the keyboard under any
+/// tool). Esc clears the selection. All gated on egui not capturing keys.
 #[allow(clippy::too_many_arguments)]
 pub fn selection_key_action_system(
     mut contexts: bevy_egui::EguiContexts,
@@ -632,8 +692,9 @@ pub fn selection_key_action_system(
         clear_selection(&mut grid, &mut history, &selection);
         return;
     }
-    // F fills the selection with the current color pool (per-cell sampled),
-    // mirroring the Paint tool. Empty cells stay empty.
+    // F fills the selection with the current color pool (per-cell sampled) — the
+    // keyboard path to the Fill tool's selection behavior, usable under any tool.
+    // Empty cells stay empty.
     if keys.just_pressed(KeyCode::KeyF)
         && !cmd
         && selection.aabb.is_some()
@@ -1352,6 +1413,80 @@ mod tests {
             .into_iter()
             .collect();
         assert_eq!(cells, expected);
+    }
+
+    #[test]
+    fn fill_region_recolors_region_and_stops_at_boundary() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let red = [200, 0, 0, 255];
+        let blue = [0, 0, 200, 255];
+        let green = [0, 200, 0, 255];
+        // A red run with a blue interruption; fill from the first red.
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(1, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 0, 0), Some(blue));
+        grid.set(IVec3::new(3, 0, 0), Some(red));
+        let used = fill_region(&mut grid, &mut history, IVec3::new(0, 0, 0), red, &[green]);
+        assert_eq!(used, vec![green]);
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(green));
+        assert_eq!(grid.get(IVec3::new(1, 0, 0)), Some(green));
+        // Boundary blue and the disconnected red are untouched.
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(blue));
+        assert_eq!(grid.get(IVec3::new(3, 0, 0)), Some(red));
+    }
+
+    #[test]
+    fn fill_region_is_one_undoable_stroke() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let red = [200, 0, 0, 255];
+        let green = [0, 200, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)]);
+        fill_region(&mut grid, &mut history, IVec3::new(0, 0, 0), red, &[green]);
+        assert_eq!(history.undo.len(), 1);
+        history.undo(&mut grid);
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(red));
+        assert_eq!(grid.get(IVec3::new(1, 0, 0)), Some(red));
+    }
+
+    #[test]
+    fn fill_region_floods_original_color_after_seed_recolored() {
+        // Reproduces the Paint double-click: the first click already recolored
+        // the seed, so the flood must match the region's *original* color.
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let red = [200, 0, 0, 255];
+        let green = [0, 200, 0, 255];
+        fill_grid(
+            &mut grid,
+            red,
+            &[
+                IVec3::new(0, 0, 0),
+                IVec3::new(1, 0, 0),
+                IVec3::new(2, 0, 0),
+            ],
+        );
+        // First click recolored the seed to green.
+        grid.set(IVec3::new(0, 0, 0), Some(green));
+        let used = fill_region(&mut grid, &mut history, IVec3::new(0, 0, 0), red, &[green]);
+        assert_eq!(used, vec![green]);
+        // Whole run is green, even though the seed no longer matched `red`.
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(green));
+        assert_eq!(grid.get(IVec3::new(1, 0, 0)), Some(green));
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(green));
+    }
+
+    #[test]
+    fn fill_region_same_color_records_no_stroke() {
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)]);
+        // Filling with the color already present is a no-op stroke.
+        let used = fill_region(&mut grid, &mut history, IVec3::new(0, 0, 0), red, &[red]);
+        assert!(used.is_empty());
+        assert!(history.undo.is_empty());
     }
 
     #[test]

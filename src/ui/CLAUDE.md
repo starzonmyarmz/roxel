@@ -39,7 +39,7 @@ Helpers in `src/ui/widgets.rs`:
 
 ## Icons
 
-`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket`, `pipette`, `shapes`, `box_select`, `move_tool`, `file_plus`, `folder_open`, `save`, `download`, `undo`, `redo`, `plus`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `ellipsis`, `corner_down_left`, `square`, `circle`, `slash`, `eye` (View pill menu). Plus dispatchers `shape_primitive(p)` and `tool(t)`.
+`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket` (Paint — the merged recolor/flood/fill tool), `pipette`, `shapes`, `box_select`, `move_tool`, `file_plus`, `folder_open`, `save`, `download`, `undo`, `redo`, `plus`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `ellipsis`, `corner_down_left`, `square`, `circle`, `slash`, `eye` (View pill menu). Plus dispatchers `shape_primitive(p)` and `tool(t)`.
 
 Buttons render icons **only** — never Unicode glyphs or emoji. Add a new function (and SVG to `assets/icons/`) before reaching for text.
 

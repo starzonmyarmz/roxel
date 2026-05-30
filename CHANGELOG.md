@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(tools): Paint is now the single recolor tool — drag for freehand, double-click to flood a connected region, click with a selection (or `F`) to fill it.
+- refactor(tools): merge the Fill (bucket) tool into Paint; drop the `G` tool and the spare toolbar slot. Edit → Fill Selection (and its `F` shortcut) stays for discoverability.
 - feat(brush): hold Shift mid-stroke to lock the brush to a straight axis line
 - feat(ui): show real-time shape bounds and voxel count while drawing
 - feat(ui): show selection info during drag, not just after commit

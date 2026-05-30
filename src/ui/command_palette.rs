@@ -90,7 +90,6 @@ pub enum CommandAction {
 
     Undo,
     Redo,
-    FillSelection,
     DeleteSelectionContents,
     ClearSelection,
     CopySelection,
@@ -355,14 +354,6 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         CommandAction::Redo,
     ));
     out.push(entry(
-        "Fill selection",
-        Category::Edit,
-        "paint recolor current color voxels",
-        Some("F"),
-        state.has_selection,
-        CommandAction::FillSelection,
-    ));
-    out.push(entry(
         "Delete selection contents",
         Category::Edit,
         "clear remove voxels",
@@ -423,7 +414,12 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
     for (kind, label, sc, kw) in [
         (Tool::Brush, "Switch to Brush", "B", "paint place draw"),
         (Tool::Erase, "Switch to Erase", "E", "delete remove"),
-        (Tool::Paint, "Switch to Paint", "P", "recolor"),
+        (
+            Tool::Paint,
+            "Switch to Paint",
+            "P",
+            "recolor bucket flood fill region selection",
+        ),
         (
             Tool::Eyedropper,
             "Switch to Eyedropper",
@@ -1270,16 +1266,6 @@ pub fn dispatch_command_palette_system(
         ),
         CommandAction::Undo => p.history.undo(&mut p.grid),
         CommandAction::Redo => p.history.redo(&mut p.grid),
-        CommandAction::FillSelection => {
-            if p.selection.aabb.is_some() {
-                let pool = color_pool(p.color.0, &p.extras.0);
-                let used =
-                    select::recolor_selection(&mut p.grid, &mut p.history, &p.selection, &pool);
-                for c in used {
-                    p.recent.push(c);
-                }
-            }
-        }
         CommandAction::DeleteSelectionContents => {
             if p.selection.aabb.is_some() {
                 select::clear_selection(&mut p.grid, &mut p.history, &p.selection);
@@ -1641,26 +1627,6 @@ mod tests {
             .find(|e| matches!(e.action, CommandAction::Undo))
             .expect("undo entry");
         assert!(!undo.enabled);
-    }
-
-    #[test]
-    fn catalog_gates_fill_selection_on_selection() {
-        let palettes = vec![pal("p1", true)];
-        let mut state = dummy(&palettes);
-
-        state.has_selection = false;
-        let fill = build_catalog(&state)
-            .into_iter()
-            .find(|e| matches!(e.action, CommandAction::FillSelection))
-            .expect("fill entry");
-        assert!(!fill.enabled, "disabled without a selection");
-
-        state.has_selection = true;
-        let fill = build_catalog(&state)
-            .into_iter()
-            .find(|e| matches!(e.action, CommandAction::FillSelection))
-            .expect("fill entry");
-        assert!(fill.enabled, "enabled with a selection");
     }
 
     #[test]
