@@ -34,7 +34,8 @@ use crate::onboarding::{Onboarding, OnboardingAnchors};
 use crate::shapes::ShapePrimitive;
 use crate::theme::{Preferences, PreferencesWindow, Theme, apply_egui_style};
 use crate::tools::{
-    CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState, apply_swatch_click,
+    CurrentColor, ExtraColors, RecentColors, ShapeOptions, ShapeState, Tool, ToolState,
+    apply_swatch_click,
 };
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::icon;
@@ -102,6 +103,8 @@ pub struct UiInput<'w> {
 pub struct UiState<'w> {
     pub new_project: ResMut<'w, NewProject>,
     pub selection: ResMut<'w, crate::select::Selection>,
+    pub select_state: Res<'w, crate::select::SelectState>,
+    pub shape_state: Res<'w, ShapeState>,
     pub toasts: Res<'w, Toasts>,
     pub current_path: Res<'w, CurrentProjectPath>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
@@ -142,6 +145,8 @@ pub fn ui_system(
     let UiState {
         mut new_project,
         selection,
+        select_state,
+        shape_state,
         toasts,
         current_path,
         flyby,
@@ -1389,8 +1394,52 @@ pub fn ui_system(
                                     widgets::section_divider(ui, &theme);
                                 }
 
-                                // Selection section — only when there's an active region.
-                                if let Some(aabb) = selection.aabb {
+                                // Shape section — real-time info while drawing.
+                                if tool.current == Tool::Shape && shape_state.phase.is_some() {
+                                    if let (Some(anchor), Some(c1), Some(c2)) = (
+                                        shape_state.anchor,
+                                        shape_state.corner1,
+                                        shape_state.corner2,
+                                    ) {
+                                        let cells = crate::shapes::compute_shape_cells(
+                                            shape_options.primitive,
+                                            c1,
+                                            c2,
+                                            anchor.axis,
+                                            shape_state.thickness,
+                                            shape_state.normal_sign,
+                                        );
+                                        if let Some(bounds) = crate::shapes::cell_bounds(&cells) {
+                                            widgets::section(ui, &theme, "Shape", |ui| {
+                                                widgets::stat_row(
+                                                    ui,
+                                                    &theme,
+                                                    "Bounds",
+                                                    format!(
+                                                        "{} × {} × {}",
+                                                        bounds.x, bounds.y, bounds.z
+                                                    ),
+                                                );
+                                                widgets::stat_row(
+                                                    ui,
+                                                    &theme,
+                                                    "Voxels",
+                                                    cells.len().to_string(),
+                                                );
+                                            });
+                                        }
+                                    }
+                                }
+
+                                // Selection section — committed or in-progress.
+                                let selection_aabb = selection.aabb.or_else(|| {
+                                    if select_state.phase != crate::select::SelectPhase::Idle {
+                                        crate::select::in_progress_aabb(&select_state)
+                                    } else {
+                                        None
+                                    }
+                                });
+                                if let Some(aabb) = selection_aabb {
                                     widgets::section(ui, &theme, "Selection", |ui| {
                                         let extents = aabb.extents();
                                         widgets::stat_row(
@@ -1402,11 +1451,16 @@ pub fn ui_system(
                                                 extents.x, extents.y, extents.z
                                             ),
                                         );
+                                        let voxel_count = if selection.aabb.is_some() {
+                                            selection.voxel_count(&grid)
+                                        } else {
+                                            aabb.voxel_count(&grid)
+                                        };
                                         widgets::stat_row(
                                             ui,
                                             &theme,
                                             "Voxels",
-                                            selection.voxel_count(&grid).to_string(),
+                                            voxel_count.to_string(),
                                         );
                                     });
                                 }

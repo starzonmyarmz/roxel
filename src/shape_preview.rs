@@ -6,11 +6,10 @@ use std::collections::HashSet;
 
 use crate::mesh::srgb_to_linear;
 use crate::preview::{PreviewGizmos, accent_outline_color};
-use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
+use crate::shapes::compute_shape_cells;
 use crate::theme::Theme;
 use crate::tools::{
-    CurrentColor, ExtraColors, ShapeOptions, ShapeState, Tool, ToolState, color_pool,
-    extrude_args_from_signed_offset, sample_color,
+    CurrentColor, ExtraColors, ShapeOptions, ShapeState, Tool, ToolState, color_pool, sample_color,
 };
 
 #[derive(Component)]
@@ -83,18 +82,14 @@ pub fn shape_preview_system(
         return;
     };
 
-    let base = match options.primitive {
-        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
-        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, true),
-        ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
-    };
-    let base_sign = if state.normal_sign == 0 {
-        1
-    } else {
-        state.normal_sign
-    };
-    let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, base_sign);
-    let cells = extrude(&base, anchor.axis, count, dir_sign);
+    let cells = compute_shape_cells(
+        options.primitive,
+        c1,
+        c2,
+        anchor.axis,
+        state.thickness,
+        state.normal_sign,
+    );
 
     let pool = color_pool(color.0, &extras.0);
     let multi = pool.len() > 1;
