@@ -12,26 +12,25 @@ Release notes.
 
 ## [Unreleased]
 
-- refactor(ui): split the 1.7k-line `ui.rs` — inspector body → new `ui/inspector.rs`, tool-island + menu-pill bodies → `floating.rs`; `ui_system` is now a thin dispatcher (1682 → 387 lines).
+## [0.6.4] - 2026-05-31
 
-- fix(macos): double-clicking a `.rox` in Finder now opens it in Roxel — declare the document type in Info.plist and load the file from the launch Apple Event.
-
-- perf(grid): cache the scene bounding box so the inspector "Size" row stops re-walking the whole grid every frame; invalidated only when occupancy changes.
-
-- perf(canvas): origin triad probes only the fixed cube around (0,0,0) instead of scanning the whole grid every frame.
-
-- ci(lint): make clippy a hard gate (`-D warnings`, drop `continue-on-error`) and add it to the pre-push hook; clear the existing warnings.
-
-- feat(tools): Paint is now the single recolor tool — drag for freehand, double-click to flood a connected region, click with a selection (or `F`) to fill it.
-- refactor(tools): merge the Fill (bucket) tool into Paint; drop the `G` tool and the spare toolbar slot. Edit → Fill Selection (and its `F` shortcut) stays for discoverability.
-- feat(io): track unsaved changes; Open and New prompt before discarding a modified document.
-- feat(ui): inspector Status shows the open file name with a `•` when modified.
-- feat(brush): hold Shift mid-stroke to lock the brush to a straight axis line
-- feat(ui): show real-time shape bounds and voxel count while drawing
-- feat(ui): show selection info during drag, not just after commit
-- refactor(shapes): extract `compute_shape_cells` for shared use
-- test(shapes): cover `compute_shape_cells` and `cell_bounds`
-- refactor(ecs): bundle 8+ arg systems into `#[derive(SystemParam)]` structs; drop 12 `too_many_arguments` allows.
+- chore: bump to 0.6.4
+- merge: ui.rs split + macOS Finder open into main
+- docs(changelog): note ui.rs split into inspector.rs + floating.rs
+- docs(ui): note ui_system is now a dispatcher; bodies in sibling modules
+- refactor(ui): extract inspector panel into ui/inspector.rs
+- refactor(ui): extract menu-pill body into floating::pill_menu_contents
+- refactor(ui): extract tool-island body into floating::tool_island_contents
+- docs: drop .fbx from supported-format list
+- perf(grid): memoize bounding box for per-frame inspector
+- perf(canvas): bound origin-triad voxel probe to the origin cube
+- refactor(ecs): bundle 8+ arg systems into SystemParam structs
+- ci(lint): make clippy a hard gate and clear warnings
+- feat(io): track unsaved changes and guard Open/New
+- refactor(tools): merge Fill into Paint with double-click flood
+- feat(brush): Shift-lock brush stroke to a straight axis
+- feat(ui): show real-time shape/selection info in palette panel
+- docs: finalize CHANGELOG for v0.6.3 [skip ci]
 
 ## [0.6.3] - 2026-05-29
 
