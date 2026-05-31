@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(macos): double-clicking a `.rox` in Finder now opens it in Roxel — declare the document type in Info.plist and load the file from the launch Apple Event.
+
 - perf(grid): cache the scene bounding box so the inspector "Size" row stops re-walking the whole grid every frame; invalidated only when occupancy changes.
 
 - perf(canvas): origin triad probes only the fixed cube around (0,0,0) instead of scanning the whole grid every frame.

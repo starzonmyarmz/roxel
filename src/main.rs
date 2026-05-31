@@ -11,6 +11,7 @@ mod lighting;
 mod menu;
 mod mesh;
 mod onboarding;
+mod open_file;
 mod picking;
 mod preview;
 mod resample;
@@ -247,6 +248,7 @@ fn main() {
             crate::updater::startup_check_system,
             crate::updater::poll_update_check_system,
             onboarding_autostart_system,
+            crate::open_file::poll_open_files_system,
         ),
     )
     .add_systems(
@@ -266,6 +268,10 @@ fn main() {
             onboarding_overlay_system.after(ui_system),
         ),
     );
+
+    // Register the OS "open document" hook before the event loop starts so a
+    // double-clicked `.rox` (delivered as an Apple Event on macOS) is captured.
+    crate::open_file::install();
 
     app.run();
 }

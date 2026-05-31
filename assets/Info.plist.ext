@@ -1,0 +1,43 @@
+<!-- Merged verbatim into the generated Info.plist <dict> by cargo-bundle
+     (osx_info_plist_exts). Declares the `.rox` document type + UTI so macOS
+     LaunchServices routes double-clicked projects to Roxel. Without this,
+     Finder reports "can't open this type of file". Keep this in sync with the
+     `.rox` Apple Event handler in src/open_file.rs and the bundle identifier
+     in Cargo.toml. Must not contain a raw `&` (cargo-bundle only escapes &). -->
+<key>CFBundleDocumentTypes</key>
+<array>
+  <dict>
+    <key>CFBundleTypeName</key>
+    <string>Roxel Project</string>
+    <key>CFBundleTypeRole</key>
+    <string>Editor</string>
+    <key>CFBundleTypeIconFile</key>
+    <string>roxel</string>
+    <key>LSHandlerRank</key>
+    <string>Owner</string>
+    <key>LSItemContentTypes</key>
+    <array>
+      <string>com.danielmarino.roxel.rox</string>
+    </array>
+  </dict>
+</array>
+<key>UTExportedTypeDeclarations</key>
+<array>
+  <dict>
+    <key>UTTypeIdentifier</key>
+    <string>com.danielmarino.roxel.rox</string>
+    <key>UTTypeDescription</key>
+    <string>Roxel Project</string>
+    <key>UTTypeConformsTo</key>
+    <array>
+      <string>public.data</string>
+    </array>
+    <key>UTTypeTagSpecification</key>
+    <dict>
+      <key>public.filename-extension</key>
+      <array>
+        <string>rox</string>
+      </array>
+    </dict>
+  </dict>
+</array>
