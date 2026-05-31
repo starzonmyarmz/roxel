@@ -14,6 +14,8 @@ Release notes.
 
 - refactor(ui): split the 1.7k-line `ui.rs` — inspector body → new `ui/inspector.rs`, tool-island + menu-pill bodies → `floating.rs`; `ui_system` is now a thin dispatcher (1682 → 387 lines).
 
+- fix(macos): double-clicking a `.rox` in Finder now opens it in Roxel — declare the document type in Info.plist and load the file from the launch Apple Event.
+
 - perf(grid): cache the scene bounding box so the inspector "Size" row stops re-walking the whole grid every frame; invalidated only when occupancy changes.
 
 - perf(canvas): origin triad probes only the fixed cube around (0,0,0) instead of scanning the whole grid every frame.

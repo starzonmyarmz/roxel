@@ -120,6 +120,12 @@ Old (`version`, `size`, `voxels`) layout was dropped. ron silently ignores unkno
 
 `window_title_system` reflects file name + `•` in the OS window title (hidden on macOS — see the inspector Status "File" row instead). New is gated: `auto_apply_clean_new_project_system` applies a clean New silently; the confirm modal only draws when modified. Open routes every trigger (native menu, command palette, Win/Linux pill) through `OpenRequest.requested`; `resolve_open_request_system` spawns the dialog when clean or raises `confirming` for the `modals::draw_open_confirm` guard. Recent-file open is **not** guarded yet.
 
+## Open from Finder (double-click)
+
+`open_file.rs` — receives `.rox` files the OS hands the app at launch. On macOS a double-clicked document is **not** in `argv` for `.app` bundles; LaunchServices sends a `kAEOpenDocuments` Apple Event, routed by the `CFBundleDocumentTypes`/UTI declaration in `assets/Info.plist.ext` (merged into the bundle Info.plist via `osx_info_plist_exts` in `Cargo.toml`). **Both halves are required** — without the plist, Finder reports "can't open this type of file"; without the handler, double-click opens a blank scene. The in-app File → Open dialog bypasses LaunchServices, which is why it always worked.
+
+The macOS handler (`define_class!` NSObject, objc2) registers itself as the `odoc` Apple Event handler from a `NSApplicationDidFinishLaunchingNotification` observer — **after** AppKit installs its own default handler, so ours wins the still-queued cold-launch event. It pushes paths onto a static queue; `poll_open_files_system` drains it and spawns a `DialogResult::OpenProject` into `PendingDialog`, reusing `poll_dialogs_system` for the load + recents + dirty baseline + toast. `install()` is a no-op off macOS (Win/Linux argv not yet consumed) and is called once from `main()` before `app.run()`. Single-window app → if several files are dropped at once, the last wins.
+
 ## Onboarding
 
 `onboarding.rs` — first-launch coachmark tour. `Onboarding { active, step, anchors_ready, pending_persist, autostart_fired }`. `TOUR_STEPS` is a `&[TourStep]` const with 4 entries: `Viewport`, `ToolRail`, `ColorPalette`, `GizmoCube` (`AnchorId`). `OnboardingAnchors` captures widget rects per frame inside `ui_system`; `Viewport` and `GizmoCube` reuse `ViewportRect` / `GizmoRect` to avoid duplicate plumbing.

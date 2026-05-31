@@ -32,7 +32,16 @@ dev = ["bevy/dynamic_linking"]
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage"] }
-objc2-foundation = { version = "0.3", features = ["NSData", "NSThread"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSData",
+    "NSThread",
+    "NSString",
+    "NSNotification",
+    "NSAppleEventManager",
+    "NSAppleEventDescriptor",
+    "NSURL",
+    "objc2-core-services",
+] }
 muda = "0.19"
 
 # Faster dev iteration: optimize deps, leave own crate at -O1.
@@ -49,6 +58,9 @@ identifier = "com.danielmarino.roxel"
 icon = ["assets/icons/roxel.icns"]
 category = "public.app-category.graphics-design"
 short_description = "Voxel editor"
+# Merged into the generated Info.plist so macOS associates `.rox` with Roxel
+# (CFBundleDocumentTypes + UTI). The matching launch handler is src/open_file.rs.
+osx_info_plist_exts = ["assets/Info.plist.ext"]
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
