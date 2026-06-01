@@ -57,7 +57,7 @@ mod macos {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyObject, NSObject};
     use objc2::{AnyThread, define_class, msg_send, sel};
-    use objc2_app_kit::NSApplicationDidFinishLaunchingNotification;
+    use objc2_app_kit::NSApplicationWillFinishLaunchingNotification;
     use objc2_foundation::{
         NSAppleEventDescriptor, NSAppleEventManager, NSNotification, NSNotificationCenter,
     };
@@ -79,13 +79,17 @@ mod macos {
         struct Handler;
 
         impl Handler {
-            /// `NSApplicationDidFinishLaunchingNotification` callback. AppKit
-            /// installs its *own* `kAEOpenDocuments` handler during launch, so we
-            /// must override it here — after launch — to win the cold-launch
-            /// event still queued in the run loop. Registering earlier (e.g. from
-            /// `install`) would be clobbered by AppKit's default handler.
-            #[unsafe(method(appDidFinishLaunching:))]
-            fn app_did_finish_launching(&self, _note: &NSNotification) {
+            /// `NSApplicationWillFinishLaunchingNotification` callback. Must be
+            /// `will`, not `did`: on a cold launch LaunchServices delivers the
+            /// `kAEOpenDocuments` event during startup, and AppKit dispatches it
+            /// to its *default* (no-op) handler before `didFinishLaunching` fires.
+            /// Registering at `did` loses the cold-launch event (the double-click
+            /// opens a blank scene); `will` runs early enough to override AppKit's
+            /// handler before the queued event is dispatched. Warm launches (app
+            /// already running) work either way. Registering from `install`,
+            /// before the app exists, is too early — AppKit clobbers it.
+            #[unsafe(method(appWillFinishLaunching:))]
+            fn app_will_finish_launching(&self, _note: &NSNotification) {
                 let manager = NSAppleEventManager::sharedAppleEventManager();
                 unsafe {
                     manager.setEventHandler_andSelector_forEventClass_andEventID(
@@ -139,8 +143,8 @@ mod macos {
         unsafe {
             center.addObserver_selector_name_object(
                 observer,
-                sel!(appDidFinishLaunching:),
-                Some(NSApplicationDidFinishLaunchingNotification),
+                sel!(appWillFinishLaunching:),
+                Some(NSApplicationWillFinishLaunchingNotification),
                 None,
             );
         }

@@ -19,6 +19,8 @@ Release notes.
   3D ellipsoid; Shift-locked square footprint gives a true sphere
 - fix(ci): clear Linux-only clippy errors in floating menu (cfg-gate macOS-only
   re-exports + `RecentFiles::clear`, drop needless borrows)
+- fix(macos): double-clicking a `.rox` in Finder now opens it on a cold launch
+  (register the open-documents handler at `willFinishLaunching`, not `did`)
 
 ## [0.6.4] - 2026-05-31
 
