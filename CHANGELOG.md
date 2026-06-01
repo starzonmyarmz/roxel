@@ -12,6 +12,7 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(tools): `S` cycles through shape primitives (Rect → Ellipse → Line → Sphere)
 - feat(io): `.vox` import carries the model's used colors in as a new swatch
   palette (named after the file), so you can keep painting with them
 - feat(shape): add Sphere primitive — footprint + extrude depth sweep a solid

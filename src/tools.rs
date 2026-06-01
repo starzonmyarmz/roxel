@@ -1468,6 +1468,7 @@ pub fn tool_shortcut_system(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     mut tool: ResMut<ToolState>,
+    mut shape_options: ResMut<ShapeOptions>,
 ) {
     let wants_kb = contexts
         .ctx_mut()
@@ -1507,6 +1508,13 @@ pub fn tool_shortcut_system(
     {
         tool.previous = tool.current;
         tool.current = t;
+    } else if keys.just_pressed(KeyCode::KeyS) && tool.current == Tool::Shape {
+        shape_options.primitive = match shape_options.primitive {
+            ShapePrimitive::Rectangle => ShapePrimitive::Ellipse,
+            ShapePrimitive::Ellipse => ShapePrimitive::Line,
+            ShapePrimitive::Line => ShapePrimitive::Sphere,
+            ShapePrimitive::Sphere => ShapePrimitive::Rectangle,
+        };
     }
 }
 
