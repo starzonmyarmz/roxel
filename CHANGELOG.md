@@ -12,15 +12,16 @@ Release notes.
 
 ## [Unreleased]
 
-- feat(tools): `S` cycles through shape primitives (Rect → Ellipse → Line → Sphere)
-- feat(io): `.vox` import carries the model's used colors in as a new swatch
-  palette (named after the file), so you can keep painting with them
-- feat(shape): add Sphere primitive — footprint + extrude depth sweep a solid
-  3D ellipsoid; Shift-locked square footprint gives a true sphere
-- fix(ci): clear Linux-only clippy errors in floating menu (cfg-gate macOS-only
-  re-exports + `RecentFiles::clear`, drop needless borrows)
-- fix(macos): double-clicking a `.rox` in Finder now opens it on a cold launch
-  (register the open-documents handler at `willFinishLaunching`, not `did`)
+## [0.6.5] - 2026-06-01
+
+- chore: bump to 0.6.5
+- fix(macos): open .rox from Finder on a cold launch
+- feat(tools): S-key cycles through shape primitives
+- feat(io): import .vox palette as a new swatch palette
+- fix(icons): white-fill globe.svg so selected Sphere tints correctly
+- feat(shape): add Sphere primitive
+- fix(ci): clear Linux-only clippy errors in floating menu
+- docs: finalize CHANGELOG for v0.6.4 [skip ci]
 
 ## [0.6.4] - 2026-05-31
 
