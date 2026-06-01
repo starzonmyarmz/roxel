@@ -346,12 +346,28 @@ pub fn poll_dialogs_system(
             Err(e) => toasts.error(format!("Import .gox failed: {e}")),
         },
         Some(DialogResult::ImportVox(path)) => match io::vox::import(&path, &mut grid) {
-            Ok(()) => {
+            Ok(colors) => {
                 history.undo.clear();
                 history.redo.clear();
                 doc.forced_dirty = true;
                 current_path.0 = None;
                 pending_import.0 = true;
+                // Carry the model's used colors in as a new swatch palette so the
+                // user can keep painting with them. Mirrors the .ase import path.
+                if !colors.is_empty() {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Imported");
+                    let name = crate::ui::palette::unique_palette_name(&palettes.0, stem);
+                    palettes.0.push(Palette {
+                        name,
+                        colors,
+                        builtin: false,
+                    });
+                    palette_choice.0 = palettes.0.len() - 1;
+                    io::palettes::save(&palettes.0);
+                }
                 toasts.success(format!("Imported {}", file_label(&path)));
             }
             Err(e) => toasts.error(format!("Import .vox failed: {e}")),

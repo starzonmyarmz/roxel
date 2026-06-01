@@ -2,7 +2,7 @@ use crate::grid::{Color8, VoxelGrid};
 use anyhow::Result;
 use bevy::math::IVec3;
 use dot_vox::{Color, DotVoxData, Model, Size, Voxel};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 /// `.vox` format hard cap on each axis: voxel coords are stored in a `u8`,
@@ -97,7 +97,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     Ok(())
 }
 
-pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
+/// Imports a `.vox` model into `grid` and returns the model's palette as the
+/// distinct colors actually referenced by placed voxels, in ascending palette
+/// index order. The caller turns this into a swatch palette; the full 256-entry
+/// MagicaVoxel ramp is deliberately *not* returned — unused default entries
+/// would be palette noise.
+pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<Vec<Color8>> {
     let path_str = path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("non-UTF-8 path"))?;
@@ -114,6 +119,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let model = &data.models[0];
 
     let mut dropped = 0usize;
+    let mut used: BTreeSet<u8> = BTreeSet::new();
     for v in &model.voxels {
         let rx = v.x as i32;
         let ry = v.z as i32;
@@ -122,6 +128,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
             dropped += 1;
             continue;
         }
+        used.insert(v.i);
         let col = data.palette.get(v.i as usize).copied().unwrap_or(Color {
             r: 255,
             g: 255,
@@ -133,7 +140,20 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     if dropped > 0 {
         eprintln!("Import .vox: dropped {dropped} voxels below the floor");
     }
-    Ok(())
+
+    let palette: Vec<Color8> = used
+        .into_iter()
+        .map(|i| {
+            let c = data.palette.get(i as usize).copied().unwrap_or(Color {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            });
+            [c.r, c.g, c.b, 255]
+        })
+        .collect();
+    Ok(palette)
 }
 
 fn nearest(palette: &[Color], c: Color8) -> u8 {
@@ -367,6 +387,56 @@ mod tests {
         import(&path, &mut g).expect("import");
         assert_eq!(g.get(IVec3::new(0, 0, 0)), Some([10, 10, 10, 255]));
         assert_eq!(g.get(IVec3::new(10, 0, 0)), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_returns_used_colors_as_palette() {
+        // Palette index order, deduped, only colors actually placed. Index 2 is
+        // referenced twice (one dedup) and index 1 is unused → excluded.
+        let path = tmp_path("palette");
+        let palette = make_palette(&[(10, 10, 10), (20, 20, 20), (30, 30, 30)]);
+        let data = DotVoxData {
+            version: 150,
+            index_map: (0u8..=255u8).collect(),
+            models: vec![Model {
+                size: Size {
+                    x: 32,
+                    y: 32,
+                    z: 32,
+                },
+                voxels: vec![
+                    Voxel {
+                        x: 1,
+                        y: 0,
+                        z: 0,
+                        i: 2,
+                    },
+                    Voxel {
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        i: 0,
+                    },
+                    Voxel {
+                        x: 2,
+                        y: 0,
+                        z: 0,
+                        i: 2,
+                    },
+                ],
+            }],
+            palette,
+            materials: vec![],
+            scenes: vec![],
+            layers: vec![],
+        };
+        let mut f = std::fs::File::create(&path).unwrap();
+        data.write_vox(&mut f).unwrap();
+        let mut g = VoxelGrid::default();
+        let colors = import(&path, &mut g).expect("import");
+        // Ascending index order (0 then 2), deduped, index 1 absent.
+        assert_eq!(colors, vec![[10, 10, 10, 255], [30, 30, 30, 255]]);
         let _ = std::fs::remove_file(&path);
     }
 

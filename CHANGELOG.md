@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(io): `.vox` import carries the model's used colors in as a new swatch
+  palette (named after the file), so you can keep painting with them
 - feat(shape): add Sphere primitive — footprint + extrude depth sweep a solid
   3D ellipsoid; Shift-locked square footprint gives a true sphere
 - fix(ci): clear Linux-only clippy errors in floating menu (cfg-gate macOS-only

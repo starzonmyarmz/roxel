@@ -28,6 +28,8 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 - **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
 - Imports `grid.set` each voxel at the source coord. No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
+**`io::vox::import` also returns a palette** — the distinct colors actually placed (ascending palette-index order, deduped; the full 256-entry MV ramp is *not* returned, unused entries are noise). `poll_dialogs_system`'s `ImportVox` arm pushes them as a new user `Palette` (named after the file stem via `palette::unique_palette_name`), selects it, and calls `io::palettes::save`. Mirrors the `.ase` import path. `.qb`/`.gox` imports remain grid-only.
+
 ## Format notes
 
 - **`io::gltf::export`** — `.glb` (12-byte header + JSON + BIN chunks, 4-byte aligned). Indexed triangles, `COLOR_0` as u8-norm RGBA, Y-up. Primary DCC interchange — Maya/Max/Unity/Unreal/Blender/Godot all import natively.
