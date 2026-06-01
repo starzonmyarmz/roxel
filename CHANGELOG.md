@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(shape): add Sphere primitive — footprint + extrude depth sweep a solid
+  3D ellipsoid; Shift-locked square footprint gives a true sphere
 - fix(ci): clear Linux-only clippy errors in floating menu (cfg-gate macOS-only
   re-exports + `RecentFiles::clear`, drop needless borrows)
 

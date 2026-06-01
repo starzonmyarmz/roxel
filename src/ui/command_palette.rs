@@ -468,6 +468,14 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         state.shape.primitive != ShapePrimitive::Line,
         CommandAction::SelectShape(ShapePrimitive::Line),
     ));
+    out.push(entry(
+        "Shape: Sphere",
+        Category::Shape,
+        "ball ellipsoid globe round",
+        None,
+        state.shape.primitive != ShapePrimitive::Sphere,
+        CommandAction::SelectShape(ShapePrimitive::Sphere),
+    ));
 
     // View
     out.push(entry(

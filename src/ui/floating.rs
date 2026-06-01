@@ -211,6 +211,7 @@ pub fn tool_island_contents(
                             (ShapePrimitive::Rectangle, "Rectangle"),
                             (ShapePrimitive::Ellipse, "Ellipse"),
                             (ShapePrimitive::Line, "Line"),
+                            (ShapePrimitive::Sphere, "Sphere"),
                         ] {
                             let selected = shape_options.primitive == prim;
                             let (rect, r) = ui.allocate_exact_size(cell, egui::Sense::click());

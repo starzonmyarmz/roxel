@@ -35,7 +35,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
   The selection-fill and double-click paths are handled ahead of the anchor/stroke machinery in `tool_input_system` and early-return so they never enter drag mode. The old dedicated `Tool::Fill` (bucket, `G`) and the command-palette "Fill selection" entry were folded in here — recoloring now lives on one tool. The **Edit menu "Fill Selection" item is kept** (with `F`): on macOS AppKit routes the native key-equivalent → `MenuAction::FillSelection`; on Win/Linux there is no native menu, so `selection_key_action_system` owns `F`. Both gate on egui keyboard focus. (Erase still clears selection contents on click-inside; that's a separate path.)
 - **`Tool::Eyedropper`** — single-click, auto-restores `tool.previous` on release unless Alt held (sticky via `alt_eyedropper_system`).
-- **`Tool::Shape`** (rect/ellipse/line, `ShapeOptions`) — two-click: anchor on picked face → drag 2D footprint → click commits → drag along face normal to extrude (`shapes::extrude`). State in `ShapeState`. Shift during footprint drag locks aspect ratio via `constrain_shape_corner2` (rect/ellipse → square; line → nearest 45° in face plane).
+- **`Tool::Shape`** (rect/ellipse/line/sphere, `ShapeOptions`) — two-click: anchor on picked face → drag 2D footprint → click commits → drag along face normal to extrude (`shapes::extrude`). State in `ShapeState`. Shift during footprint drag locks aspect ratio via `constrain_shape_corner2` (rect/ellipse/sphere → square; line → nearest 45° in face plane). **Sphere** is the exception to the extrude model: its phase-2 depth is the 3rd ellipsoid semi-axis (not a slice count), so it routes to `shapes::ellipsoid_cells` instead of `extrude`. Shift-locked square footprint + matching extrude → true sphere; otherwise a general ellipsoid.
 - **`Tool::Select`** (`select.rs`) — same two-phase face-plane drag as Shape, commits a region into `Selection`. AABB hull (drag) or per-cell mask (double-click → `connected_same_color` flood). `selection_render_system` draws marching ants around AABB or along `silhouette_edges` of mask. All region ops consult mask first, fall back to AABB. Backspace/Delete → `clear_selection`; Esc → clear selection.
 - **`Tool::Move`** (`select.rs` + `move_drag_system` in `tools.rs`) — translates selection by integer offsets. Mouse drag uses `StrokeAnchor` face plane; Shift locks Y. Overlap with non-source occupied cell refused. `history.abort` on RMB/Esc/tool-switch. Arrow keys: ←/→ = ∓X, ↑/↓ = ∓Z, Shift+↑/↓ = ±Y. One history stroke per commit — `History::record` dedupes mid-drag by overwriting existing delta's `after`.
 
@@ -53,6 +53,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 - `ellipse_cells(c1, c2, axis, filled)` — midpoint edge test; filled checks inside the ellipse equation per cell.
 - `line2d_cells(c1, c2, axis)` — axis-aligned 2D Bresenham.
 - `extrude(cells, axis, thickness, sign)` — replicates 2D footprint along normal axis.
+- `ellipsoid_cells(c1, c2, axis, thickness, normal_sign)` — solid 3D ellipsoid; in-plane bounds give two semi-axes, signed extrude depth gives the third. `compute_shape_cells` short-circuits to this for `Sphere` instead of `extrude`.
 
 ## Shape picker (long-press)
 

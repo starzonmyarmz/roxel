@@ -5,7 +5,9 @@ use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, fill_region, recolor_selection,
 };
-use crate::shapes::{ShapePrimitive, ellipse_cells, extrude, line2d_cells, rect_cells};
+use crate::shapes::{
+    ShapePrimitive, ellipse_cells, ellipsoid_cells, extrude, line2d_cells, rect_cells,
+};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -515,7 +517,7 @@ pub(crate) fn constrain_shape_corner2(
     let du = ta[u_axis] - c1a[u_axis];
     let dv = ta[v_axis] - c1a[v_axis];
     let (nu, nv) = match primitive {
-        ShapePrimitive::Rectangle | ShapePrimitive::Ellipse => {
+        ShapePrimitive::Rectangle | ShapePrimitive::Ellipse | ShapePrimitive::Sphere => {
             let m = du.abs().max(dv.abs());
             let su = if du == 0 { 1 } else { du.signum() };
             let sv = if dv == 0 { 1 } else { dv.signum() };
@@ -576,13 +578,18 @@ fn shape_commit(
         state.reset();
         return;
     };
-    let base = match options.primitive {
-        ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
-        ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, true),
-        ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
+    let cells = if options.primitive == ShapePrimitive::Sphere {
+        ellipsoid_cells(c1, c2, anchor.axis, state.thickness, state.normal_sign)
+    } else {
+        let base = match options.primitive {
+            ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
+            ShapePrimitive::Ellipse => ellipse_cells(c1, c2, anchor.axis, true),
+            ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
+            ShapePrimitive::Sphere => unreachable!(),
+        };
+        let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);
+        extrude(&base, anchor.axis, count, dir_sign)
     };
-    let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);
-    let cells = extrude(&base, anchor.axis, count, dir_sign);
     history.begin();
     let mut used: Vec<Color8> = Vec::new();
     for cell in cells {
@@ -1622,6 +1629,15 @@ mod tests {
     }
 
     #[test]
+    fn constrain_shape_sphere_locks_to_square_footprint() {
+        // Sphere shares the square-footprint rule so Shift gives equal in-plane radii.
+        let c1 = IVec3::new(0, 0, 0);
+        let out = constrain_shape_corner2(ShapePrimitive::Sphere, 1, c1, IVec3::new(5, 0, 2));
+        // max(|du|, |dv|) = 5 along both in-plane axes.
+        assert_eq!(out, IVec3::new(5, 0, 5));
+    }
+
+    #[test]
     fn constrain_shape_rect_preserves_anchor_axis() {
         // Front face → axis=2 (Z), 2D plane is XY. The Z coord must stay put.
         let c1 = IVec3::new(0, 0, 8);
@@ -1661,6 +1677,7 @@ mod tests {
             ShapePrimitive::Rectangle,
             ShapePrimitive::Ellipse,
             ShapePrimitive::Line,
+            ShapePrimitive::Sphere,
         ] {
             assert_eq!(constrain_shape_corner2(prim, 1, c1, c1), c1);
         }

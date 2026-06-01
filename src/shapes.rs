@@ -7,6 +7,7 @@ pub enum ShapePrimitive {
     Rectangle,
     Ellipse,
     Line,
+    Sphere,
 }
 
 pub(crate) fn other_axes(axis: usize) -> (usize, usize) {
@@ -137,6 +138,65 @@ pub fn extrude(cells: &[IVec3], axis: usize, thickness: i32, sign: i32) -> Vec<I
     out
 }
 
+/// Rasterize a solid 3D ellipsoid. The in-plane bounds `(c1, c2)` give two
+/// semi-axes (the footprint), and the signed extrude `thickness` along `axis`
+/// gives the third — so the same two-phase Shape gesture that extrudes an
+/// ellipse into a cylinder instead sweeps out a sphere. With equal radii in
+/// all three axes (Shift-locked square footprint + matching extrude) the result
+/// is a true sphere; otherwise a general ellipsoid. `normal_sign`/`thickness`
+/// follow the same convention as [`extrude`] (offset `0` = single on-plane
+/// slice, `±N` grows the depth axis outward/inward).
+pub fn ellipsoid_cells(
+    c1: IVec3,
+    c2: IVec3,
+    axis: usize,
+    thickness: i32,
+    normal_sign: i32,
+) -> Vec<IVec3> {
+    let (u_axis, v_axis) = other_axes(axis);
+    let a1 = c1.to_array();
+    let a2 = c2.to_array();
+    let umin = a1[u_axis].min(a2[u_axis]);
+    let umax = a1[u_axis].max(a2[u_axis]);
+    let vmin = a1[v_axis].min(a2[v_axis]);
+    let vmax = a1[v_axis].max(a2[v_axis]);
+
+    // Depth span along the face normal, same convention as `extrude`.
+    let base_sign = if normal_sign == 0 { 1 } else { normal_sign };
+    let count = thickness.unsigned_abs() as i32 + 1;
+    let dir = if thickness >= 0 {
+        base_sign
+    } else {
+        -base_sign
+    };
+    let w0 = a1[axis];
+    let w1 = w0 + dir * (count - 1);
+    let wmin = w0.min(w1);
+    let wmax = w0.max(w1);
+
+    let cu = (umin as f32 + umax as f32 + 1.0) * 0.5;
+    let cv = (vmin as f32 + vmax as f32 + 1.0) * 0.5;
+    let cw = (wmin as f32 + wmax as f32 + 1.0) * 0.5;
+    let ru = ((umax - umin) as f32 * 0.5 + 0.5).max(0.5);
+    let rv = ((vmax - vmin) as f32 * 0.5 + 0.5).max(0.5);
+    let rw = ((wmax - wmin) as f32 * 0.5 + 0.5).max(0.5);
+
+    let mut out = Vec::new();
+    for u in umin..=umax {
+        for v in vmin..=vmax {
+            for w in wmin..=wmax {
+                let du = (u as f32 + 0.5) - cu;
+                let dv = (v as f32 + 0.5) - cv;
+                let dw = (w as f32 + 0.5) - cw;
+                if (du / ru).powi(2) + (dv / rv).powi(2) + (dw / rw).powi(2) <= 1.0 {
+                    out.push(cell_from(axis, u_axis, v_axis, w, u, v));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Compute the full set of cells that a shape occupies given the current
 /// drawing state. Returns all voxel positions the shape would write on commit.
 pub fn compute_shape_cells(
@@ -151,6 +211,7 @@ pub fn compute_shape_cells(
         ShapePrimitive::Rectangle => rect_cells(c1, c2, axis, true),
         ShapePrimitive::Ellipse => ellipse_cells(c1, c2, axis, true),
         ShapePrimitive::Line => line2d_cells(c1, c2, axis),
+        ShapePrimitive::Sphere => return ellipsoid_cells(c1, c2, axis, thickness, normal_sign),
     };
     let base_sign = if normal_sign == 0 { 1 } else { normal_sign };
     let count = thickness.unsigned_abs() as i32 + 1;
@@ -384,6 +445,84 @@ mod tests {
         let s: HashSet<(i32, i32, i32)> = cells.iter().map(|p| (p.x, p.y, p.z)).collect();
         assert!(s.contains(&(0, 0, 0)));
         assert!(s.contains(&(5, 0, 2)));
+    }
+
+    #[test]
+    fn ellipsoid_symmetric_about_center() {
+        // 5×5 footprint on the y=0 plane, extruded 4 deep → a 5×5×5 ball.
+        let cells = ellipsoid_cells(IVec3::new(0, 0, 0), IVec3::new(4, 0, 4), 1, 4, 1);
+        let s = set(cells);
+        // Center is solid.
+        assert!(s.contains(&(2, 2, 2)));
+        // Six axis poles are inside the unit ellipsoid.
+        assert!(s.contains(&(0, 2, 2)));
+        assert!(s.contains(&(4, 2, 2)));
+        assert!(s.contains(&(2, 0, 2)));
+        assert!(s.contains(&(2, 4, 2)));
+        assert!(s.contains(&(2, 2, 0)));
+        assert!(s.contains(&(2, 2, 4)));
+        // Corners of the 5×5×5 bounding box are outside the ball.
+        assert!(!s.contains(&(0, 0, 0)));
+        assert!(!s.contains(&(4, 4, 4)));
+    }
+
+    #[test]
+    fn ellipsoid_spans_depth_along_axis() {
+        // Footprint on a vertical slab (x axis), extruded toward +x.
+        let cells = ellipsoid_cells(IVec3::new(5, 0, 0), IVec3::new(5, 4, 4), 0, 4, 1);
+        let xs: HashSet<i32> = cells.iter().map(|c| c.x).collect();
+        let mut xs: Vec<_> = xs.into_iter().collect();
+        xs.sort();
+        assert_eq!(xs, vec![5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn ellipsoid_negative_thickness_carves_inward() {
+        let cells = ellipsoid_cells(IVec3::new(0, 5, 0), IVec3::new(4, 5, 4), 1, -4, 1);
+        let ys: HashSet<i32> = cells.iter().map(|c| c.y).collect();
+        let mut ys: Vec<_> = ys.into_iter().collect();
+        ys.sort();
+        // Negative offset with +Y normal extends toward smaller y.
+        assert_eq!(ys, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn ellipsoid_single_slice_matches_ellipse() {
+        // thickness 0 → one slab; the footprint slice equals the filled ellipse.
+        let sphere = set(ellipsoid_cells(
+            IVec3::new(0, 3, 0),
+            IVec3::new(6, 3, 6),
+            1,
+            0,
+            1,
+        ));
+        let ellipse = set(ellipse_cells(
+            IVec3::new(0, 3, 0),
+            IVec3::new(6, 3, 6),
+            1,
+            true,
+        ));
+        assert_eq!(sphere, ellipse);
+    }
+
+    #[test]
+    fn compute_shape_sphere_routes_to_ellipsoid() {
+        let via_compute = set(compute_shape_cells(
+            ShapePrimitive::Sphere,
+            IVec3::new(0, 0, 0),
+            IVec3::new(4, 0, 4),
+            1,
+            4,
+            1,
+        ));
+        let direct = set(ellipsoid_cells(
+            IVec3::new(0, 0, 0),
+            IVec3::new(4, 0, 4),
+            1,
+            4,
+            1,
+        ));
+        assert_eq!(via_compute, direct);
     }
 
     #[test]

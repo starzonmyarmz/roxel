@@ -86,6 +86,9 @@ pub fn circle() -> egui::ImageSource<'static> {
 pub fn slash() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/slash.svg")
 }
+pub fn globe() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/globe.svg")
+}
 pub fn search() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/search.svg")
 }
@@ -99,6 +102,7 @@ pub fn shape_primitive(p: ShapePrimitive) -> egui::ImageSource<'static> {
         ShapePrimitive::Rectangle => square(),
         ShapePrimitive::Ellipse => circle(),
         ShapePrimitive::Line => slash(),
+        ShapePrimitive::Sphere => globe(),
     }
 }
 
