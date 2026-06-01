@@ -12,6 +12,9 @@ Release notes.
 
 ## [Unreleased]
 
+- fix(ci): clear Linux-only clippy errors in floating menu (cfg-gate macOS-only
+  re-exports + `RecentFiles::clear`, drop needless borrows)
+
 ## [0.6.4] - 2026-05-31
 
 - chore: bump to 0.6.4

@@ -300,22 +300,22 @@ pub fn pill_menu_contents(
     ui: &mut egui::Ui,
     theme: &Theme,
     new_project: &mut NewProject,
-    mut pending: &mut PendingDialog,
+    pending: &mut PendingDialog,
     open_request: &mut OpenRequest,
     current_path: &CurrentProjectPath,
     prefs: &mut Preferences,
     history: &mut History,
-    mut grid: &mut VoxelGrid,
+    grid: &mut VoxelGrid,
     onboarding: &mut Onboarding,
     prefs_window: &mut PreferencesWindow,
-    mut updater: &mut crate::updater::UpdateCheck,
+    updater: &mut crate::updater::UpdateCheck,
 ) {
     #[allow(non_snake_case)]
     let TEXT = theme.text;
     #[allow(non_snake_case)]
     let TEXT_DIM = theme.text_dim;
     ui.horizontal(|ui| {
-        if widgets::icon_button(ui, &theme, icons::file_plus(), "New")
+        if widgets::icon_button(ui, theme, icons::file_plus(), "New")
             .on_hover_text("Start a new project")
             .clicked()
         {
@@ -348,7 +348,7 @@ pub fn pill_menu_contents(
             ),
         );
         if save_resp.clicked() {
-            dialogs::spawn_save(&mut pending, &current_path, prefs.last_dir.clone());
+            dialogs::spawn_save(pending, current_path, prefs.last_dir.clone());
         }
         if ui
             .add_enabled(
@@ -362,7 +362,7 @@ pub fn pill_menu_contents(
             )
             .clicked()
         {
-            dialogs::spawn_save_as(&mut pending, &current_path, prefs.last_dir.clone());
+            dialogs::spawn_save_as(pending, current_path, prefs.last_dir.clone());
         }
         ui.menu_image_text_button(
             egui::Image::new(icons::folder_open())
@@ -547,7 +547,7 @@ pub fn pill_menu_contents(
                 let mut changed = toggle(ui, &mut prefs.show_floor_grid, "Floor Grid");
                 changed |= toggle(ui, &mut prefs.show_origin_axes, "Origin Axes");
                 if changed {
-                    crate::theme::save_preferences(&prefs);
+                    crate::theme::save_preferences(prefs);
                 }
             },
         );
@@ -582,13 +582,13 @@ pub fn pill_menu_contents(
                     }
                 }
                 if changed {
-                    crate::theme::save_preferences(&prefs);
+                    crate::theme::save_preferences(prefs);
                 }
             },
         );
 
         ui.add_space(space::SM);
-        widgets::vertical_rule(ui, &theme);
+        widgets::vertical_rule(ui, theme);
         ui.add_space(space::XS);
 
         let undo_enabled = !history.undo.is_empty();
@@ -605,7 +605,7 @@ pub fn pill_menu_contents(
             .on_hover_text("Cmd+Z / Ctrl+Z")
             .clicked()
         {
-            history.undo(&mut grid);
+            history.undo(grid);
         }
         let redo_enabled = !history.redo.is_empty();
         if ui
@@ -621,7 +621,7 @@ pub fn pill_menu_contents(
             .on_hover_text("Cmd+Shift+Z / Ctrl+Shift+Z")
             .clicked()
         {
-            history.redo(&mut grid);
+            history.redo(grid);
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -670,7 +670,7 @@ pub fn pill_menu_contents(
                     .on_hover_text("Look for a newer Roxel release on GitHub")
                     .clicked()
                 {
-                    crate::updater::start_check(&mut updater, true);
+                    crate::updater::start_check(updater, true);
                 }
             }
         });

@@ -17,8 +17,12 @@ pub use command_palette::{
 };
 pub use dialogs::{
     CurrentProjectPath, DialogResult, DocStatus, OpenRequest, PendingDialog, PendingImport,
-    RecentFiles, new_dialog, poll_dialogs_system, spawn_open, spawn_save, spawn_save_as,
+    RecentFiles, poll_dialogs_system, spawn_open,
 };
+// Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
+// reaches these through the `dialogs` module path directly.
+#[cfg(target_os = "macos")]
+pub use dialogs::{new_dialog, spawn_save, spawn_save_as};
 pub use palette::{
     DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
 };
