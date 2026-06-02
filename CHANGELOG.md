@@ -12,9 +12,13 @@ Release notes.
 
 ## [Unreleased]
 
-- feat(ui): ENTER key confirms/submits dialog windows (New Project, Open Confirm, Discard)
-- feat(io): `.rox` files show an artwork thumbnail in macOS Finder (embedded PNG preview + custom file icon)
-- chore: add `base64` dependency to `roxel-core`
+## [0.7.0] - 2026-06-02
+
+- chore: bump to 0.7.0
+- feat(io): show .rox artwork thumbnail in macOS Finder
+- feat(ui): ENTER key confirms/submits dialog windows
+- refactor: split core logic into roxel-core workspace crate
+- docs: finalize CHANGELOG for v0.6.5 [skip ci]
 
 ## [0.6.5] - 2026-06-01
 
