@@ -1,7 +1,7 @@
 use crate::grid::VoxelGrid;
 use crate::io::reader::LeReader;
 use anyhow::{Result, bail};
-use bevy::math::IVec3;
+use glam::IVec3;
 use std::path::Path;
 
 // Qubicle Binary (.qb) reader. Format reference:

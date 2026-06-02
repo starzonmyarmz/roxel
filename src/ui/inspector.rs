@@ -1,9 +1,5 @@
 //! The left inspector side panel, split out of `ui_system` (`ui.rs`).
 
-use crate::color_space::ColorEditBuffer;
-use crate::grid::VoxelGrid;
-use crate::history::History;
-use crate::io;
 use crate::select::{SelectState, Selection};
 use crate::theme::{Preferences, Theme};
 use crate::tools::{
@@ -17,6 +13,10 @@ use crate::ui::palette::{
 use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
 use crate::ui::{ZoomReadout, color_picker, icons, widgets};
 use bevy_egui::egui;
+use roxel::color_space::ColorEditBuffer;
+use roxel::grid::VoxelGrid;
+use roxel::history::History;
+use roxel::io;
 
 /// Top-left of a swatch cell at a fractional grid slot, lerping between the two
 /// bracketing integer cells. Whole slots map straight to the integer cell;
@@ -717,7 +717,7 @@ pub fn inspector_panel(
                                         shape_state.corner2,
                                     )
                                 {
-                                    let cells = crate::shapes::compute_shape_cells(
+                                    let cells = roxel::shapes::compute_shape_cells(
                                         shape_options.primitive,
                                         c1,
                                         c2,
@@ -725,7 +725,7 @@ pub fn inspector_panel(
                                         shape_state.thickness,
                                         shape_state.normal_sign,
                                     );
-                                    if let Some(bounds) = crate::shapes::cell_bounds(&cells) {
+                                    if let Some(bounds) = roxel::shapes::cell_bounds(&cells) {
                                         widgets::section(ui, theme, "Shape", |ui| {
                                             widgets::stat_row(
                                                 ui,

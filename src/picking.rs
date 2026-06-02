@@ -1,7 +1,7 @@
-use crate::grid::{Color8, VoxelGrid};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{Color8, VoxelGrid};
 
 /// Maximum number of DDA steps before declaring a miss. In the bounded grid
 /// this used to be `size * 3 + 16`; in the open world we cap at a fixed

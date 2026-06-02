@@ -1,8 +1,9 @@
-use crate::grid::VoxelGrid;
+use crate::GridResource;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::VoxelGrid;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI, TAU};
 
 /// Default orbit radius used when the world is empty (no occupied cells to
@@ -94,7 +95,7 @@ pub fn frame_view_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut pending: ResMut<PendingFrameView>,
     mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
-    grid: Res<VoxelGrid>,
+    grid: Res<GridResource>,
     viewport: Res<ViewportRect>,
 ) {
     let key_trigger = (keys.just_pressed(KeyCode::Digit0) || keys.just_pressed(KeyCode::Numpad0))
@@ -214,7 +215,7 @@ pub fn flyby_radius(t: f32, base: f32) -> f32 {
 pub fn flyby_system(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    grid: Res<VoxelGrid>,
+    grid: Res<GridResource>,
     mut state: ResMut<FlybyState>,
     mut cameras: Query<&mut PanOrbitCamera>,
     mut start_yaw: Local<f32>,
@@ -573,7 +574,7 @@ pub fn apply_pending_view_preset_system(
     mut pending: ResMut<PendingViewPreset>,
     mut flyby: ResMut<FlybyState>,
     mut cameras: Query<&mut PanOrbitCamera>,
-    grid: Res<VoxelGrid>,
+    grid: Res<GridResource>,
 ) {
     let Some(preset) = pending.0.take() else {
         return;
@@ -670,7 +671,7 @@ pub fn zoom_click_system(
     mut contexts: bevy_egui::EguiContexts,
     cam_query: Query<(&Camera, &GlobalTransform), With<PanOrbitCamera>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    grid: Res<crate::grid::VoxelGrid>,
+    grid: Res<GridResource>,
     mut cameras: Query<&mut PanOrbitCamera>,
 ) {
     if !keys.pressed(KeyCode::KeyZ) || !mouse.just_pressed(MouseButton::Left) {
@@ -752,7 +753,7 @@ pub const ZOOM_OUT_MULTIPLIER: f32 = 2.0;
 /// the spawn-camera radius reachable on a fresh project.
 pub const ZOOM_OUT_FLOOR: f32 = 64.0;
 
-pub fn update_zoom_limits_system(grid: Res<VoxelGrid>, mut cameras: Query<&mut PanOrbitCamera>) {
+pub fn update_zoom_limits_system(grid: Res<GridResource>, mut cameras: Query<&mut PanOrbitCamera>) {
     let (lower, upper) = zoom_radius_limits(&grid);
     for mut cam in &mut cameras {
         cam.zoom_lower_limit = lower;

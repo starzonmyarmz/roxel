@@ -1,131 +1,15 @@
-use crate::grid::{CHUNK_I, Color8, VoxelGrid, chunk_coord};
+use crate::GridResource;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
+use roxel::grid::{CHUNK_I, Color8, VoxelGrid, chunk_coord};
 use std::collections::HashMap;
+
+pub use roxel::mesh_util::{FACES, face_shade, srgb_to_linear};
 
 #[derive(Component)]
 pub struct VoxelMesh;
-
-pub const FACES: [Face; 6] = [
-    Face {
-        normal: [1.0, 0.0, 0.0],
-        d: IVec3::new(1, 0, 0),
-        corners: [[1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0]],
-        axis: 0,
-        u_axis: 1,
-        v_axis: 2,
-        plane_offset: 1,
-    },
-    Face {
-        normal: [-1.0, 0.0, 0.0],
-        d: IVec3::new(-1, 0, 0),
-        corners: [[0, 0, 0], [0, 1, 0], [0, 1, 1], [0, 0, 1]],
-        axis: 0,
-        u_axis: 1,
-        v_axis: 2,
-        plane_offset: 0,
-    },
-    Face {
-        normal: [0.0, 1.0, 0.0],
-        d: IVec3::new(0, 1, 0),
-        corners: [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]],
-        axis: 1,
-        u_axis: 0,
-        v_axis: 2,
-        plane_offset: 1,
-    },
-    Face {
-        normal: [0.0, -1.0, 0.0],
-        d: IVec3::new(0, -1, 0),
-        corners: [[0, 0, 0], [0, 0, 1], [1, 0, 1], [1, 0, 0]],
-        axis: 1,
-        u_axis: 0,
-        v_axis: 2,
-        plane_offset: 0,
-    },
-    Face {
-        normal: [0.0, 0.0, 1.0],
-        d: IVec3::new(0, 0, 1),
-        corners: [[0, 0, 1], [0, 1, 1], [1, 1, 1], [1, 0, 1]],
-        axis: 2,
-        u_axis: 0,
-        v_axis: 1,
-        plane_offset: 1,
-    },
-    Face {
-        normal: [0.0, 0.0, -1.0],
-        d: IVec3::new(0, 0, -1),
-        corners: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
-        axis: 2,
-        u_axis: 0,
-        v_axis: 1,
-        plane_offset: 0,
-    },
-];
-
-pub struct Face {
-    pub normal: [f32; 3],
-    pub d: IVec3,
-    /// Unit-cube corners of this face, in winding-correct order. Indices into
-    /// each `[i32; 3]` are 0/1; substitute the greedy quad's `(i, i+h)` along
-    /// `u_axis` and `(j, j+w)` along `v_axis` to lift to world space.
-    pub corners: [[i32; 3]; 4],
-    /// World-space axis that is constant on this face (0=X, 1=Y, 2=Z).
-    pub axis: usize,
-    /// The two axes that vary across the face.
-    pub u_axis: usize,
-    pub v_axis: usize,
-    /// Offset added to the slice index `k` to get the world-space plane on
-    /// `axis` for this face. `0` for the negative face, `1` for the positive.
-    pub plane_offset: i32,
-}
-
-/// Visit every voxel face that borders empty space. Shared by every per-face
-/// mesh exporter (glTF, OBJ, SVG). The callback receives the voxel's world-space
-/// grid position, the face descriptor (giving normal + winding-correct
-/// unit-cube corners), and the cell's color.
-pub fn for_each_exposed_face(
-    grid: &crate::grid::VoxelGrid,
-    mut f: impl FnMut(IVec3, &Face, crate::grid::Color8),
-) {
-    for (cell, rgba) in grid.iter_occupied() {
-        for face in &FACES {
-            if grid.get(cell + face.d).is_none() {
-                f(cell, face, rgba);
-            }
-        }
-    }
-}
-
-pub fn face_shade(normal: [f32; 3]) -> f32 {
-    if normal[1] > 0.5 {
-        1.0
-    } else if normal[1] < -0.5 {
-        0.45
-    } else if normal[0].abs() > 0.5 {
-        0.78
-    } else {
-        0.62
-    }
-}
-
-pub fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-pub fn linear_to_srgb(c: f32) -> f32 {
-    if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    }
-}
 
 pub struct GreedyQuad {
     pub face_idx: usize,
@@ -356,7 +240,7 @@ impl PreviewHide {
 
 pub fn regenerate_mesh_system(
     mut commands: Commands,
-    mut grid: ResMut<VoxelGrid>,
+    mut grid: ResMut<GridResource>,
     mut hide: ResMut<PreviewHide>,
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -445,7 +329,7 @@ mod tests {
     #[test]
     fn srgb_linear_roundtrip_endpoints_and_midpoint() {
         for x in [0.0_f32, 0.04, 0.04045, 0.2, 0.5, 0.9, 1.0] {
-            let r = linear_to_srgb(srgb_to_linear(x));
+            let r = roxel::mesh_util::linear_to_srgb(srgb_to_linear(x));
             assert!((r - x).abs() < 1e-4, "x={x} r={r}");
         }
     }

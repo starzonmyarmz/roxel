@@ -12,10 +12,9 @@
 // size. The viewBox is trimmed to the projected voxel bounds.
 
 use crate::grid::VoxelGrid;
-use crate::mesh::{FACES, face_shade, linear_to_srgb, srgb_to_linear};
+use crate::mesh_util::{FACES, face_shade, linear_to_srgb, srgb_to_linear};
 use anyhow::Result;
-use bevy::math::{Mat4, Vec2, Vec3, Vec4};
-use bevy::prelude::{GlobalTransform, Projection};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use std::cmp::Ordering;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
@@ -42,16 +41,13 @@ struct ProjectedQuad {
 pub fn export(
     path: &Path,
     grid: &VoxelGrid,
-    camera_xform: &GlobalTransform,
-    projection: &Projection,
+    view: Mat4,
+    view_proj: Mat4,
+    camera_pos: Vec3,
     viewport_size: Vec2,
 ) -> Result<()> {
-    let view = camera_xform.to_matrix().inverse();
-    let clip_from_view = projection.get_clip_from_view();
-    let camera_pos = camera_xform.translation();
-
     let quads = collect_cell_quads(grid, camera_pos);
-    let mut projected = project_quads(&quads, view, clip_from_view, viewport_size);
+    let mut projected = project_quads(&quads, view, view_proj, viewport_size);
     // Most-negative cell view-z first — furthest along the camera forward
     // direction is drawn first; closer cells overdraw. Using view-space z
     // (not Euclidean distance) accounts for perspective correctly: an
@@ -101,8 +97,12 @@ fn collect_cell_quads(grid: &VoxelGrid, camera_pos: Vec3) -> Vec<CellQuad> {
     out
 }
 
-fn project_quads(quads: &[CellQuad], view: Mat4, clip: Mat4, viewport: Vec2) -> Vec<ProjectedQuad> {
-    let view_proj = clip * view;
+fn project_quads(
+    quads: &[CellQuad],
+    view: Mat4,
+    view_proj: Mat4,
+    viewport: Vec2,
+) -> Vec<ProjectedQuad> {
     let half = viewport * 0.5;
     let mut out = Vec::with_capacity(quads.len());
     for q in quads {
@@ -222,35 +222,28 @@ fn write_svg(path: &Path, quads: &[ProjectedQuad]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::io::test_util::tmp_path as raw_tmp_path;
-    use bevy::math::IVec3;
-    use bevy::prelude::{PerspectiveProjection, Transform};
+    use glam::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {
         raw_tmp_path(name, "svg")
     }
 
-    fn test_camera() -> (GlobalTransform, Projection) {
-        let xform =
-            Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::new(16.0, 16.0, 16.0), Vec3::Y);
-        let gt = GlobalTransform::from(xform);
-        let proj = Projection::Perspective(PerspectiveProjection {
-            fov: std::f32::consts::FRAC_PI_4,
-            aspect_ratio: 1.0,
-            near: 0.1,
-            far: 1000.0,
-            ..Default::default()
-        });
-        (gt, proj)
+    fn test_camera() -> (Mat4, Mat4, Vec3) {
+        let eye = Vec3::new(50.0, 50.0, 50.0);
+        let center = Vec3::new(16.0, 16.0, 16.0);
+        let view = Mat4::look_at_rh(eye, center, Vec3::Y);
+        let proj = Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 1000.0);
+        (view, proj * view, eye)
     }
 
     #[test]
     fn empty_grid_returns_error() {
         let g = crate::grid::VoxelGrid::default();
-        let (gt, proj) = test_camera();
+        let (view, view_proj, cam_pos) = test_camera();
         let path = tmp_path("empty");
-        let err =
-            export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0)).expect_err("expected error");
+        let err = export(&path, &g, view, view_proj, cam_pos, Vec2::new(800.0, 600.0))
+            .expect_err("expected error");
         assert!(err.to_string().contains("Nothing to export"));
     }
 
@@ -258,9 +251,9 @@ mod tests {
     fn single_voxel_writes_valid_svg() {
         let mut g = crate::grid::VoxelGrid::default();
         g.set(IVec3::new(1, 1, 1), Some([255, 0, 0, 255]));
-        let (gt, proj) = test_camera();
+        let (view, view_proj, cam_pos) = test_camera();
         let path = tmp_path("single");
-        export(&path, &g, &gt, &proj, Vec2::new(800.0, 600.0)).expect("export");
+        export(&path, &g, view, view_proj, cam_pos, Vec2::new(800.0, 600.0)).expect("export");
         let s = std::fs::read_to_string(&path).expect("read");
         assert!(s.starts_with("<?xml"));
         assert!(s.contains("<svg "));

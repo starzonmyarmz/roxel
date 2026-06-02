@@ -1,9 +1,9 @@
 use super::icons;
-use crate::color_space::ColorSpace;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
 use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke};
 use bevy_egui::egui;
+use roxel::color_space::ColorSpace;
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {

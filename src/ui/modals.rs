@@ -4,8 +4,6 @@
 //! is a free function over the resources it touches; `ui_system` calls them
 //! when the corresponding modal is open.
 
-use crate::grid::NewProject;
-use crate::io;
 use crate::theme::{
     CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, canvas_match_color,
     save_preferences,
@@ -16,6 +14,8 @@ use crate::ui::palette::{
 use crate::ui::tokens::{font, space, width};
 use crate::ui::widgets;
 use bevy_egui::egui;
+use roxel::grid::NewProject;
+use roxel::io;
 
 /// Preferences modal: appearance, canvas, visibility, and color-format rows.
 /// Persists `Preferences` only when a field actually changed this frame.

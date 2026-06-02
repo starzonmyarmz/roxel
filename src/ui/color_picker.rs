@@ -2,9 +2,9 @@
 //! inspector module stays focused on panel layout; this is the single numeric
 //! + 2D edit surface for `CurrentColor`.
 
-use crate::color_space::ColorSpace;
 use crate::ui::tokens::{gap, space, stroke};
 use bevy_egui::egui;
+use roxel::color_space::ColorSpace;
 
 /// Custom color picker popup body — the single numeric edit surface for the
 /// foreground color. Composed of:
@@ -25,14 +25,14 @@ use bevy_egui::egui;
 /// changed elsewhere (palette click, eyedropper, field edit). All writes
 /// funnel through `color.0`.
 ///
-/// [`ColorEditBuffer`]: crate::color_space::ColorEditBuffer
+/// [`ColorEditBuffer`]: roxel::color_space::ColorEditBuffer
 pub fn space_color_picker(
     ui: &mut egui::Ui,
     color: &mut crate::tools::CurrentColor,
     space: ColorSpace,
-    color_edit: &mut crate::color_space::ColorEditBuffer,
+    color_edit: &mut roxel::color_space::ColorEditBuffer,
 ) -> bool {
-    use crate::color_space::{hsb_to_rgb, rgb_to_hsb};
+    use roxel::color_space::{hsb_to_rgb, rgb_to_hsb};
 
     // Cache: last rgba we produced + working hue (0..1). Per-widget id so a
     // palette swatch popup can't clobber the inspector's working state.
@@ -92,7 +92,7 @@ pub fn space_color_picker(
                                 inp.modifiers.shift,
                             )
                         });
-                        let step = crate::color_space::ColorEditBuffer::field_step(space, i, shift);
+                        let step = roxel::color_space::ColorEditBuffer::field_step(space, i, shift);
                         if up && color_edit.step_field(i, step) {
                             stepped = true;
                         }

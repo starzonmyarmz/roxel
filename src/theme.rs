@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::color_space::ColorSpace;
-use crate::shapes::ShapePrimitive;
+use roxel::color_space::ColorSpace;
+use roxel::shapes::ShapePrimitive;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ThemeMode {

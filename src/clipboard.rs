@@ -1,11 +1,12 @@
-use crate::grid::{Color8, VoxelGrid};
-use crate::history::History;
+use crate::GridResource;
 use crate::picking::{cursor_ray, pick};
 use crate::select::{Selection, SelectionAabb, clear_selection};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{Color8, VoxelGrid};
+use roxel::history::History;
 use std::collections::HashSet;
 
 /// A captured region of voxels with the original AABB min as its anchor.
@@ -172,7 +173,7 @@ pub fn execute_paste(
 #[derive(SystemParam)]
 pub struct ClipboardEdit<'w> {
     clipboard: ResMut<'w, Clipboard>,
-    grid: ResMut<'w, VoxelGrid>,
+    grid: ResMut<'w, GridResource>,
     history: ResMut<'w, History>,
     selection: ResMut<'w, Selection>,
     toasts: ResMut<'w, crate::ui::Toasts>,

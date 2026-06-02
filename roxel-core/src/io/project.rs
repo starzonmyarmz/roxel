@@ -3,12 +3,9 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Open-world project file. Sparse — only occupied cells are written. The
-/// previous schema carried `version` and `size: [u32; 3]` fields; both are
-/// gone. Old files fail to deserialize and surface as a generic load error.
 #[derive(Serialize, Deserialize)]
-pub struct ProjectFile {
-    pub voxels: Vec<([i32; 3], Color8)>,
+struct ProjectFile {
+    voxels: Vec<([i32; 3], Color8)>,
 }
 
 pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
@@ -27,7 +24,7 @@ pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let pf: ProjectFile = ron::from_str(&s)?;
     grid.clear();
     for ([x, y, z], c) in pf.voxels {
-        grid.set(bevy::math::IVec3::new(x, y, z), Some(c));
+        grid.set(glam::IVec3::new(x, y, z), Some(c));
     }
     Ok(())
 }
@@ -36,7 +33,7 @@ pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
 mod tests {
     use super::*;
     use crate::io::test_util::tmp_path as raw_tmp_path;
-    use bevy::math::IVec3;
+    use glam::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {

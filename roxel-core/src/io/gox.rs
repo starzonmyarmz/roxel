@@ -1,7 +1,7 @@
 use crate::grid::VoxelGrid;
 use crate::io::reader::LeReader;
 use anyhow::{Result, anyhow, bail};
-use bevy::math::IVec3;
+use glam::IVec3;
 use std::collections::HashMap;
 use std::path::Path;
 

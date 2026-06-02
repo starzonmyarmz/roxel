@@ -12,6 +12,10 @@ Release notes.
 
 ## [Unreleased]
 
+- perf: dev profile compiles deps at 0 instead of 3, faster iteration
+- chore: split workspace — core logic (grid, history, io, shapes, color) into `roxel-core`
+- ci: add `--workspace` to clippy so it covers the new lib crate
+
 ## [0.6.5] - 2026-06-01
 
 - chore: bump to 0.6.5

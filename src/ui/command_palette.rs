@@ -1,10 +1,9 @@
 use super::dialogs::{DialogResult, PendingDialog};
+use crate::GridResource;
 use crate::camera::{
     CameraPreset, PendingViewPreset, ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view,
 };
-use crate::grid::{Color8, NewProject, VoxelGrid};
-use crate::history::History;
-use crate::shapes::ShapePrimitive;
+use crate::select;
 use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
 use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
 use crate::ui::palette::{
@@ -13,11 +12,14 @@ use crate::ui::palette::{
 };
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, width};
 use crate::ui::{icons, widgets};
-use crate::{io, select};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{Color8, NewProject};
+use roxel::history::History;
+use roxel::io;
+use roxel::shapes::ShapePrimitive;
 
 const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
 
@@ -1162,7 +1164,7 @@ pub struct DispatchParams<'w> {
     palette: ResMut<'w, CommandPalette>,
     pending: ResMut<'w, PendingDialog>,
     history: ResMut<'w, History>,
-    grid: ResMut<'w, VoxelGrid>,
+    grid: ResMut<'w, GridResource>,
     new_project: ResMut<'w, NewProject>,
     prefs_window: ResMut<'w, PreferencesWindow>,
     tool: ResMut<'w, ToolState>,

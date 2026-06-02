@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use glam::IVec3;
 use std::collections::{HashMap, HashSet};
 
 /// Chunk edge length. Each chunk stores `CHUNK³` cells in a flat array. The
@@ -62,13 +62,15 @@ fn local_idx(p: IVec3) -> usize {
 /// State for the New-project confirm modal. There is no longer a size to
 /// pick — the open-world grid has no fixed extent — so this collapses to a
 /// dialog-open flag plus an `apply` flag the application reads next frame.
-#[derive(Resource, Default)]
+#[derive(Default)]
 pub struct NewProject {
     pub dialog_open: bool,
     pub apply: bool,
 }
 
-#[derive(Resource, Default)]
+impl bevy_ecs::prelude::Resource for NewProject {}
+
+#[derive(Default)]
 pub struct VoxelGrid {
     /// Sparse storage keyed by chunk coordinate. Allocates on first write,
     /// drops when the chunk's `count` hits zero.
@@ -90,6 +92,8 @@ pub struct VoxelGrid {
     /// walk while the scene is idle.
     bbox_cache: Option<Option<(IVec3, IVec3)>>,
 }
+
+impl bevy_ecs::prelude::Resource for VoxelGrid {}
 
 impl VoxelGrid {
     /// The only hard rule in the open-world grid: no cells below the floor.

@@ -1,5 +1,5 @@
 use crate::grid::VoxelGrid;
-use crate::mesh::for_each_exposed_face;
+use crate::mesh_util::for_each_exposed_face;
 use anyhow::Result;
 use std::io::Write;
 use std::path::Path;
@@ -201,7 +201,7 @@ fn write_glb<W: Write>(w: &mut W, json: &[u8], bin: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::io::test_util::tmp_path as raw_tmp_path;
-    use bevy::math::IVec3;
+    use glam::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {

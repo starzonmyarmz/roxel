@@ -6,17 +6,18 @@ use std::collections::HashMap;
 
 use std::path::PathBuf;
 
+use crate::GridResource;
 use crate::camera::{CameraPreset, PendingViewPreset};
-use crate::color_space::ColorSpace;
-use crate::grid::{NewProject, VoxelGrid};
-use crate::history::History;
-use crate::io::recent::MAX_RECENT;
 use crate::theme::{Preferences, PreferencesWindow, save_preferences};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, color_pool};
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, new_dialog,
     spawn_save, spawn_save_as,
 };
+use roxel::color_space::ColorSpace;
+use roxel::grid::NewProject;
+use roxel::history::History;
+use roxel::io::recent::MAX_RECENT;
 
 #[derive(Clone, Copy, Debug)]
 pub enum MenuAction {
@@ -501,7 +502,7 @@ pub struct MenuEnableState<'w> {
     selection: Res<'w, crate::select::Selection>,
     select_state: Res<'w, crate::select::SelectState>,
     clipboard: Res<'w, crate::clipboard::Clipboard>,
-    grid: Res<'w, VoxelGrid>,
+    grid: Res<'w, GridResource>,
     prefs: Res<'w, Preferences>,
 }
 
@@ -616,7 +617,7 @@ pub struct MenuActionParams<'w> {
     pub queue: ResMut<'w, MenuQueue>,
     pub pending: ResMut<'w, PendingDialog>,
     pub history: ResMut<'w, History>,
-    pub grid: ResMut<'w, VoxelGrid>,
+    pub grid: ResMut<'w, GridResource>,
     pub new_project: ResMut<'w, NewProject>,
     pub prefs_window: ResMut<'w, PreferencesWindow>,
     pub cmd_palette: ResMut<'w, CommandPalette>,

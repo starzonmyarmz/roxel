@@ -1,17 +1,18 @@
-use crate::grid::{Color8, VoxelGrid};
-use crate::history::History;
+use crate::GridResource;
 use crate::picking::{Hit, cursor_ray, pick, pick_with};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, fill_region, recolor_selection,
 };
-use crate::shapes::{
-    ShapePrimitive, ellipse_cells, ellipsoid_cells, extrude, line2d_cells, rect_cells,
-};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
+use roxel::grid::{Color8, VoxelGrid};
+use roxel::history::History;
+use roxel::shapes::{
+    ShapePrimitive, ellipse_cells, ellipsoid_cells, extrude, line2d_cells, rect_cells,
+};
 use std::collections::HashMap;
 
 #[derive(SystemParam)]
@@ -53,7 +54,7 @@ pub struct ShapeInput<'w> {
 
 #[derive(SystemParam)]
 pub struct MoveEdit<'w> {
-    pub grid: ResMut<'w, VoxelGrid>,
+    pub grid: ResMut<'w, GridResource>,
     pub history: ResMut<'w, History>,
     pub tool: Res<'w, ToolState>,
     pub selection: ResMut<'w, Selection>,
@@ -62,7 +63,7 @@ pub struct MoveEdit<'w> {
 
 #[derive(SystemParam)]
 pub struct ToolEdit<'w> {
-    pub grid: ResMut<'w, VoxelGrid>,
+    pub grid: ResMut<'w, GridResource>,
     pub history: ResMut<'w, History>,
     pub tool: ResMut<'w, ToolState>,
     pub color: ResMut<'w, CurrentColor>,
@@ -553,7 +554,7 @@ pub(crate) fn constrain_shape_corner2(
 /// stroke anchor's fixed (face-normal) axis, already pinned. Used while Shift
 /// is held mid brush stroke so placement runs straight along one axis.
 fn axis_lock(origin: IVec3, target: IVec3, plane_axis: usize) -> IVec3 {
-    let (u_axis, v_axis) = crate::shapes::other_axes(plane_axis);
+    let (u_axis, v_axis) = roxel::shapes::other_axes(plane_axis);
     let o = origin.to_array();
     let mut out = target.to_array();
     let du = (out[u_axis] - o[u_axis]).abs();
@@ -1426,7 +1427,7 @@ pub fn move_drag_system(
 
 pub fn undo_redo_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mut grid: ResMut<VoxelGrid>,
+    mut grid: ResMut<GridResource>,
     mut history: ResMut<History>,
 ) {
     let cmd = keys.pressed(KeyCode::SuperLeft)
@@ -1521,7 +1522,7 @@ pub fn tool_shortcut_system(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shapes::{extrude, rect_cells};
+    use roxel::shapes::{extrude, rect_cells};
     use std::collections::HashSet;
 
     fn cells_set(cells: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {

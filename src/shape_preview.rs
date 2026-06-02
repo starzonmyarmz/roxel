@@ -7,11 +7,11 @@ use std::collections::HashSet;
 
 use crate::mesh::srgb_to_linear;
 use crate::preview::{PreviewGizmos, accent_outline_color};
-use crate::shapes::compute_shape_cells;
 use crate::theme::Theme;
 use crate::tools::{
     CurrentColor, ExtraColors, ShapeOptions, ShapeState, Tool, ToolState, color_pool, sample_color,
 };
+use roxel::shapes::compute_shape_cells;
 
 #[derive(Component)]
 pub struct ShapePreview;
@@ -200,7 +200,7 @@ fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: C
 /// colors (sRGB tonemapped at the final blit, see mesh::srgb_to_linear).
 pub(crate) fn build_cube_vertex_colors(
     cells: &[IVec3],
-    pool: &[crate::grid::Color8],
+    pool: &[roxel::grid::Color8],
 ) -> Vec<[f32; 4]> {
     let mut out = Vec::with_capacity(cells.len() * 24);
     for c in cells {

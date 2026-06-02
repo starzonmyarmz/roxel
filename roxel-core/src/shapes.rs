@@ -1,4 +1,4 @@
-use bevy::math::IVec3;
+use glam::IVec3;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -10,7 +10,7 @@ pub enum ShapePrimitive {
     Sphere,
 }
 
-pub(crate) fn other_axes(axis: usize) -> (usize, usize) {
+pub fn other_axes(axis: usize) -> (usize, usize) {
     match axis {
         0 => (1, 2),
         1 => (0, 2),

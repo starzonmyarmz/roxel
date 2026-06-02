@@ -1,0 +1,17 @@
+[package]
+name = "roxel-core"
+version = "0.6.5"
+edition = "2024"
+
+[lib]
+name = "roxel"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+bevy_ecs = "0.18"
+dot_vox = "5"
+glam = "0.30"
+ron = "0.12"
+serde = { version = "1", features = ["derive"] }
+dirs = "5"

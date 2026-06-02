@@ -1,6 +1,6 @@
-use crate::shapes::ShapePrimitive;
 use crate::tools::Tool;
 use bevy_egui::egui;
+use roxel::shapes::ShapePrimitive;
 
 pub fn brush() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/brush.svg")

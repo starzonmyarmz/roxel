@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use crate::grid::{Color8, VoxelGrid};
-use crate::history::History;
 use crate::ui::Toasts;
+use roxel::grid::{Color8, VoxelGrid};
+use roxel::history::History;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ResampleOp {

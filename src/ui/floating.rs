@@ -4,21 +4,15 @@
 //! `Frame::popup` and anchored by pivot against `ctx.available_rect()` so
 //! they nest cleanly beside any registered side panel.
 
-use crate::shapes::ShapePrimitive;
 use crate::theme::{Preferences, Theme};
 use crate::tools::{ShapeOptions, Tool, ToolState};
 use crate::ui::tokens::{gap, pad, radius, shadow, space, swatch};
 use crate::ui::{icons, widgets};
 use bevy_egui::egui;
+use roxel::shapes::ShapePrimitive;
 
 // The menu pill is Win/Linux only (macOS uses the native menu), so its
 // contents helper and the deps it pulls in are gated to match.
-#[cfg(not(target_os = "macos"))]
-use crate::color_space::ColorSpace;
-#[cfg(not(target_os = "macos"))]
-use crate::grid::{NewProject, VoxelGrid};
-#[cfg(not(target_os = "macos"))]
-use crate::history::History;
 #[cfg(not(target_os = "macos"))]
 use crate::onboarding::Onboarding;
 #[cfg(not(target_os = "macos"))]
@@ -27,6 +21,12 @@ use crate::theme::PreferencesWindow;
 use crate::ui::dialogs::{self, CurrentProjectPath, DialogResult, OpenRequest, PendingDialog};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::{font, icon, width};
+#[cfg(not(target_os = "macos"))]
+use roxel::color_space::ColorSpace;
+#[cfg(not(target_os = "macos"))]
+use roxel::grid::{NewProject, VoxelGrid};
+#[cfg(not(target_os = "macos"))]
+use roxel::history::History;
 
 /// Frame used for every floating surface. Panel fill, rounded to
 /// [`radius::PILL`] so corners read the same on every floating element. No

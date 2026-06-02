@@ -16,11 +16,11 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::camera::ViewportRect;
 use crate::gizmo::GizmoRect;
-use crate::grid::NewProject;
 use crate::theme::{Preferences, PreferencesWindow, Theme, save_preferences};
 use crate::ui::CommandPalette;
 use crate::ui::icons;
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, width};
+use roxel::grid::NewProject;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum AnchorId {

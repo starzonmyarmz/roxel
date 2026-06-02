@@ -1,5 +1,5 @@
 use crate::grid::VoxelGrid;
-use crate::mesh::FACES;
+use crate::mesh_util::FACES;
 use anyhow::Result;
 use std::io::Write;
 use std::path::Path;
@@ -56,7 +56,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
 mod tests {
     use super::*;
     use crate::io::test_util::tmp_path as raw_tmp_path;
-    use bevy::math::IVec3;
+    use glam::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {

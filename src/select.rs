@@ -1,10 +1,11 @@
-use crate::grid::{Color8, VoxelGrid};
-use crate::history::History;
+use crate::GridResource;
 use crate::tools::{
     CurrentColor, ExtraColors, RecentColors, StrokeAnchor, Tool, ToolState, color_pool,
 };
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use roxel::grid::{Color8, VoxelGrid};
+use roxel::history::History;
 use std::collections::{HashSet, VecDeque};
 
 /// Max gap between two LMB-press events that still counts as a double-click.
@@ -659,7 +660,7 @@ pub fn selection_key_action_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     mut selection: ResMut<Selection>,
-    mut grid: ResMut<VoxelGrid>,
+    mut grid: ResMut<GridResource>,
     mut history: ResMut<History>,
     guards: SelectGuards,
     mut colors: KeyActionColors,
@@ -724,7 +725,7 @@ pub fn move_selection_keys_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     tool: Res<ToolState>,
-    mut grid: ResMut<VoxelGrid>,
+    mut grid: ResMut<GridResource>,
     mut history: ResMut<History>,
     mut selection: ResMut<Selection>,
 ) {

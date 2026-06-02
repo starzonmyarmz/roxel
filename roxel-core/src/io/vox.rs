@@ -1,7 +1,7 @@
 use crate::grid::{Color8, VoxelGrid};
 use anyhow::Result;
-use bevy::math::IVec3;
 use dot_vox::{Color, DotVoxData, Model, Size, Voxel};
+use glam::IVec3;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
@@ -176,7 +176,7 @@ fn nearest(palette: &[Color], c: Color8) -> u8 {
 mod tests {
     use super::*;
     use crate::io::test_util::tmp_path as raw_tmp_path;
-    use bevy::math::IVec3;
+    use glam::IVec3;
     use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> PathBuf {

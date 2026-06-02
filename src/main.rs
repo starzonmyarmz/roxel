@@ -1,11 +1,7 @@
 mod camera;
 mod clipboard;
-mod color_space;
 mod gizmo;
-mod grid;
-mod history;
 mod icon;
-mod io;
 mod lighting;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -17,12 +13,29 @@ mod preview;
 mod resample;
 mod select;
 mod shape_preview;
-mod shapes;
 mod snapshot;
 mod theme;
 mod tools;
 mod ui;
 mod updater;
+
+use bevy::prelude::Resource;
+use std::ops::{Deref, DerefMut};
+
+#[derive(Default)]
+pub struct GridResource(pub roxel::grid::VoxelGrid);
+impl Resource for GridResource {}
+impl Deref for GridResource {
+    type Target = roxel::grid::VoxelGrid;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for GridResource {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -41,10 +54,6 @@ use crate::gizmo::{
     draw_gizmo_decorations_system, gizmo_drag_system, spawn_gizmo, sync_gizmo_camera,
     update_gizmo_hover, update_gizmo_viewport,
 };
-use crate::grid::{
-    NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared,
-};
-use crate::history::History;
 use crate::lighting::spawn_lights;
 use crate::mesh::{PreviewHide, VoxelChunkMeshes, regenerate_mesh_system};
 use crate::onboarding::{
@@ -71,6 +80,10 @@ use crate::ui::{
     poll_dialogs_system, tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{
+    NewProject, VoxelGrid, large_scene_threshold_crossed, large_scene_warning_cleared,
+};
+use roxel::history::History;
 
 fn main() {
     let prefs = load_preferences();
@@ -112,13 +125,13 @@ fn main() {
             brightness: 350.0,
             ..default()
         })
-        .init_resource::<VoxelGrid>()
+        .init_resource::<GridResource>()
         .init_resource::<crate::ui::ModalActive>()
         .init_resource::<History>()
         .init_resource::<ToolState>()
         .init_resource::<CurrentColor>()
         .init_resource::<crate::tools::ExtraColors>()
-        .init_resource::<crate::color_space::ColorEditBuffer>()
+        .init_resource::<roxel::color_space::ColorEditBuffer>()
         .init_resource::<RecentColors>()
         .init_resource::<PointerState>()
         .insert_resource(initial_shape)
@@ -312,7 +325,7 @@ struct ProjectReset<'w> {
 fn apply_new_project_system(
     mut commands: Commands,
     mut reset: ProjectReset,
-    mut grid: ResMut<VoxelGrid>,
+    mut grid: ResMut<GridResource>,
     mut history: ResMut<History>,
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut cameras: Query<&mut PanOrbitCamera>,
@@ -568,7 +581,7 @@ fn configure_origin_axes_gizmos(mut store: ResMut<GizmoConfigStore>) {
 fn draw_origin_system(
     prefs: Res<Preferences>,
     snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
-    grid: Res<VoxelGrid>,
+    grid: Res<GridResource>,
     mut gizmos: Gizmos<OriginAxesGizmos>,
 ) {
     if snapshot_active.0 || !prefs.show_origin_axes {
@@ -633,7 +646,7 @@ fn vignette_system(
 /// scene crosses either the cell-count or chunk-count threshold; clears the
 /// latch once both counters fall below 80 % of their thresholds. Cheap to
 /// run every frame — it's a couple of integer compares.
-fn perf_warn_system(mut grid: ResMut<VoxelGrid>, mut toasts: ResMut<Toasts>) {
+fn perf_warn_system(mut grid: ResMut<GridResource>, mut toasts: ResMut<Toasts>) {
     if !grid.is_changed() {
         return;
     }
@@ -721,7 +734,7 @@ mod tests {
     #[test]
     fn origin_near_count_counts_only_inside_box() {
         let mut g = VoxelGrid::default();
-        let c: crate::grid::Color8 = [255, 0, 0, 255];
+        let c: roxel::grid::Color8 = [255, 0, 0, 255];
         // Inside the box (x,z ∈ [-4,4], y ∈ [0,4]).
         g.set(IVec3::new(0, 0, 0), Some(c));
         g.set(IVec3::new(-4, 4, 4), Some(c));
@@ -736,7 +749,7 @@ mod tests {
     #[test]
     fn origin_near_count_caps_at_eight() {
         let mut g = VoxelGrid::default();
-        let c: crate::grid::Color8 = [0, 255, 0, 255];
+        let c: roxel::grid::Color8 = [0, 255, 0, 255];
         // Fill more than 8 cells inside the box.
         let mut placed = 0;
         'fill: for x in -4..=4 {
@@ -756,7 +769,7 @@ mod tests {
         // Far-away voxels (the perf-bug scenario) must leave the count at 0,
         // and we never touch them — bounded probe only reads the origin box.
         let mut g = VoxelGrid::default();
-        let c: crate::grid::Color8 = [0, 0, 255, 255];
+        let c: roxel::grid::Color8 = [0, 0, 255, 255];
         g.set(IVec3::new(500, 0, 500), Some(c));
         g.set(IVec3::new(-300, 10, 200), Some(c));
         assert_eq!(origin_near_count(&g), 0);

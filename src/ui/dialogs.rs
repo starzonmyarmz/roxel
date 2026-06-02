@@ -1,6 +1,4 @@
-use crate::grid::VoxelGrid;
-use crate::history::History;
-use crate::io;
+use crate::GridResource;
 use crate::snapshot::SnapshotRequest;
 use crate::ui::palette::{Palette, PaletteChoice, Palettes};
 use crate::ui::toast::Toasts;
@@ -9,6 +7,8 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::history::History;
+use roxel::io;
 use std::path::{Path, PathBuf};
 
 pub enum DialogResult {
@@ -120,25 +120,25 @@ pub fn spawn_open(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
 }
 
 /// Most-recent-first list of `.rox` paths the user has opened or saved.
-/// Capped at [`crate::io::recent::MAX_RECENT`]; persisted to
+/// Capped at [`roxel::io::recent::MAX_RECENT`]; persisted to
 /// `dirs::config_dir()/roxel/recent.ron` whenever an entry is pushed.
 #[derive(Resource, Default)]
 pub struct RecentFiles(pub Vec<PathBuf>);
 
 impl RecentFiles {
     pub fn loaded() -> Self {
-        Self(crate::io::recent::load())
+        Self(roxel::io::recent::load())
     }
     pub fn push(&mut self, path: PathBuf) {
-        crate::io::recent::push(&mut self.0, path);
-        crate::io::recent::save(&self.0);
+        roxel::io::recent::push(&mut self.0, path);
+        roxel::io::recent::save(&self.0);
     }
     // Only the macOS native menu has a "Clear Recent" item; the Win/Linux pill
     // does not, so this is dead code off macOS.
     #[cfg(target_os = "macos")]
     pub fn clear(&mut self) {
         self.0.clear();
-        crate::io::recent::save(&self.0);
+        roxel::io::recent::save(&self.0);
     }
 }
 
@@ -219,7 +219,7 @@ fn file_label(p: &Path) -> String {
 
 #[derive(SystemParam)]
 pub struct DialogDoc<'w> {
-    grid: ResMut<'w, VoxelGrid>,
+    grid: ResMut<'w, GridResource>,
     history: ResMut<'w, History>,
     current_path: ResMut<'w, CurrentProjectPath>,
     doc: ResMut<'w, DocStatus>,
@@ -318,7 +318,10 @@ pub fn poll_dialogs_system(
         Some(DialogResult::ExportSvg(path)) => match (camera.single(), windows.single()) {
             (Ok((xform, projection)), Ok(window)) => {
                 let viewport = Vec2::new(window.width(), window.height());
-                match io::svg::export(&path, &grid, xform, projection, viewport) {
+                let view = xform.to_matrix().inverse();
+                let view_proj = projection.get_clip_from_view() * view;
+                let camera_pos = xform.translation();
+                match io::svg::export(&path, &grid, view, view_proj, camera_pos, viewport) {
                     Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
                     Err(e) => toasts.error(format!("Export .svg failed: {e}")),
                 }
@@ -442,6 +445,7 @@ mod tests {
     #[test]
     fn doc_status_modified_after_edit_clean_after_save() {
         use bevy::math::IVec3;
+        use roxel::grid::VoxelGrid;
         let mut grid = VoxelGrid::default();
         let mut history = History::default();
         let mut doc = DocStatus::default();

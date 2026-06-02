@@ -2,7 +2,7 @@
 //! user-created or imported ones round-trip through this file. Stored at
 //! `dirs::config_dir()/roxel/palettes.ron` as a `Vec<StoredPalette>`.
 
-use crate::ui::Palette;
+use crate::palette::Palette;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

@@ -4,10 +4,9 @@
 //! HSL, HSB/HSV, and OKLCH for display + editing. P3 is deliberately not here
 //! — it would require widening storage across the whole pipeline.
 
-use bevy::prelude::Resource;
 use serde::{Deserialize, Serialize};
 
-use crate::mesh::{linear_to_srgb, srgb_to_linear};
+use crate::mesh_util::{linear_to_srgb, srgb_to_linear};
 
 /// Which color space the inspector readout/edit fields show. Picker popup is
 /// unaffected — egui's HSV wheel is always available.
@@ -255,7 +254,7 @@ pub fn oklch_to_rgb(l: f32, c: f32, h: f32) -> [u8; 3] {
 /// match the live `(CurrentColor, Preferences.color_space)` — that way typing
 /// digits mid-edit never drops information to roundtrip rounding (a pure-grey
 /// HSL hue is undefined, etc.).
-#[derive(Resource, Default)]
+#[derive(Default)]
 pub struct ColorEditBuffer {
     pub source: [u8; 4],
     pub space: ColorSpace,
@@ -263,6 +262,8 @@ pub struct ColorEditBuffer {
     /// in Hex mode.
     pub fields: [String; 3],
 }
+
+impl bevy_ecs::prelude::Resource for ColorEditBuffer {}
 
 impl ColorEditBuffer {
     /// Repopulate field strings from a Color8 + active space. Always called

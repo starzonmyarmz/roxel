@@ -6,7 +6,7 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use bevy_panorbit_camera::PanOrbitCamera;
 
-use crate::grid::VoxelGrid;
+use crate::GridResource;
 use crate::mesh::PreviewHide;
 use crate::picking::{cursor_ray, pick};
 use crate::theme::Theme;
@@ -66,7 +66,7 @@ pub struct BrushPreviewInput<'w, 's> {
 
 #[derive(SystemParam)]
 pub struct BrushPreviewWorld<'w> {
-    pub grid: Res<'w, VoxelGrid>,
+    pub grid: Res<'w, GridResource>,
     pub tool: Res<'w, ToolState>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub mat_handle: Res<'w, BrushPreviewMaterial>,

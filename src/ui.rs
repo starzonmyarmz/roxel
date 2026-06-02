@@ -1,3 +1,4 @@
+use crate::GridResource;
 mod color_picker;
 mod command_palette;
 mod dialogs;
@@ -23,15 +24,11 @@ pub use dialogs::{
 // reaches these through the `dialogs` module path directly.
 #[cfg(target_os = "macos")]
 pub use dialogs::{new_dialog, spawn_save, spawn_save_as};
-pub use palette::{
-    DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
-};
+pub use palette::{DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette};
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
 use crate::gizmo::{GizmoDrag, GizmoRect};
-use crate::grid::{NewProject, VoxelGrid};
-use crate::history::History;
 use crate::onboarding::{Onboarding, OnboardingAnchors};
 use crate::theme::{Preferences, PreferencesWindow, Theme, apply_egui_style};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, ShapeState, ToolState};
@@ -41,6 +38,8 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
 use palette::PaletteParams;
+use roxel::grid::NewProject;
+use roxel::history::History;
 
 /// `true` on any frame a modal/palette is open. Set by `ui_system`, read by
 /// `gizmo::update_gizmo_viewport` to deactivate the orientation cube — its
@@ -89,7 +88,7 @@ pub struct UiState<'w> {
     pub doc: Res<'w, DocStatus>,
     pub open_request: ResMut<'w, OpenRequest>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
-    pub color_edit: ResMut<'w, crate::color_space::ColorEditBuffer>,
+    pub color_edit: ResMut<'w, roxel::color_space::ColorEditBuffer>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
     pub clipboard: Res<'w, crate::clipboard::Clipboard>,
     pub onboarding: ResMut<'w, Onboarding>,
@@ -120,7 +119,7 @@ pub struct UiBundles<'w, 's> {
 
 pub fn ui_system(
     mut contexts: EguiContexts,
-    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<VoxelGrid>,
+    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<GridResource>,
     #[cfg_attr(target_os = "macos", allow(unused_mut))] mut history: ResMut<History>,
     core: UiCore,
     bundles: UiBundles,

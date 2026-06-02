@@ -4,7 +4,8 @@ Guidance for Claude Code working in this repo.
 
 ## Commands
 
-- `cargo run` — dev build (opt-level=1 crate, 3 deps)
+- `cargo run` — dev build (opt-level=1 crate, 0 deps)
+- `cargo run --features dev` — faster link via Bevy shared lib
 - `cargo run --release` — release
 - `cargo check` — iterate with this, not `cargo build`
 - `cargo test` — unit tests

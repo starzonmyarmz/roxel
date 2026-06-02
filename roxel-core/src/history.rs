@@ -1,5 +1,5 @@
 use crate::grid::{Color8, VoxelGrid};
-use bevy::prelude::*;
+use glam::IVec3;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
@@ -22,7 +22,7 @@ pub struct Stroke {
     pub id: u64,
 }
 
-#[derive(Resource, Default)]
+#[derive(Default)]
 pub struct History {
     pub undo: Vec<Stroke>,
     pub redo: Vec<Stroke>,
@@ -31,6 +31,8 @@ pub struct History {
     /// stable for the life of the session even across the `MAX_UNDO` cap.
     next_id: u64,
 }
+
+impl bevy_ecs::prelude::Resource for History {}
 
 const MAX_UNDO: usize = 200;
 
