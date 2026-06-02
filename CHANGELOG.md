@@ -12,9 +12,9 @@ Release notes.
 
 ## [Unreleased]
 
-- perf: dev profile compiles deps at 0 instead of 3, faster iteration
-- chore: split workspace — core logic (grid, history, io, shapes, color) into `roxel-core`
-- ci: add `--workspace` to clippy so it covers the new lib crate
+- feat(ui): ENTER key confirms/submits dialog windows (New Project, Open Confirm, Discard)
+- feat(io): embed transparent PNG preview in `.rox` project files for Finder thumbnails
+- chore: add `base64` dependency to `roxel-core`
 
 ## [0.6.5] - 2026-06-01
 

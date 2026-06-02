@@ -126,7 +126,8 @@ pub fn draw_new_project(ctx: &egui::Context, theme: &Theme, new_project: &mut Ne
             });
         });
     let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    if create_clicked {
+    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+    if create_clicked || enter {
         new_project.apply = true;
         new_project.dialog_open = false;
     } else if cancel_clicked || esc {
@@ -173,7 +174,8 @@ pub fn draw_open_confirm(ctx: &egui::Context, theme: &Theme) -> Option<bool> {
             });
         });
     let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    if open_clicked {
+    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+    if open_clicked || enter {
         Some(true)
     } else if cancel_clicked || esc {
         Some(false)
@@ -227,7 +229,8 @@ pub fn draw_discard(
         });
     });
     let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    if save_clicked {
+    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+    if save_clicked || enter {
         let i = palette::save_as_new(palettes, palette_choice, working);
         palette_rename.editing = Some(i);
         palette_rename.buf = palettes.0[i].name.clone();
