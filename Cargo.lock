@@ -5441,6 +5441,7 @@ name = "roxel-core"
 version = "0.6.5"
 dependencies = [
  "anyhow",
+ "base64",
  "bevy_ecs",
  "dirs",
  "dot_vox",

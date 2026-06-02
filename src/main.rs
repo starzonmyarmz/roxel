@@ -62,7 +62,8 @@ use crate::onboarding::{
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{
-    SnapshotInProgress, SnapshotRequest, SnapshotSession, start_snapshot_system,
+    CapturedPreview, SavePreviewCapture, SnapshotInProgress, SnapshotRequest, SnapshotSession,
+    start_snapshot_system,
 };
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
@@ -75,9 +76,10 @@ use crate::tools::{
 };
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DiscardConfirm, DocStatus, OpenRequest, PaletteChoice,
-    PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles, Toasts, UiVisible,
-    WorkingPalette, command_palette_shortcut_system, dispatch_command_palette_system,
-    poll_dialogs_system, tab_toggle_system, toast_lifetime_system, ui_system,
+    PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles, SavePreviewState, Toasts,
+    UiVisible, WorkingPalette, command_palette_shortcut_system, dispatch_command_palette_system,
+    poll_dialogs_system, process_save_preview_system, tab_toggle_system, toast_lifetime_system,
+    ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -154,6 +156,9 @@ fn main() {
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<SnapshotInProgress>()
+        .init_resource::<SavePreviewCapture>()
+        .init_resource::<CapturedPreview>()
+        .init_resource::<SavePreviewState>()
         .init_resource::<FlybyState>()
         .init_resource::<PendingViewPreset>()
         .init_resource::<PendingFrameView>()
@@ -221,23 +226,25 @@ fn main() {
             brush_preview_system.before(regenerate_mesh_system),
             shape_preview_system.before(regenerate_mesh_system),
             crate::select::selection_render_system.before(regenerate_mesh_system),
-            (
-                crate::select::selection_key_action_system,
-                crate::select::move_selection_keys_system,
-                crate::clipboard::clipboard_key_system,
-            ),
             start_snapshot_system
                 .before(floor_dots_system)
                 .before(draw_origin_system)
                 .before(crate::select::selection_render_system),
-            (
-                auto_apply_clean_new_project_system.before(apply_new_project_system),
-                apply_new_project_system.before(regenerate_mesh_system),
-                resolve_open_request_system,
-                window_title_system,
-            ),
             apply_import_system,
             toast_lifetime_system,
+            process_save_preview_system,
+        ),
+    )
+    .add_systems(
+        Update,
+        (
+            crate::select::selection_key_action_system,
+            crate::select::move_selection_keys_system,
+            crate::clipboard::clipboard_key_system,
+            auto_apply_clean_new_project_system.before(apply_new_project_system),
+            apply_new_project_system.before(regenerate_mesh_system),
+            resolve_open_request_system,
+            window_title_system,
         ),
     )
     .add_systems(

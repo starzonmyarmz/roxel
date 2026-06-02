@@ -1,5 +1,6 @@
 use crate::GridResource;
-use crate::snapshot::SnapshotRequest;
+use crate::icon::set_finder_icon;
+use crate::snapshot::{CapturedPreview, SavePreviewCapture, SnapshotRequest};
 use crate::ui::palette::{Palette, PaletteChoice, Palettes};
 use crate::ui::toast::Toasts;
 use bevy::ecs::system::SystemParam;
@@ -91,6 +92,14 @@ impl DocStatus {
     pub fn is_modified(&self, history: &History) -> bool {
         self.forced_dirty || history.state_id() != self.saved_state_id
     }
+}
+
+/// Tracks a deferred save-with-preview flow. Set by `poll_dialogs_system`
+/// when a `SaveProject` result arrives; consumed by
+/// `process_save_preview_system` after the snapshot is captured.
+#[derive(Resource, Default)]
+pub struct SavePreviewState {
+    pub path: Option<PathBuf>,
 }
 
 /// A pending "Open project…" request, mirroring `NewProject`'s confirm flow.
@@ -247,6 +256,9 @@ pub fn poll_dialogs_system(
     doc_params: DialogDoc,
     sinks: DialogSinks,
     view: DialogView,
+    mut save_preview_state: ResMut<SavePreviewState>,
+    _capt_preview: ResMut<CapturedPreview>,
+    mut save_preview_capture: ResMut<SavePreviewCapture>,
 ) {
     let DialogDoc {
         mut grid,
@@ -293,15 +305,14 @@ pub fn poll_dialogs_system(
             }
             Err(e) => toasts.error(format!("Open failed: {e}")),
         },
-        Some(DialogResult::SaveProject(path)) => match io::project::save(&path, &grid) {
-            Ok(()) => {
-                doc.mark_saved(history.state_id());
-                toasts.success(format!("Saved {}", file_label(&path)));
-                current_path.0 = Some(path.clone());
-                recent_files.push(path);
-            }
-            Err(e) => toasts.error(format!("Save failed: {e}")),
-        },
+        Some(DialogResult::SaveProject(path)) => {
+            // Defer the save until a model-framing preview snapshot is
+            // captured. The actual save (with embedded PNG if available) runs
+            // in `process_save_preview_system`.
+            save_preview_state.path = Some(path.clone());
+            save_preview_capture.0 = true;
+            snapshot.0 = Some(path);
+        }
         Some(DialogResult::ExportVox(path)) => match io::vox::export(&path, &grid) {
             Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
             Err(e) => toasts.error(format!("Export .vox failed: {e}")),
@@ -411,6 +422,57 @@ pub fn poll_dialogs_system(
         }
         None => {}
     }
+}
+
+/// Completes a deferred save-with-preview. Runs every frame and returns
+/// early until both [`SavePreviewState`] and [`CapturedPreview`] are
+/// populated (the preview snapshot has been captured or gave up).
+#[allow(clippy::too_many_arguments)]
+pub fn process_save_preview_system(
+    // Pins this system to the main thread so `set_finder_icon`'s
+    // `MainThreadMarker` succeeds — without it Bevy schedules the system on a
+    // worker thread, the marker is `None`, and the Finder-icon write is skipped.
+    _marker: bevy::ecs::system::NonSendMarker,
+    mut state: ResMut<SavePreviewState>,
+    mut captured: ResMut<CapturedPreview>,
+    mut snap_capture: ResMut<SavePreviewCapture>,
+    grid: ResMut<GridResource>,
+    history: ResMut<History>,
+    mut current_path: ResMut<CurrentProjectPath>,
+    mut doc: ResMut<DocStatus>,
+    mut recent_files: ResMut<RecentFiles>,
+    mut toasts: ResMut<Toasts>,
+) {
+    let path = match state.path.clone() {
+        Some(p) => p,
+        None => return,
+    };
+    let png_bytes = match captured.0.take() {
+        Some(b) => b,
+        None => return,
+    };
+
+    // Preview captured (may be empty = model had no voxels).
+    state.path = None;
+    let result = if png_bytes.is_empty() {
+        io::project::save(&path, &grid)
+    } else {
+        io::project::save_with_preview(&path, &grid, &png_bytes)
+    };
+
+    match result {
+        Ok(()) => {
+            doc.mark_saved(history.state_id());
+            toasts.success(format!("Saved {}", file_label(&path)));
+            if !png_bytes.is_empty() {
+                set_finder_icon(&path, &png_bytes);
+            }
+            current_path.0 = Some(path.clone());
+            recent_files.push(path);
+        }
+        Err(e) => toasts.error(format!("Save failed: {e}")),
+    }
+    snap_capture.0 = false;
 }
 
 #[cfg(test)]

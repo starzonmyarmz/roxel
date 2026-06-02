@@ -18,7 +18,7 @@ pub use command_palette::{
 };
 pub use dialogs::{
     CurrentProjectPath, DialogResult, DocStatus, OpenRequest, PendingDialog, PendingImport,
-    RecentFiles, poll_dialogs_system, spawn_open,
+    RecentFiles, SavePreviewState, poll_dialogs_system, process_save_preview_system, spawn_open,
 };
 // Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
 // reaches these through the `dialogs` module path directly.

@@ -1,11 +1,15 @@
 use crate::grid::{Color8, VoxelGrid};
 use anyhow::Result;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 struct ProjectFile {
     voxels: Vec<([i32; 3], Color8)>,
+    /// Base64-encoded PNG preview of the model, `None` for older files.
+    #[serde(default)]
+    preview: Option<String>,
 }
 
 pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
@@ -13,7 +17,25 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
         .iter_occupied()
         .map(|(p, c)| ([p.x, p.y, p.z], c))
         .collect();
-    let pf = ProjectFile { voxels };
+    let pf = ProjectFile {
+        voxels,
+        preview: None,
+    };
+    let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
+    std::fs::write(path, s)?;
+    Ok(())
+}
+
+/// Same as [`save`] but embeds a transparent PNG preview into the file.
+pub fn save_with_preview(path: &Path, grid: &VoxelGrid, png_bytes: &[u8]) -> Result<()> {
+    let voxels: Vec<([i32; 3], Color8)> = grid
+        .iter_occupied()
+        .map(|(p, c)| ([p.x, p.y, p.z], c))
+        .collect();
+    let pf = ProjectFile {
+        voxels,
+        preview: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes)),
+    };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
     std::fs::write(path, s)?;
     Ok(())
