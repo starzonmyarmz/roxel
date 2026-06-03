@@ -14,6 +14,20 @@ Release notes.
 
 ## [0.7.1] - 2026-06-03
 
+- fix(ui): use theme color tokens in floating save button tint
+- docs: finalize CHANGELOG for v0.7.1 [skip ci]
+- chore: bump to 0.7.1
+- chore: gitignore local .cargo/config.toml
+- docs: add user guide site and keep-current workflow
+- fix(ui): make canvas/shot color pickers color-space aware
+- refactor(ui): collapse duplicated dialog-spawn and widget helpers
+- fix(ui): pin prefs/shot row label column to a fixed width
+- feat(ui): Export Shot tweak panel — live preview + art-direction knobs
+- feat(io): Export Shot — polished social-media PNG (phase 1)
+- docs: finalize CHANGELOG for v0.7.0 [skip ci]
+
+## [0.7.1] - 2026-06-03
+
 - chore: bump to 0.7.1
 - chore: gitignore local .cargo/config.toml
 - docs: add user guide site and keep-current workflow
