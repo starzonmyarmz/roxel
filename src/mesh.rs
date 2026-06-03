@@ -173,6 +173,28 @@ pub fn build_mesh(grid: &VoxelGrid, hide: Option<IVec3>, recolor: Option<(IVec3,
 }
 
 fn build_mesh_from_quads(quads: Vec<GreedyQuad>) -> Mesh {
+    build_mesh_from_quads_shaded(quads, true, 1.0)
+}
+
+/// Whole-grid mesh with **real** per-face normals but no baked `face_shade`
+/// darkening — vertex colors carry pure albedo. Used by the social-media shot
+/// renderer (`shot.rs`), which lights the model for real with a directional
+/// light. Applying the baked fake shade there would double-darken the
+/// side/bottom faces. Built once per shot (not per frame), so the whole-grid
+/// `greedy_quads` reference path is fine. `saturation` (< 1.0) pulls albedo
+/// toward grey so the lit shot doesn't read oversaturated vs. the editor.
+pub fn build_lit_mesh(grid: &VoxelGrid, saturation: f32) -> Mesh {
+    build_mesh_from_quads_shaded(greedy_quads(grid, None, None), false, saturation)
+}
+
+/// `apply_shade` bakes `face_shade(normal)` into the vertex colors (the
+/// editor's flat-lit look); `false` keeps albedo untouched for real lighting.
+/// `saturation` lerps each linear color toward its luminance (1.0 = unchanged).
+fn build_mesh_from_quads_shaded(
+    quads: Vec<GreedyQuad>,
+    apply_shade: bool,
+    saturation: f32,
+) -> Mesh {
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals: Vec<[f32; 3]> = Vec::new();
     let mut colors: Vec<[f32; 4]> = Vec::new();
@@ -181,14 +203,25 @@ fn build_mesh_from_quads(quads: Vec<GreedyQuad>) -> Mesh {
     for q in quads {
         let face = &FACES[q.face_idx];
         let rgba = q.color;
-        let shade = face_shade(face.normal);
+        let shade = if apply_shade {
+            face_shade(face.normal)
+        } else {
+            1.0
+        };
         let alpha = rgba[3] as f32 / 255.0;
-        let col = [
+        let mut col = [
             srgb_to_linear((rgba[0] as f32 / 255.0) * shade),
             srgb_to_linear((rgba[1] as f32 / 255.0) * shade),
             srgb_to_linear((rgba[2] as f32 / 255.0) * shade),
             alpha,
         ];
+        if saturation < 1.0 {
+            // Rec.709 luminance in linear space; lerp rgb toward grey.
+            let lum = 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2];
+            for c in col.iter_mut().take(3) {
+                *c = lum + (*c - lum) * saturation;
+            }
+        }
 
         let base = positions.len() as u32;
         for corner in &q.corners {
@@ -339,6 +372,43 @@ mod tests {
         assert!(face_shade([0.0, 1.0, 0.0]) > face_shade([1.0, 0.0, 0.0]));
         assert!(face_shade([1.0, 0.0, 0.0]) > face_shade([0.0, 0.0, 1.0]));
         assert!(face_shade([0.0, 0.0, 1.0]) > face_shade([0.0, -1.0, 0.0]));
+    }
+
+    #[test]
+    fn build_lit_mesh_skips_baked_face_shade() {
+        // Lit mesh = pure albedo (no per-face darkening). Every vertex color
+        // for a single white voxel should be the same linear value; the editor
+        // mesh would vary per face via face_shade.
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(0, 0, 0), Some([200, 100, 50, 255]));
+
+        let lit = build_lit_mesh(&g, 1.0);
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(lit_cols)) =
+            lit.attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("lit mesh missing vertex colors");
+        };
+        let first = lit_cols[0];
+        assert!(
+            lit_cols.iter().all(|c| (c[0] - first[0]).abs() < 1e-6),
+            "lit mesh must not bake per-face shade"
+        );
+        // Albedo channel equals srgb_to_linear of the raw color (shade = 1.0).
+        assert!((first[0] - srgb_to_linear(200.0 / 255.0)).abs() < 1e-5);
+
+        // The editor mesh DOES vary per face (top brighter than sides).
+        let shaded = build_mesh(&g, None, None);
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(shaded_cols)) =
+            shaded.attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("shaded mesh missing vertex colors");
+        };
+        assert!(
+            shaded_cols
+                .iter()
+                .any(|c| (c[0] - shaded_cols[0][0]).abs() > 1e-4),
+            "editor mesh should vary per face"
+        );
     }
 
     #[test]

@@ -13,6 +13,7 @@ mod preview;
 mod resample;
 mod select;
 mod shape_preview;
+mod shot;
 mod snapshot;
 mod theme;
 mod tools;
@@ -127,6 +128,10 @@ fn main() {
             brightness: 350.0,
             ..default()
         })
+        // Low-res directional shadow map: only the Export Shot light casts
+        // shadows, and a coarse map (smoothed by Gaussian PCF) gives the soft,
+        // diffuse cast shadow the shot look wants.
+        .insert_resource(bevy::light::DirectionalLightShadowMap { size: 512 })
         .init_resource::<GridResource>()
         .init_resource::<crate::ui::ModalActive>()
         .init_resource::<History>()
@@ -153,6 +158,8 @@ fn main() {
         .init_resource::<DiscardConfirm>()
         .init_resource::<PaletteSwitcher>()
         .insert_resource(Palettes::with_user_loaded())
+        .init_resource::<crate::shot::ShotRequest>()
+        .init_resource::<crate::shot::ShotSession>()
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<SnapshotInProgress>()
@@ -230,6 +237,7 @@ fn main() {
                 .before(floor_dots_system)
                 .before(draw_origin_system)
                 .before(crate::select::selection_render_system),
+            crate::shot::shot_system,
             apply_import_system,
             toast_lifetime_system,
             process_save_preview_system,

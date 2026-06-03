@@ -30,6 +30,7 @@ pub enum MenuAction {
     ExportVox,
     ExportObj,
     ExportPng,
+    ExportShot,
     ExportSvg,
     ExportGltf,
     ExportGox,
@@ -190,9 +191,12 @@ fn build_menu() -> MenuStore {
     let exp_obj = MenuItem::new("Wavefront (.obj)…", true, None);
     let exp_gltf = MenuItem::new("glTF (.glb)…", true, None);
     let exp_png = MenuItem::new("Transparent PNG…", true, None);
+    let exp_shot = MenuItem::new("Roxel Shot (PNG)…", true, None);
     let exp_svg = MenuItem::new("SVG…", true, None);
     export_sub
-        .append_items(&[&exp_vox, &exp_gox, &exp_obj, &exp_gltf, &exp_png, &exp_svg])
+        .append_items(&[
+            &exp_vox, &exp_gox, &exp_obj, &exp_gltf, &exp_png, &exp_shot, &exp_svg,
+        ])
         .expect("append export submenu");
 
     file.append_items(&[
@@ -227,6 +231,7 @@ fn build_menu() -> MenuStore {
     actions.insert(exp_obj.id().0.clone(), MenuAction::ExportObj);
     actions.insert(exp_gltf.id().0.clone(), MenuAction::ExportGltf);
     actions.insert(exp_png.id().0.clone(), MenuAction::ExportPng);
+    actions.insert(exp_shot.id().0.clone(), MenuAction::ExportShot);
     actions.insert(exp_svg.id().0.clone(), MenuAction::ExportSvg);
 
     let edit = Submenu::new("Edit", true);
@@ -665,6 +670,7 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ExportVox => spawn_export_vox(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportObj => spawn_export_obj(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportPng => spawn_export_png(&mut p.pending, p.prefs.last_dir.clone()),
+            MenuAction::ExportShot => spawn_export_shot(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportSvg => spawn_export_svg(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportGox => spawn_export_gox(&mut p.pending, p.prefs.last_dir.clone()),
@@ -829,6 +835,20 @@ fn spawn_export_png(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
             .save_file()
             .await
             .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
+    });
+}
+
+fn spawn_export_shot(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        new_dialog(&start_dir)
+            .add_filter("PNG image", &["png"])
+            .set_file_name("roxel-shot.png")
+            .save_file()
+            .await
+            .map(|f| DialogResult::ExportShot(f.path().to_path_buf()))
     });
 }
 

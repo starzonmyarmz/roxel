@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- feat(io): Export Shot — polished social-media PNG with auto background, soft contact shadow, and a contrast-tinted roxel watermark
+
 ## [0.7.0] - 2026-06-02
 
 - chore: bump to 0.7.0

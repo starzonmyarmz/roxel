@@ -105,6 +105,28 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 `SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
 
+## Roxel Shot (social export)
+
+`shot.rs` — polished, framed PNG for sharing (the dribbble look): solid palette-derived background, a plinth/base slab, **real** directional lighting with a soft cast shadow, and a contrast-tinted roxel wordmark watermark. Triggered from command palette "Export Shot…", File → Export → "Roxel Shot (PNG)…" (mac native + Win/Linux pill); the async dialog routes `DialogResult::ExportShot` → `ShotRequest`.
+
+Unlike `snapshot.rs` (live unlit scene, current camera, transparent bg), the shot builds a **throwaway scene on `SHOT_LAYER = 2`** (isolated from editor layer 0 + gizmo layer 1): a lit albedo copy of the model (`mesh::build_lit_mesh` — skips the baked `face_shade` so real lights do the shading, else side/bottom faces double-darken), an **unlit** ground plane in the bg color, a faked soft contact shadow, key + fill `DirectionalLight`s, and a dedicated orthographic `Camera3d`. Everything is despawned and its `Mesh`/`StandardMaterial`/`Image` assets removed in the `ScreenshotCaptured` observer (textures tracked in `session.textures`).
+
+**No auto-plinth.** The creator is expected to build their own base into the model (an auto base double-stacked under a diorama that already had one). The ground plane / shadow / framing all sit at the model's bottom (`base_y = model_min.y`).
+
+**Background = hero-color pastel.** `auto_background(hero_color(cells))`. `hero_color` is the distinct voxel color maximizing `count × saturation² × value³` — the most prominent *vivid, bright* color (grass/water), so a multicolor scene gets real hue instead of a muddy average or a brown dirt base (raw frequency alone picks the dirt). Falls back to the average for an all-grey model. `auto_background` then mixes 44% hero + 56% near-white into a light pastel.
+
+**Real cast shadow — ground plane is `lit` and exposure-calibrated.** The shadow must be tied to the scene (anchored at the base, stretching with the light), so it's a **real** Bevy directional shadow, not a faked quad (faked offset blobs read detached; rectangular footprint quads + tight "lift" quads were also tried and rejected). The key `DirectionalLight` has `shadows_enabled` + a 1-cascade config; the camera carries `ShadowFilteringMethod::Gaussian` for soft edges. The ground plane is **lit** (albedo = `auto_background`) so it can *receive* the shadow — but a lit plane × a strong light clips to white under `Tonemapping::None`, so `KEY_LUX`/`FILL_LUX` (+ the global ambient) are **calibrated so a fully-lit up-facing surface renders ≈ its albedo** (the bg color) while shadowed ground darkens naturally to a colored shadow. Don't crank the lux back up — it whites out the ground. `key_dir ≈ (-0.5,-1,0.32)` (upper back-right) shades the camera-facing front-left and drops the shadow front-left. Fill is kept low so it doesn't wash the cast shadow.
+
+**Soft AO contact shadow** — on top of the real cast shadow, one centered `unlit`+`Blend` quad (`soft_blob_image`, tinted by `shadow_color`) pools darkness around the base. Its mask (`contact_alpha`) is **solid across the footprint then feathers _outward_** to the quad edge (rounded-box `sdf_round_box`, `CONTACT_INNER` = footprint fraction), so the dark band hugs the base perimeter and fades into open ground — a centered *radial* falloff was invisible (its core hid under the model and the edge was already near-zero). This is the *only* faked shadow; the directional one is real.
+
+**Voxel saturation** is `build_lit_mesh(grid, SHOT_SATURATION)`; `SHOT_SATURATION = 1.0` keeps the true palette color (the param exists for a future control — do **not** quietly desaturate, the user wants full color).
+
+**Subtle vignette.** `apply_vignette` multiplies each pixel's RGB by `vignette_factor(dist)` (1.0 center, dipping toward corners) in the CPU post pass before the watermark.
+
+**Render race:** newly spawned meshes/lights must be extracted before the screenshot reads back, so `shot_system` is a 3-phase state machine — build scene → `Warmup(2)` frames → spawn `Screenshot` → observer captures. Skipping warmup captured an empty frame.
+
+Post pass (`finish_shot`) decodes the captured image and composites the watermark (`apply_watermark`): the embedded `assets/branding/roxel-wordmark.png` is a **white silhouette whose alpha is the coverage mask**; `pick_watermark_tint` chooses black/white by the bottom-right region's mean luminance, then `composite_tinted` alpha-blends. Pure helpers (`relative_luma`, `pick_watermark_tint`, `auto_background`, `plinth_colors`, `fit_ortho_height`, `composite_tinted`, …) are unit-tested; no Bevy `App` in tests. Gradient + dithering + a live tweak panel are the planned next phase.
+
 ## `.rox` project format
 
 `ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells. No `version`, no `size` — open world has neither. Signed coords roundtrip exactly.

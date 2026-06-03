@@ -85,6 +85,7 @@ pub enum CommandAction {
     ExportObj,
     ExportGltf,
     ExportPng,
+    ExportShot,
     ExportSvg,
     ExportGox,
 
@@ -326,6 +327,14 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         None,
         dialog_ok,
         CommandAction::ExportPng,
+    ));
+    out.push(entry(
+        "Export Shot…",
+        Category::File,
+        "save write png image share social shot dribbble render poster",
+        None,
+        dialog_ok,
+        CommandAction::ExportShot,
     ));
     out.push(entry(
         "Export SVG…",
@@ -1253,6 +1262,14 @@ pub fn dispatch_command_palette_system(
             "png",
             "roxel.png",
             DialogResult::ExportPng,
+            p.prefs.last_dir.clone(),
+        ),
+        CommandAction::ExportShot => spawn_export(
+            &mut p.pending,
+            "PNG image",
+            "png",
+            "roxel-shot.png",
+            DialogResult::ExportShot,
             p.prefs.last_dir.clone(),
         ),
         CommandAction::ExportSvg => spawn_export(

@@ -499,6 +499,21 @@ pub fn pill_menu_contents(
                     ui.close();
                 }
                 if ui
+                    .add_enabled(!dialog_busy, egui::Button::new("Roxel Shot (PNG)…"))
+                    .clicked()
+                {
+                    let start_dir = prefs.last_dir.clone();
+                    pending.spawn(async move {
+                        dialogs::new_dialog(&start_dir)
+                            .add_filter("PNG image", &["png"])
+                            .set_file_name("roxel-shot.png")
+                            .save_file()
+                            .await
+                            .map(|f| DialogResult::ExportShot(f.path().to_path_buf()))
+                    });
+                    ui.close();
+                }
+                if ui
                     .add_enabled(!dialog_busy, egui::Button::new("SVG…"))
                     .clicked()
                 {

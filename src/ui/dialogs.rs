@@ -18,6 +18,7 @@ pub enum DialogResult {
     ExportVox(PathBuf),
     ExportObj(PathBuf),
     ExportPng(PathBuf),
+    ExportShot(PathBuf),
     ExportSvg(PathBuf),
     ExportGltf(PathBuf),
     ExportGox(PathBuf),
@@ -38,6 +39,7 @@ impl DialogResult {
             | DialogResult::ExportVox(p)
             | DialogResult::ExportObj(p)
             | DialogResult::ExportPng(p)
+            | DialogResult::ExportShot(p)
             | DialogResult::ExportSvg(p)
             | DialogResult::ExportGltf(p)
             | DialogResult::ExportGox(p)
@@ -241,6 +243,7 @@ pub struct DialogSinks<'w> {
     palettes: ResMut<'w, Palettes>,
     palette_choice: ResMut<'w, PaletteChoice>,
     snapshot: ResMut<'w, SnapshotRequest>,
+    shot: ResMut<'w, crate::shot::ShotRequest>,
     prefs: ResMut<'w, crate::theme::Preferences>,
     toasts: ResMut<'w, Toasts>,
 }
@@ -272,6 +275,7 @@ pub fn poll_dialogs_system(
         mut palettes,
         mut palette_choice,
         mut snapshot,
+        mut shot,
         mut prefs,
         mut toasts,
     } = sinks;
@@ -325,6 +329,11 @@ pub fn poll_dialogs_system(
             // PNG export is async — the snapshot system finishes the save and
             // posts its own toast.
             snapshot.0 = Some(path);
+        }
+        Some(DialogResult::ExportShot(path)) => {
+            // Shot export is async — `shot_system` builds the scene, captures,
+            // composites the watermark, writes the PNG, and posts its own toast.
+            shot.0 = Some(path);
         }
         Some(DialogResult::ExportSvg(path)) => match (camera.single(), windows.single()) {
             (Ok((xform, projection)), Ok(window)) => {
