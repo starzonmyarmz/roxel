@@ -13,6 +13,7 @@ Release notes.
 ## [Unreleased]
 
 - feat(io): Export Shot — polished social-media PNG with auto background, soft contact shadow, and a contrast-tinted roxel watermark
+- feat(ui): Export Shot tweak panel — live preview with aspect, background gradient, grain, vignette, saturation, and lift knobs (double-click a slider to reset)
 
 ## [0.7.0] - 2026-06-02
 

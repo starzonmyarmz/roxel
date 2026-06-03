@@ -1191,6 +1191,7 @@ pub struct DispatchParams<'w> {
     toasts: ResMut<'w, super::Toasts>,
     view_preset: ResMut<'w, PendingViewPreset>,
     clipboard: ResMut<'w, crate::clipboard::Clipboard>,
+    shot_panel: ResMut<'w, crate::shot::ShotPanel>,
 }
 
 pub fn dispatch_command_palette_system(
@@ -1264,14 +1265,15 @@ pub fn dispatch_command_palette_system(
             DialogResult::ExportPng,
             p.prefs.last_dir.clone(),
         ),
-        CommandAction::ExportShot => spawn_export(
-            &mut p.pending,
-            "PNG image",
-            "png",
-            "roxel-shot.png",
-            DialogResult::ExportShot,
-            p.prefs.last_dir.clone(),
-        ),
+        // Opens the tweak panel (live preview + knobs); the panel's "Export…"
+        // button spawns the save dialog and re-renders at full resolution.
+        CommandAction::ExportShot => {
+            if p.grid.count() == 0 {
+                p.toasts.error("Nothing to export — the scene is empty");
+            } else {
+                p.shot_panel.open_panel();
+            }
+        }
         CommandAction::ExportSvg => spawn_export(
             &mut p.pending,
             "SVG image",

@@ -640,6 +640,7 @@ pub struct MenuActionParams<'w> {
     pub clipboard: ResMut<'w, crate::clipboard::Clipboard>,
     pub toasts: ResMut<'w, crate::ui::Toasts>,
     pub onboarding: ResMut<'w, crate::onboarding::Onboarding>,
+    pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -670,7 +671,14 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
             MenuAction::ExportVox => spawn_export_vox(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportObj => spawn_export_obj(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportPng => spawn_export_png(&mut p.pending, p.prefs.last_dir.clone()),
-            MenuAction::ExportShot => spawn_export_shot(&mut p.pending, p.prefs.last_dir.clone()),
+            // Opens the tweak panel; its "Export…" button spawns the save dialog.
+            MenuAction::ExportShot => {
+                if p.grid.count() == 0 {
+                    p.toasts.error("Nothing to export — the scene is empty");
+                } else {
+                    p.shot_panel.open_panel();
+                }
+            }
             MenuAction::ExportSvg => spawn_export_svg(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportGltf => spawn_export_gltf(&mut p.pending, p.prefs.last_dir.clone()),
             MenuAction::ExportGox => spawn_export_gox(&mut p.pending, p.prefs.last_dir.clone()),
@@ -835,20 +843,6 @@ fn spawn_export_png(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
             .save_file()
             .await
             .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
-    });
-}
-
-fn spawn_export_shot(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("PNG image", &["png"])
-            .set_file_name("roxel-shot.png")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportShot(f.path().to_path_buf()))
     });
 }
 

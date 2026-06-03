@@ -310,6 +310,7 @@ pub fn pill_menu_contents(
     onboarding: &mut Onboarding,
     prefs_window: &mut PreferencesWindow,
     updater: &mut crate::updater::UpdateCheck,
+    shot_panel: &mut crate::shot::ShotPanel,
 ) {
     #[allow(non_snake_case)]
     let TEXT = theme.text;
@@ -498,19 +499,14 @@ pub fn pill_menu_contents(
                     });
                     ui.close();
                 }
+                // Opens the tweak panel; its "Export…" button spawns the save
+                // dialog and re-renders at full resolution. Disabled on an empty
+                // scene (nothing to frame).
                 if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Roxel Shot (PNG)…"))
+                    .add_enabled(grid.count() > 0, egui::Button::new("Roxel Shot (PNG)…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("PNG image", &["png"])
-                            .set_file_name("roxel-shot.png")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportShot(f.path().to_path_buf()))
-                    });
+                    shot_panel.open_panel();
                     ui.close();
                 }
                 if ui

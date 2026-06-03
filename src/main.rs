@@ -160,6 +160,7 @@ fn main() {
         .insert_resource(Palettes::with_user_loaded())
         .init_resource::<crate::shot::ShotRequest>()
         .init_resource::<crate::shot::ShotSession>()
+        .init_resource::<crate::shot::ShotPanel>()
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<SnapshotInProgress>()

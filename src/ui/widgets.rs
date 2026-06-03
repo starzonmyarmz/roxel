@@ -646,6 +646,9 @@ pub fn chip_button<T: PartialEq + Copy>(
                 egui::Button::new(egui::RichText::new(label).color(fg).size(font::SMALL))
                     .fill(fill)
                     .stroke(chip_stroke)
+                    // Never break the label across lines (e.g. "3:4" → "3/:4");
+                    // a too-wide chip wraps to the next row whole instead.
+                    .wrap_mode(egui::TextWrapMode::Extend)
                     .corner_radius(egui::CornerRadius::same(radius::SM)),
             )
         })

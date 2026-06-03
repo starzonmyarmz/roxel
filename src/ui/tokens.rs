@@ -199,6 +199,13 @@ pub mod width {
     /// Discard-edits confirm modal — wider than `MODAL_NEW` so its three
     /// action buttons (Cancel / Discard / Save as new) fit on one row.
     pub const MODAL_DISCARD: f32 = 304.0;
+    /// Export-Shot tweak panel — the preview sits left, the knob column right,
+    /// so the modal stays short enough to fit the app window.
+    pub const MODAL_SHOT: f32 = 720.0;
+    /// Long edge of the live shot preview (left half of `MODAL_SHOT`).
+    pub const SHOT_PREVIEW: f32 = 400.0;
+    /// Width of the art-direction knob column (right half of `MODAL_SHOT`).
+    pub const SHOT_CONTROLS: f32 = 300.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
     pub const TOAST: f32 = 360.0;
     pub const COACHMARK: f32 = 256.0;
@@ -353,6 +360,9 @@ mod tests {
             width::PREFS_DROPDOWN,
             width::MODAL_NEW,
             width::MODAL_DISCARD,
+            width::MODAL_SHOT,
+            width::SHOT_PREVIEW,
+            width::SHOT_CONTROLS,
             width::COMMAND_PALETTE,
             width::TOAST,
             width::COACHMARK,

@@ -94,6 +94,7 @@ pub struct UiState<'w> {
     pub onboarding: ResMut<'w, Onboarding>,
     pub onboarding_anchors: ResMut<'w, OnboardingAnchors>,
     pub ui_visible: Res<'w, UiVisible>,
+    pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
 }
 
 #[derive(SystemParam)]
@@ -165,6 +166,7 @@ pub fn ui_system(
         mut onboarding,
         mut onboarding_anchors,
         ui_visible,
+        mut shot_panel,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -198,6 +200,7 @@ pub fn ui_system(
         || open_request.confirming
         || switcher.open
         || discard.pending.is_some()
+        || shot_panel.open
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
@@ -220,6 +223,7 @@ pub fn ui_system(
                 &mut onboarding,
                 &mut prefs_window,
                 &mut updater,
+                &mut shot_panel,
             );
         });
     }
@@ -362,6 +366,12 @@ pub fn ui_system(
             &mut discard,
             &mut palette_rename,
         );
+    }
+
+    // Export-Shot tweak panel: live preview + art-direction knobs. Opened from
+    // the command palette / File → Export; "Export…" spawns the save dialog.
+    if shot_panel.open {
+        modals::draw_shot_panel(ctx, &theme, &mut shot_panel, &mut pending, &prefs.last_dir);
     }
 
     if cmd_palette.open {
