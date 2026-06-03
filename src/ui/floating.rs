@@ -312,10 +312,6 @@ pub fn pill_menu_contents(
     updater: &mut crate::updater::UpdateCheck,
     shot_panel: &mut crate::shot::ShotPanel,
 ) {
-    #[allow(non_snake_case)]
-    let TEXT = theme.text;
-    #[allow(non_snake_case)]
-    let TEXT_DIM = theme.text_dim;
     ui.horizontal(|ui| {
         if widgets::icon_button(ui, theme, icons::file_plus(), "New")
             .on_hover_text("Start a new project")
@@ -330,7 +326,11 @@ pub fn pill_menu_contents(
                 egui::Button::image_and_text(
                     egui::Image::new(icons::folder_open())
                         .fit_to_exact_size(icon::md_square())
-                        .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                        .tint(if dialog_busy {
+                            theme.text_dim
+                        } else {
+                            theme.text
+                        }),
                     egui::RichText::new("Open…").size(font::BODY),
                 ),
             )
@@ -358,7 +358,11 @@ pub fn pill_menu_contents(
                 egui::Button::image_and_text(
                     egui::Image::new(icons::save())
                         .fit_to_exact_size(icon::md_square())
-                        .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                        .tint(if dialog_busy {
+                            theme.text_dim
+                        } else {
+                            theme.text
+                        }),
                     egui::RichText::new("Save As…").size(font::BODY),
                 ),
             )
@@ -369,50 +373,42 @@ pub fn pill_menu_contents(
         ui.menu_image_text_button(
             egui::Image::new(icons::folder_open())
                 .fit_to_exact_size(icon::md_square())
-                .tint(TEXT),
+                .tint(theme.text),
             egui::RichText::new("Import").size(font::BODY),
             |ui| {
                 ui.set_min_width(width::TOP_BAR_MENU);
+                let dir = prefs.last_dir.clone();
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("MagicaVoxel", &["vox"])
-                            .pick_file()
-                            .await
-                            .map(|f| DialogResult::ImportVox(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_import(
+                        pending,
+                        "MagicaVoxel",
+                        "vox",
+                        DialogResult::ImportVox,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("Qubicle .qb…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("Qubicle", &["qb"])
-                            .pick_file()
-                            .await
-                            .map(|f| DialogResult::ImportQb(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_import(
+                        pending,
+                        "Qubicle",
+                        "qb",
+                        DialogResult::ImportQb,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("Goxel", &["gox"])
-                            .pick_file()
-                            .await
-                            .map(|f| DialogResult::ImportGox(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_import(pending, "Goxel", "gox", DialogResult::ImportGox, dir);
                     ui.close();
                 }
             },
@@ -420,83 +416,79 @@ pub fn pill_menu_contents(
         ui.menu_image_text_button(
             egui::Image::new(icons::download())
                 .fit_to_exact_size(icon::md_square())
-                .tint(TEXT),
+                .tint(theme.text),
             egui::RichText::new("Export").size(font::BODY),
             |ui| {
                 ui.set_min_width(width::TOP_BAR_MENU);
+                let dir = prefs.last_dir.clone();
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("MagicaVoxel", &["vox"])
-                            .set_file_name("model.vox")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportVox(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "MagicaVoxel",
+                        "vox",
+                        "model.vox",
+                        DialogResult::ExportVox,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("Wavefront .obj…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("Wavefront OBJ", &["obj"])
-                            .set_file_name("model.obj")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "Wavefront OBJ",
+                        "obj",
+                        "model.obj",
+                        DialogResult::ExportObj,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("glTF .glb…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("glTF binary", &["glb"])
-                            .set_file_name("model.glb")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportGltf(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "glTF binary",
+                        "glb",
+                        "model.glb",
+                        DialogResult::ExportGltf,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("Goxel", &["gox"])
-                            .set_file_name("model.gox")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportGox(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "Goxel",
+                        "gox",
+                        "model.gox",
+                        DialogResult::ExportGox,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 if ui
                     .add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("PNG image", &["png"])
-                            .set_file_name("roxel.png")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "PNG image",
+                        "png",
+                        "roxel.png",
+                        DialogResult::ExportPng,
+                        dir.clone(),
+                    );
                     ui.close();
                 }
                 // Opens the tweak panel; its "Export…" button spawns the save
@@ -513,15 +505,14 @@ pub fn pill_menu_contents(
                     .add_enabled(!dialog_busy, egui::Button::new("SVG…"))
                     .clicked()
                 {
-                    let start_dir = prefs.last_dir.clone();
-                    pending.spawn(async move {
-                        dialogs::new_dialog(&start_dir)
-                            .add_filter("SVG image", &["svg"])
-                            .set_file_name("roxel.svg")
-                            .save_file()
-                            .await
-                            .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
-                    });
+                    dialogs::spawn_export(
+                        pending,
+                        "SVG image",
+                        "svg",
+                        "roxel.svg",
+                        DialogResult::ExportSvg,
+                        dir,
+                    );
                     ui.close();
                 }
             },
@@ -531,7 +522,7 @@ pub fn pill_menu_contents(
         ui.menu_image_text_button(
             egui::Image::new(icons::eye())
                 .fit_to_exact_size(icon::md_square())
-                .tint(TEXT),
+                .tint(theme.text),
             egui::RichText::new("View").size(font::BODY),
             |ui| {
                 ui.set_min_width(width::TOP_BAR_MENU);
@@ -567,7 +558,7 @@ pub fn pill_menu_contents(
         ui.menu_image_text_button(
             egui::Image::new(icons::paint_bucket())
                 .fit_to_exact_size(icon::md_square())
-                .tint(TEXT),
+                .tint(theme.text),
             egui::RichText::new("Color Format").size(font::BODY),
             |ui| {
                 ui.set_min_width(width::TOP_BAR_MENU);
@@ -610,7 +601,11 @@ pub fn pill_menu_contents(
                 egui::Button::image_and_text(
                     egui::Image::new(icons::undo())
                         .fit_to_exact_size(icon::md_square())
-                        .tint(if undo_enabled { TEXT } else { TEXT_DIM }),
+                        .tint(if undo_enabled {
+                            theme.text
+                        } else {
+                            theme.text_dim
+                        }),
                     egui::RichText::new("Undo").size(font::BODY),
                 ),
             )
@@ -626,7 +621,11 @@ pub fn pill_menu_contents(
                 egui::Button::image_and_text(
                     egui::Image::new(icons::redo())
                         .fit_to_exact_size(icon::md_square())
-                        .tint(if redo_enabled { TEXT } else { TEXT_DIM }),
+                        .tint(if redo_enabled {
+                            theme.text
+                        } else {
+                            theme.text_dim
+                        }),
                     egui::RichText::new("Redo").size(font::BODY),
                 ),
             )

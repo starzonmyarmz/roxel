@@ -167,18 +167,7 @@ pub fn section<R>(
     section_header(ui, theme, title);
     ui.add_space(space::SM);
     let result = add(ui);
-
-    ui.add_space(space::MD);
-    let sep_rect = ui
-        .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
-        .0;
-    let painter = ui.painter();
-    painter.hline(
-        ui.clip_rect().x_range(),
-        painter.round_to_pixel_center(sep_rect.center().y),
-        egui::Stroke::new(stroke::HAIR, theme.border),
-    );
-    ui.add_space(space::MD);
+    section_divider(ui, theme);
     result
 }
 
@@ -326,12 +315,7 @@ pub fn swatch_button(
     corner_radius: u8,
     state: impl Into<SwatchSelect>,
 ) -> egui::Response {
-    let outline = match state.into() {
-        SwatchSelect::Primary | SwatchSelect::Extra => {
-            egui::Stroke::new(stroke::ACCENT, theme.text)
-        }
-        SwatchSelect::None => egui::Stroke::NONE,
-    };
+    let outline = swatch_outline(theme, state.into());
     ui.add_sized(
         [size.x, size.y],
         egui::Button::new("")
@@ -616,6 +600,16 @@ pub fn modal_window<'a>(theme: &Theme, title: &str, open: &'a mut bool) -> egui:
     .order(egui::Order::Foreground)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
     .frame(modal_frame(theme, pad::MODAL))
+}
+
+/// SemiBold heading text in `theme.text` at [`font::HEADING`]. Used by the
+/// `Area`-based confirm sheets that build their own heading row (the
+/// `egui::Window` modals get theirs from [`modal_window`]).
+pub fn modal_heading(theme: &Theme, title: &str) -> egui::RichText {
+    egui::RichText::new(title)
+        .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
+        .size(font::HEADING)
+        .color(theme.text)
 }
 
 /// Toggle chip used by selection rows (Theme: System / Light / Dark). Selected

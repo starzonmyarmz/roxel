@@ -130,6 +130,53 @@ pub fn spawn_open(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
     });
 }
 
+/// Spawn an async "Import…" file dialog: one filter (`label`/`ext`) and a
+/// picker, wrapping the chosen path with `wrap`. No-op while another dialog is
+/// in flight. Shared by the command palette, the macOS native menu, and the
+/// Win/Linux pill so every import path funnels through one spawn.
+pub fn spawn_import(
+    pending: &mut PendingDialog,
+    label: &'static str,
+    ext: &'static str,
+    wrap: fn(PathBuf) -> DialogResult,
+    start_dir: Option<PathBuf>,
+) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        new_dialog(&start_dir)
+            .add_filter(label, &[ext])
+            .pick_file()
+            .await
+            .map(|f| wrap(f.path().to_path_buf()))
+    });
+}
+
+/// Spawn an async "Export…" save dialog: one filter (`label`/`ext`), a
+/// suggested `default_name`, wrapping the chosen path with `wrap`. No-op while
+/// another dialog is in flight. Shared sibling of [`spawn_import`].
+pub fn spawn_export(
+    pending: &mut PendingDialog,
+    label: &'static str,
+    ext: &'static str,
+    default_name: &'static str,
+    wrap: fn(PathBuf) -> DialogResult,
+    start_dir: Option<PathBuf>,
+) {
+    if pending.is_active() {
+        return;
+    }
+    pending.spawn(async move {
+        new_dialog(&start_dir)
+            .add_filter(label, &[ext])
+            .set_file_name(default_name)
+            .save_file()
+            .await
+            .map(|f| wrap(f.path().to_path_buf()))
+    });
+}
+
 /// Most-recent-first list of `.rox` paths the user has opened or saved.
 /// Capped at [`roxel::io::recent::MAX_RECENT`]; persisted to
 /// `dirs::config_dir()/roxel/recent.ron` whenever an entry is pushed.

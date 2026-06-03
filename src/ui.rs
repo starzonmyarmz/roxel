@@ -23,7 +23,7 @@ pub use dialogs::{
 // Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
 // reaches these through the `dialogs` module path directly.
 #[cfg(target_os = "macos")]
-pub use dialogs::{new_dialog, spawn_save, spawn_save_as};
+pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette};
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
@@ -185,11 +185,6 @@ pub fn ui_system(
         window: mut prefs_window,
     } = prefs_params;
 
-    // Local binding shadows the previous module-level constant so the rest of
-    // this function can stay as it was.
-    #[allow(non_snake_case)]
-    let BORDER = theme.border;
-
     // True whenever a modal/palette is open. The scrim dims the canvas +
     // inspector behind the modal; the floating tool island, menu pill, and the
     // gizmo (`ModalActive`, see `gizmo.rs`) are hidden outright rather than
@@ -276,7 +271,7 @@ pub fn ui_system(
         painter.vline(
             painter.round_to_pixel_center(rect.right()),
             rect.y_range(),
-            egui::Stroke::new(stroke::HAIR, BORDER),
+            egui::Stroke::new(stroke::HAIR, theme.border),
         );
     }
 

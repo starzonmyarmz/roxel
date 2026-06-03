@@ -11,8 +11,8 @@ use crate::camera::{CameraPreset, PendingViewPreset};
 use crate::theme::{Preferences, PreferencesWindow, save_preferences};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, color_pool};
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, new_dialog,
-    spawn_save, spawn_save_as,
+    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, spawn_export,
+    spawn_import, spawn_save, spawn_save_as,
 };
 use roxel::color_space::ColorSpace;
 use roxel::grid::NewProject;
@@ -804,127 +804,91 @@ fn spawn_open_path(pending: &mut PendingDialog, path: PathBuf) {
     pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
 }
 
+// Per-format menu items delegate to the shared `spawn_export`/`spawn_import`
+// helpers (`ui::dialogs`) — same spawn path as the command palette and the
+// Win/Linux pill, so a format's filter/extension lives in exactly one place.
 fn spawn_export_vox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("MagicaVoxel", &["vox"])
-            .set_file_name("model.vox")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportVox(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "MagicaVoxel",
+        "vox",
+        "model.vox",
+        DialogResult::ExportVox,
+        start_dir,
+    );
 }
 
 fn spawn_export_obj(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("Wavefront OBJ", &["obj"])
-            .set_file_name("model.obj")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportObj(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "Wavefront OBJ",
+        "obj",
+        "model.obj",
+        DialogResult::ExportObj,
+        start_dir,
+    );
 }
 
 fn spawn_export_png(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("PNG image", &["png"])
-            .set_file_name("roxel.png")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportPng(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "PNG image",
+        "png",
+        "roxel.png",
+        DialogResult::ExportPng,
+        start_dir,
+    );
 }
 
 fn spawn_export_svg(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("SVG image", &["svg"])
-            .set_file_name("roxel.svg")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportSvg(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "SVG image",
+        "svg",
+        "roxel.svg",
+        DialogResult::ExportSvg,
+        start_dir,
+    );
 }
 
 fn spawn_import_vox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("MagicaVoxel", &["vox"])
-            .pick_file()
-            .await
-            .map(|f| DialogResult::ImportVox(f.path().to_path_buf()))
-    });
+    spawn_import(
+        pending,
+        "MagicaVoxel",
+        "vox",
+        DialogResult::ImportVox,
+        start_dir,
+    );
 }
 
 fn spawn_import_qb(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("Qubicle", &["qb"])
-            .pick_file()
-            .await
-            .map(|f| DialogResult::ImportQb(f.path().to_path_buf()))
-    });
+    spawn_import(pending, "Qubicle", "qb", DialogResult::ImportQb, start_dir);
 }
 
 fn spawn_import_gox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("Goxel", &["gox"])
-            .pick_file()
-            .await
-            .map(|f| DialogResult::ImportGox(f.path().to_path_buf()))
-    });
+    spawn_import(pending, "Goxel", "gox", DialogResult::ImportGox, start_dir);
 }
 
 fn spawn_export_gltf(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("glTF binary", &["glb"])
-            .set_file_name("model.glb")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportGltf(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "glTF binary",
+        "glb",
+        "model.glb",
+        DialogResult::ExportGltf,
+        start_dir,
+    );
 }
 
 fn spawn_export_gox(pending: &mut PendingDialog, start_dir: Option<PathBuf>) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        new_dialog(&start_dir)
-            .add_filter("Goxel", &["gox"])
-            .set_file_name("model.gox")
-            .save_file()
-            .await
-            .map(|f| DialogResult::ExportGox(f.path().to_path_buf()))
-    });
+    spawn_export(
+        pending,
+        "Goxel",
+        "gox",
+        "model.gox",
+        DialogResult::ExportGox,
+        start_dir,
+    );
 }
 
 #[cfg(test)]

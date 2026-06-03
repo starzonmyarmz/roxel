@@ -66,8 +66,6 @@ pub fn inspector_panel(
     selection: &Selection,
     select_state: &SelectState,
 ) -> Option<egui::InnerResponse<()>> {
-    #[allow(non_snake_case)]
-    let PANEL = theme.panel;
     let mac_gutter: i8 = if cfg!(target_os = "macos") {
         height::MAC_TITLEBAR_GUTTER as i8
     } else {
@@ -87,7 +85,7 @@ pub fn inspector_panel(
                 .max_width(width::SIDE_PANEL_MAX)
                 .frame(
                     egui::Frame::default()
-                        .fill(PANEL)
+                        .fill(theme.panel)
                         .inner_margin(egui::Margin {
                             left: 12,
                             right: 0,

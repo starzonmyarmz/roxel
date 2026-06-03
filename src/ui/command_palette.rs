@@ -1,4 +1,4 @@
-use super::dialogs::{DialogResult, PendingDialog};
+use super::dialogs::{DialogResult, PendingDialog, spawn_export, spawn_import};
 use crate::GridResource;
 use crate::camera::{
     CameraPreset, PendingViewPreset, ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view,
@@ -1387,7 +1387,7 @@ pub fn dispatch_command_palette_system(
             }
         }
         CommandAction::OpenPreferences => p.prefs_window.open = true,
-        CommandAction::OpenChangelog => open_url(CHANGELOG_URL),
+        CommandAction::OpenChangelog => crate::updater::open_url(CHANGELOG_URL),
         CommandAction::SelectPalette(i) => {
             if i < p.palettes.0.len() {
                 request_select(i, &mut p.palette_choice, &mut p.working, &mut p.discard);
@@ -1483,57 +1483,6 @@ pub fn dispatch_command_palette_system(
             crate::theme::save_preferences(&p.prefs);
         }
     }
-}
-
-fn spawn_import(
-    pending: &mut PendingDialog,
-    label: &'static str,
-    ext: &'static str,
-    wrap: fn(std::path::PathBuf) -> DialogResult,
-    start_dir: Option<std::path::PathBuf>,
-) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        super::dialogs::new_dialog(&start_dir)
-            .add_filter(label, &[ext])
-            .pick_file()
-            .await
-            .map(|f| wrap(f.path().to_path_buf()))
-    });
-}
-
-fn spawn_export(
-    pending: &mut PendingDialog,
-    label: &'static str,
-    ext: &'static str,
-    default_name: &'static str,
-    wrap: fn(std::path::PathBuf) -> DialogResult,
-    start_dir: Option<std::path::PathBuf>,
-) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move {
-        super::dialogs::new_dialog(&start_dir)
-            .add_filter(label, &[ext])
-            .set_file_name(default_name)
-            .save_file()
-            .await
-            .map(|f| wrap(f.path().to_path_buf()))
-    });
-}
-
-fn open_url(url: &str) {
-    #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
-    #[cfg(target_os = "linux")]
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
-    #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn();
 }
 
 // -------- Tests --------

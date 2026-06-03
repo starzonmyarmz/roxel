@@ -103,14 +103,7 @@ pub fn draw_new_project(ctx: &egui::Context, theme: &Theme, new_project: &mut Ne
             widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
                 ui.set_width(width::MODAL_NEW);
                 ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("New project")
-                            .family(egui::FontFamily::Name(
-                                crate::theme::INTER_SEMIBOLD_FAMILY.into(),
-                            ))
-                            .size(font::HEADING)
-                            .color(theme.text),
-                    );
+                    ui.label(widgets::modal_heading(theme, "New project"));
                     ui.add_space(space::XS);
                     widgets::hint_label(ui, theme, "Discard unsaved work and start over?");
                     ui.add_space(space::SM);
@@ -151,14 +144,7 @@ pub fn draw_open_confirm(ctx: &egui::Context, theme: &Theme) -> Option<bool> {
             widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
                 ui.set_width(width::MODAL_NEW);
                 ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("Open project")
-                            .family(egui::FontFamily::Name(
-                                crate::theme::INTER_SEMIBOLD_FAMILY.into(),
-                            ))
-                            .size(font::HEADING)
-                            .color(theme.text),
-                    );
+                    ui.label(widgets::modal_heading(theme, "Open project"));
                     ui.add_space(space::XS);
                     widgets::hint_label(ui, theme, "Discard unsaved changes and open another?");
                     ui.add_space(space::SM);
