@@ -345,7 +345,11 @@ pub fn pill_menu_contents(
             egui::Button::image_and_text(
                 egui::Image::new(icons::save())
                     .fit_to_exact_size(icon::md_square())
-                    .tint(if dialog_busy { TEXT_DIM } else { TEXT }),
+                    .tint(if dialog_busy {
+                        theme.text_dim
+                    } else {
+                        theme.text
+                    }),
                 egui::RichText::new("Save").size(font::BODY),
             ),
         );
