@@ -4,7 +4,7 @@
 
 A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use, and nice to look at.
 
-![Roxel editing a 64³ diorama scene](docs/screenshot.jpg)
+![Roxel editing a 64³ diorama scene](.github/assets/screenshot.jpg)
 
 ## Features
 

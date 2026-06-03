@@ -17,6 +17,10 @@ Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs`. No `
 
 **Always add/update tests when adding/modifying a feature** — `cargo test` is a pre-push gate.
 
+## User docs
+
+User-facing docs live in `docs/src/*.md` (markdown; mdBook is the current renderer but the content is generator-agnostic). **When a change adds, removes, or alters user-facing behavior — a tool, shortcut, format, palette op, preference, menu — update the matching page in the same change.** See `docs/CLAUDE.md` for the page map. Not CI-gated; it rides on this rule.
+
 ## Git hooks
 
 Tracked in `.githooks/`. Opt in once per clone: `git config core.hooksPath .githooks`.
@@ -35,6 +39,7 @@ Documentation is split by subdirectory so context windows stay small — Claude 
 - **`src/CLAUDE.md`** — core data flow (`VoxelGrid`, chunks, `History`, mesher, picking, preview), tools, camera, gizmo, canvas chrome, lighting, color space, snapshot, onboarding, updater, command-palette dispatch. Also `.rox` project format and new-project flow.
 - **`src/io/CLAUDE.md`** — file I/O: async dialog rule, axis remaps, AABB-shift, format specifics (`.vox`/`.qb`/`.gox`/`.obj`/`.gltf`/`.svg`/`.ase`), shared helpers, persisted resources (`palettes.ron`, `recent.ron`), macOS native menu.
 - **`src/ui/CLAUDE.md`** — egui surface: panels and floating surfaces, design tokens, widget helpers, theme + preferences, fonts, icons, toasts, focus mode, mac titlebar, command-palette draw, onboarding overlay.
+- **`docs/CLAUDE.md`** — user-facing docs: page map, which feature changes touch which page, the keep-current rule. Read when adding/altering user-facing behavior.
 
 ## Cross-cutting invariants
 

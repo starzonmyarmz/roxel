@@ -1,0 +1,20 @@
+[book]
+title = "Roxel"
+description = "User guide for Roxel, a lightweight open-source voxel editor for desktop."
+authors = ["Roxel contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/starzonmyarmz/roxel"
+edit-url-template = "https://github.com/starzonmyarmz/roxel/edit/main/docs/{path}"
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-icon = "fa-github"
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
