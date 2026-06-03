@@ -663,13 +663,17 @@ pub fn chip_button<T: PartialEq + Copy>(
 /// the right. Used by every row of the Preferences modal.
 pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.add_sized(
+        ui.allocate_ui_with_layout(
             size::PREFS_LABEL,
-            egui::Label::new(
-                egui::RichText::new(label)
-                    .color(theme.text_dim)
-                    .size(font::SMALL),
-            ),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(size::PREFS_LABEL.x);
+                ui.add(egui::Label::new(
+                    egui::RichText::new(label)
+                        .color(theme.text_dim)
+                        .size(font::SMALL),
+                ));
+            },
         );
         add(ui);
     });

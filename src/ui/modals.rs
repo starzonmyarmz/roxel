@@ -253,13 +253,17 @@ pub fn draw_discard(
 /// don't fit the knob column flow onto a second line instead of being clipped.
 fn labeled_wrap(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal_top(|ui| {
-        ui.add_sized(
+        ui.allocate_ui_with_layout(
             size::PREFS_LABEL,
-            egui::Label::new(
-                egui::RichText::new(label)
-                    .color(theme.text_dim)
-                    .size(font::SMALL),
-            ),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.set_min_width(size::PREFS_LABEL.x);
+                ui.add(egui::Label::new(
+                    egui::RichText::new(label)
+                        .color(theme.text_dim)
+                        .size(font::SMALL),
+                ));
+            },
         );
         ui.horizontal_wrapped(|ui| add(ui));
     });
