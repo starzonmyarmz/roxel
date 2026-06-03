@@ -9,11 +9,12 @@ use crate::theme::{
     CanvasBgPref, Preferences, PreferencesWindow, Theme, ThemePref, canvas_match_color,
     save_preferences,
 };
+use crate::ui::color_picker;
 use crate::ui::dialogs::{self, DialogResult, PendingDialog};
 use crate::ui::palette::{
     self, DiscardConfirm, PaletteChoice, PaletteRenameState, Palettes, WorkingPalette,
 };
-use crate::ui::tokens::{font, size, space, width};
+use crate::ui::tokens::{font, radius, size, space, swatch, width};
 use crate::ui::widgets;
 use bevy_egui::egui;
 use roxel::grid::NewProject;
@@ -40,6 +41,7 @@ pub fn draw_preferences(
             });
         });
 
+        let color_space = prefs.color_space;
         widgets::section(ui, theme, "Canvas", |ui| {
             let mut is_custom = matches!(prefs.canvas_bg, CanvasBgPref::Custom(_));
             widgets::prefs_row(ui, theme, "Background", |ui| {
@@ -59,7 +61,14 @@ pub fn draw_preferences(
                 ui.add_space(space::XS);
                 ui.horizontal(|ui| {
                     ui.add_space(space::PREFS_INDENT);
-                    ui.color_edit_button_srgb(rgb);
+                    color_picker::space_color_swatch(
+                        ui,
+                        theme,
+                        rgb,
+                        color_space,
+                        swatch::PREVIEW,
+                        radius::XS,
+                    );
                     widgets::hex_label(ui, theme, *rgb, true);
                 });
             }
@@ -297,6 +306,7 @@ pub fn draw_shot_panel(
     panel: &mut ShotPanel,
     pending: &mut PendingDialog,
     last_dir: &Option<PathBuf>,
+    color_space: roxel::color_space::ColorSpace,
 ) {
     let before = panel.params.clone();
     let defaults = ShotParams::default();
@@ -409,7 +419,14 @@ pub fn draw_shot_panel(
                             panel.params.bg_override = Some(panel.auto_bg());
                         }
                         if let Some(ref mut rgb) = panel.params.bg_override {
-                            ui.color_edit_button_srgb(rgb);
+                            color_picker::space_color_swatch(
+                                ui,
+                                theme,
+                                rgb,
+                                color_space,
+                                swatch::PREVIEW,
+                                radius::XS,
+                            );
                         }
                     });
                     shot_slider(

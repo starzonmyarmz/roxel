@@ -366,7 +366,14 @@ pub fn ui_system(
     // Export-Shot tweak panel: live preview + art-direction knobs. Opened from
     // the command palette / File → Export; "Export…" spawns the save dialog.
     if shot_panel.open {
-        modals::draw_shot_panel(ctx, &theme, &mut shot_panel, &mut pending, &prefs.last_dir);
+        modals::draw_shot_panel(
+            ctx,
+            &theme,
+            &mut shot_panel,
+            &mut pending,
+            &prefs.last_dir,
+            prefs.color_space,
+        );
     }
 
     if cmd_palette.open {

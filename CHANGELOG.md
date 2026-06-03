@@ -15,6 +15,7 @@ Release notes.
 - feat(io): Export Shot — polished social-media PNG with auto background, soft contact shadow, and a contrast-tinted roxel watermark
 - feat(ui): Export Shot tweak panel — live preview with aspect, background gradient, grain, vignette, saturation, and lift knobs (double-click a slider to reset)
 - refactor(ui): share one dialog-spawn path across the menu, pill, and command palette; collapse duplicated modal-heading / section-divider / swatch-outline / open-url helpers
+- fix(ui): canvas-background and Export Shot color pickers now honour the active color space (Hex/RGB/HSL/HSB/OKLCH) like the foreground picker
 
 ## [0.7.0] - 2026-06-02
 

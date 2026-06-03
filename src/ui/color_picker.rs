@@ -1,10 +1,17 @@
-//! The foreground-color picker popup body. Pulled out of `ui.rs` so the
+//! The space-aware color picker popup body. Pulled out of `ui.rs` so the
 //! inspector module stays focused on panel layout; this is the single numeric
-//! + 2D edit surface for `CurrentColor`.
+//! + 2D edit surface for any sRGB color.
+//!
+//! `space_color_picker` drives the foreground `CurrentColor`, while
+//! `space_color_picker_rgb` is the `[u8; 3]` core that it and the standalone
+//! canvas/shot `space_color_swatch`es funnel through — so every editable
+//! picker honours `Preferences.color_space`.
 
+use crate::theme::Theme;
 use crate::ui::tokens::{gap, space, stroke};
+use crate::ui::widgets;
 use bevy_egui::egui;
-use roxel::color_space::ColorSpace;
+use roxel::color_space::{ColorEditBuffer, ColorSpace};
 
 /// Custom color picker popup body — the single numeric edit surface for the
 /// foreground color. Composed of:
@@ -30,9 +37,31 @@ pub fn space_color_picker(
     ui: &mut egui::Ui,
     color: &mut crate::tools::CurrentColor,
     space: ColorSpace,
-    color_edit: &mut roxel::color_space::ColorEditBuffer,
+    color_edit: &mut ColorEditBuffer,
+) -> bool {
+    let mut rgb = [color.0[0], color.0[1], color.0[2]];
+    let changed = space_color_picker_rgb(ui, &mut rgb, space, color_edit);
+    if changed {
+        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+    }
+    changed
+}
+
+/// Core picker body over a raw sRGB `[u8; 3]` (alpha-agnostic). Both the
+/// foreground-color popup and the standalone canvas/shot swatches funnel
+/// through here so every editable picker honours `Preferences.color_space`.
+/// The `color_edit` buffer must persist across frames (resource for the
+/// inspector, egui memory for the standalone swatches — see
+/// [`space_color_picker_temp`]).
+pub fn space_color_picker_rgb(
+    ui: &mut egui::Ui,
+    rgb_out: &mut [u8; 3],
+    space: ColorSpace,
+    color_edit: &mut ColorEditBuffer,
 ) -> bool {
     use roxel::color_space::{hsb_to_rgb, rgb_to_hsb};
+
+    let mut color: [u8; 4] = [rgb_out[0], rgb_out[1], rgb_out[2], 255];
 
     // Cache: last rgba we produced + working hue (0..1). Per-widget id so a
     // palette swatch popup can't clobber the inspector's working state.
@@ -40,9 +69,9 @@ pub fn space_color_picker(
     let cache_id = ui.id().with("space_color_picker_state");
     let cached: Option<State> = ui.data(|d| d.get_temp(cache_id));
 
-    let rgb3 = [color.0[0], color.0[1], color.0[2]];
+    let rgb3 = [color[0], color[1], color[2]];
     let mut hue_norm = match cached {
-        Some((rgba, h)) if rgba == color.0 => h,
+        Some((rgba, h)) if rgba == color => h,
         _ => {
             let (h, _, _) = rgb_to_hsb(rgb3);
             h / 360.0
@@ -55,8 +84,8 @@ pub fn space_color_picker(
     // ---------- Editable field row ----------
     // Repopulate when the live color or active space drifts from the buffer so
     // typing isn't clobbered by a quantised readback (see `ColorEditBuffer`).
-    if color_edit.source != color.0 || color_edit.space != space {
-        color_edit.populate(color.0, space);
+    if color_edit.source != color || color_edit.space != space {
+        color_edit.populate(color, space);
     }
     // Commit on lost_focus (Enter / Tab / click-away); invalid input reverts
     // silently. Arrow-key stepping keeps the buffer authoritative so small
@@ -108,28 +137,28 @@ pub fn space_color_picker(
         }
     }
     if stepped && let Some(rgb) = color_edit.commit() {
-        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        color = [rgb[0], rgb[1], rgb[2], 255];
         // Keep source in sync so the gate above doesn't repopulate and
         // clobber the stepped buffer with a quantised readback.
-        color_edit.source = color.0;
-        let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+        color_edit.source = color;
+        let (h, _, _) = rgb_to_hsb([color[0], color[1], color[2]]);
         hue_norm = h / 360.0;
         changed = true;
     }
     if commit_now {
         if let Some(rgb) = color_edit.commit() {
-            color.0 = [rgb[0], rgb[1], rgb[2], 255];
-            let (h, _, _) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+            color = [rgb[0], rgb[1], rgb[2], 255];
+            let (h, _, _) = rgb_to_hsb([color[0], color[1], color[2]]);
             hue_norm = h / 360.0;
             changed = true;
         }
-        color_edit.populate(color.0, space);
+        color_edit.populate(color, space);
     }
 
     ui.add_space(space::XS);
 
     // Live (S, V) read from current color (in 0..1).
-    let (_h_live, s_live, v_live) = rgb_to_hsb([color.0[0], color.0[1], color.0[2]]);
+    let (_h_live, s_live, v_live) = rgb_to_hsb([color[0], color[1], color[2]]);
     let mut s_norm = s_live / 100.0;
     let mut v_norm = v_live / 100.0;
 
@@ -142,7 +171,7 @@ pub fn space_color_picker(
         s_norm = egui::emath::remap_clamp(mpos.x, rect.left()..=rect.right(), 0.0..=1.0);
         v_norm = egui::emath::remap_clamp(mpos.y, rect.bottom()..=rect.top(), 0.0..=1.0);
         let rgb = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
-        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        color = [rgb[0], rgb[1], rgb[2], 255];
         changed = true;
     }
     if ui.is_rect_visible(rect) {
@@ -195,7 +224,7 @@ pub fn space_color_picker(
     if let Some(mpos) = hue_resp.interact_pointer_pos() {
         hue_norm = egui::emath::remap_clamp(mpos.x, hue_rect.left()..=hue_rect.right(), 0.0..=1.0);
         let rgb = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
-        color.0 = [rgb[0], rgb[1], rgb[2], 255];
+        color = [rgb[0], rgb[1], rgb[2], 255];
         changed = true;
     }
     if ui.is_rect_visible(hue_rect) {
@@ -237,6 +266,53 @@ pub fn space_color_picker(
         ));
     }
 
-    ui.data_mut(|d| d.insert_temp(cache_id, (color.0, hue_norm)));
+    ui.data_mut(|d| d.insert_temp(cache_id, (color, hue_norm)));
+    *rgb_out = [color[0], color[1], color[2]];
+    changed
+}
+
+/// [`space_color_picker_rgb`] with its [`ColorEditBuffer`] parked in egui
+/// temp memory (keyed by the parent `ui` id) instead of an ECS resource. Used
+/// by the standalone canvas-background / shot-background swatches, which have
+/// no dedicated buffer resource of their own.
+pub fn space_color_picker_temp(ui: &mut egui::Ui, rgb: &mut [u8; 3], space: ColorSpace) -> bool {
+    let buf_id = ui.id().with("space_picker_buf");
+    let mut buf: ColorEditBuffer = ui.data(|d| d.get_temp(buf_id)).unwrap_or_default();
+    let changed = space_color_picker_rgb(ui, rgb, space, &mut buf);
+    ui.data_mut(|d| d.insert_temp(buf_id, buf));
+    changed
+}
+
+/// A swatch button that opens the space-aware picker popup over a raw sRGB
+/// `[u8; 3]`. Mirrors the inspector hero-swatch affordance so the canvas and
+/// shot background pickers honour `Preferences.color_space` like the
+/// foreground picker does. Returns `true` on any edit this frame.
+pub fn space_color_swatch(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    rgb: &mut [u8; 3],
+    space: ColorSpace,
+    size: egui::Vec2,
+    corner_radius: u8,
+) -> bool {
+    let srgba = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+    // Zero button padding + interact-size min so the swatch renders at exactly
+    // `size` (egui otherwise inflates an empty Button by its default padding
+    // and min interact-size). The inspector's grids do this via `swatch_grid`;
+    // standalone callers must scope it themselves.
+    let resp = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = crate::ui::tokens::pad::NONE;
+            ui.spacing_mut().interact_size = crate::ui::tokens::gap::NONE;
+            widgets::swatch_button(ui, theme, srgba, size, corner_radius, false)
+        })
+        .inner
+        .on_hover_text("Click to edit color");
+    let mut changed = false;
+    egui::Popup::menu(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            changed = space_color_picker_temp(ui, rgb, space);
+        });
     changed
 }
