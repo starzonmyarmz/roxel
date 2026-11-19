@@ -5,7 +5,6 @@ mod clipboard;
 mod gizmo;
 mod icon;
 mod lighting;
-#[cfg(target_os = "macos")]
 mod menu;
 mod mesh;
 mod onboarding;
@@ -200,16 +199,20 @@ fn main() {
         .init_gizmo_group::<crate::preview::PreviewGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
+    app.init_resource::<crate::menu::MenuQueue>()
+        .add_systems(Update, crate::menu::apply_menu_actions_system);
     #[cfg(target_os = "macos")]
     {
-        app.init_resource::<crate::menu::MenuQueue>().add_systems(
+        use crate::menu::native;
+        app.add_systems(
             Update,
             (
-                crate::menu::install_menu_system,
-                crate::menu::poll_menu_events_system.after(crate::menu::install_menu_system),
-                crate::menu::apply_menu_actions_system.after(crate::menu::poll_menu_events_system),
-                crate::menu::update_menu_enabled_system.after(crate::menu::install_menu_system),
-                crate::menu::update_recent_menu_system.after(crate::menu::install_menu_system),
+                native::install_menu_system,
+                native::poll_menu_events_system
+                    .after(native::install_menu_system)
+                    .before(crate::menu::apply_menu_actions_system),
+                native::update_menu_enabled_system.after(native::install_menu_system),
+                native::update_recent_menu_system.after(native::install_menu_system),
             ),
         );
     }

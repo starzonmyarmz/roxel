@@ -274,9 +274,6 @@ impl RecentFiles {
         roxel::io::recent::push(&mut self.0, path);
         roxel::io::recent::save(&self.0);
     }
-    // Only the macOS native menu has a "Clear Recent" item; the Win/Linux pill
-    // does not, so this is dead code off macOS.
-    #[cfg(target_os = "macos")]
     pub fn clear(&mut self) {
         self.0.clear();
         roxel::io::recent::save(&self.0);

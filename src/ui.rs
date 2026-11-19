@@ -16,16 +16,13 @@ mod widgets;
 pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
+#[cfg(not(target_os = "macos"))]
+pub use dialogs::file_shortcut_system;
 pub use dialogs::{
     CurrentProjectPath, DialogResult, DocStatus, GuardedAction, PendingDialog, PendingImport,
     RecentFiles, SavePreviewState, UnsavedGuard, poll_dialogs_system, process_save_preview_system,
     spawn_open,
 };
-// Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
-// reaches these through the `dialogs` module path directly.
-#[cfg(not(target_os = "macos"))]
-pub use dialogs::file_shortcut_system;
-#[cfg(target_os = "macos")]
 pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{
     DeleteConfirm, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
