@@ -66,11 +66,8 @@ impl SelectionAabb {
         })
     }
 
-    /// Count of non-empty cells inside the AABB (clipped to the grid bounds).
     pub fn voxel_count(&self, grid: &VoxelGrid) -> usize {
-        self.iter_cells()
-            .filter(|p| grid.in_bounds(*p) && grid.get(*p).is_some())
-            .count()
+        grid.count_in_box(self.min, self.max)
     }
 }
 
