@@ -1,6 +1,6 @@
 use crate::actions::{Action, ActionState, Category, Chord, KeyToken, Platform};
 use crate::theme::Theme;
-use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, width};
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, width};
 use crate::ui::{icons, widgets};
 use bevy::prelude::*;
 use bevy_egui::egui;
@@ -248,11 +248,7 @@ pub fn draw(
             }
 
             ui.add_space(space::XS);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
+            widgets::hline_at(ui, theme, ui.cursor().min.y);
             ui.add_space(space::SX);
 
             if order.is_empty() {
@@ -280,11 +276,7 @@ pub fn draw(
             }
 
             ui.add_space(space::SX);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
+            widgets::hline_at(ui, theme, ui.cursor().min.y);
             ui.add_space(space::SX);
             draw_footer_hint(ui, theme);
         });

@@ -9,7 +9,7 @@
 
 use super::command_palette::fuzzy_match;
 use super::palette::{Palette, PaletteSwitcher};
-use super::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, swatch, width};
+use super::tokens::{font, gap, height, icon, pad, radius, size, space, swatch, width};
 use super::{icons, widgets};
 use crate::theme::Theme;
 use bevy_egui::egui;
@@ -133,11 +133,7 @@ pub fn draw(
             }
 
             ui.add_space(space::XS);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
+            widgets::hline_at(ui, theme, ui.cursor().min.y);
             ui.add_space(space::SX);
 
             if selectable.is_empty() {
@@ -178,11 +174,7 @@ pub fn draw(
             }
 
             ui.add_space(space::SX);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
+            widgets::hline_at(ui, theme, ui.cursor().min.y);
             ui.add_space(space::SX);
             footer_hint(ui, theme);
         });

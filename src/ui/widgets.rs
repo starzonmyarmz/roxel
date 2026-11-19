@@ -356,15 +356,25 @@ pub fn section_header_action(
 pub fn section_divider(ui: &mut egui::Ui, theme: &Theme) {
     ui.add_space(space::MD);
     let sep_rect = ui
-        .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
+        .allocate_exact_size(
+            egui::vec2(ui.available_width(), stroke::NORMAL),
+            egui::Sense::hover(),
+        )
         .0;
+    hline_at(ui, theme, sep_rect.center().y);
+    ui.add_space(space::MD);
+}
+
+/// Hairline divider at `y`, pixel-snapped, spanning the clip rect so it runs
+/// past the frame's inner margin to both edges. Paints only; the caller
+/// spaces around it.
+pub fn hline_at(ui: &egui::Ui, theme: &Theme, y: f32) {
     let painter = ui.painter();
     painter.hline(
         ui.clip_rect().x_range(),
-        painter.round_to_pixel_center(sep_rect.center().y),
+        painter.round_to_pixel_center(y),
         egui::Stroke::new(stroke::HAIR, theme.border),
     );
-    ui.add_space(space::MD);
 }
 
 /// Border stroke for a swatch in the given selection state. Matches
@@ -822,6 +832,30 @@ fn select_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hline_at_snaps_to_a_pixel_center_across_the_clip_rect() {
+        let ctx = egui::Context::default();
+        let mut clip = egui::Rect::NOTHING;
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                clip = ui.clip_rect();
+                hline_at(ui, &Theme::dark(), 10.3);
+            });
+        });
+        let line = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                egui::Shape::LineSegment { points, .. } => Some(*points),
+                _ => None,
+            })
+            .expect("hline painted");
+        assert_eq!(line[0].y, 10.5);
+        assert_eq!(line[1].y, 10.5);
+        assert_eq!(line[0].x, clip.left());
+        assert_eq!(line[1].x, clip.right());
+    }
 
     #[test]
     fn hex_string_formats_uppercase_with_hash() {
