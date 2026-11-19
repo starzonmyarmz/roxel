@@ -30,6 +30,14 @@ Tracked in `.githooks/`. Opt in once per clone: `git config core.hooksPath .gith
 
 CI re-runs all three (fmt, clippy `-D warnings`, test), so `--no-verify` is caught upstream. Clippy is a hard gate — keep the tree warning-free.
 
+## Releases
+
+Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml` alone releases nothing.
+
+- Cut releases with `scripts/release.sh <major|minor|patch>` on a clean, up-to-date `main`.
+- If `main` already has the bumped version, tag it by hand. Tags are **always** `v` + the exact `Cargo.toml` version, annotated: `git tag -a v0.14.0 -m v0.14.0 && git push origin v0.14.0`. A tag without the `v` (`0.14.0`) silently never triggers the workflow.
+- Put release notes under `## [Unreleased]` in `CHANGELOG.md`. The workflow renames that section to the version; don't add version headings yourself.
+
 ## Architecture
 
 Single-window Bevy 0.18 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. One binary (`src/main.rs`), no lib crate, no workspace.

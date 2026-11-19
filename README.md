@@ -95,12 +95,14 @@ pushes each build to the matching itch.io channel with
 [butler](https://itch.io/docs/butler/). The push needs a `BUTLER_API_KEY`
 repository secret (from `butler login`, or an itch.io API key).
 
-To cut a release:
+To cut a release, run `scripts/release.sh <major|minor|patch>` on an
+up-to-date `main`. It bumps `Cargo.toml`, commits, tags and pushes. Bumping
+the version alone doesn't release anything: only the `v*` tag push does. If
+`main` already carries the bumped version, tag it instead:
 
 ```sh
-# bump version in Cargo.toml, commit
-git tag v0.3.1
-git push origin v0.3.1
+git tag -a v0.14.0 -m v0.14.0
+git push origin v0.14.0
 ```
 
 The workflow lives at `.github/workflows/release.yml`. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds.
