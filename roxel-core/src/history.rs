@@ -100,6 +100,8 @@ impl History {
         if stroke.deltas.is_empty() {
             return;
         }
+        stroke.touched = HashMap::new();
+        stroke.touched_bounds = None;
         self.next_id += 1;
         stroke.id = self.next_id;
         self.undo.push(stroke);
@@ -240,6 +242,7 @@ mod tests {
         }
         assert_eq!(h.pre_stroke_value(cells[49_999]), Some(None));
         h.end();
+        assert!(h.undo[0].touched.is_empty());
         let deltas = &h.undo[0].deltas;
         assert_eq!(deltas.len(), cells.len());
         assert!(deltas.iter().all(|d| d.after == Some([2, 2, 2, 255])));
