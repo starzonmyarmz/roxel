@@ -1,4 +1,5 @@
 use crate::GridResource;
+use crate::actions::Mods;
 use crate::tools::{StrokeAnchor, Tool, ToolState};
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
@@ -712,7 +713,7 @@ pub fn move_selection_keys_system(
     if crate::ui::egui_wants_keyboard(&mut contexts) {
         return;
     }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let shift = Mods::from_keys(&keys).shift;
     let mut delta = IVec3::ZERO;
     if keys.just_pressed(KeyCode::ArrowLeft) {
         delta.x -= 1;

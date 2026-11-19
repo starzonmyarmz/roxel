@@ -1,4 +1,5 @@
 use crate::GridResource;
+use crate::actions::Mods;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
@@ -668,7 +669,7 @@ pub fn zoom_click_system(
     if crate::ui::egui_wants_pointer(&mut contexts) {
         return;
     }
-    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let alt = Mods::from_keys(&keys).alt;
     let factor = if alt { ZOOM_STEP_OUT } else { ZOOM_STEP_IN };
 
     // Recenter focus to whatever's under the cursor so the zoom converges

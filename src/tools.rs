@@ -1,4 +1,5 @@
 use crate::GridResource;
+use crate::actions::Mods;
 use crate::picking::{Hit, cursor_ray, pick, pick_with, union_bounds};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
@@ -670,7 +671,7 @@ fn shape_input(
                 return;
             };
             if let Some(target) = anchor_target(&anchor, origin, dir) {
-                let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+                let shift = Mods::from_keys(keys).shift;
                 let c2 = if shift && let Some(c1) = state.corner1 {
                     constrain_shape_corner2(options.primitive, anchor.axis, c1, target)
                 } else {
@@ -958,7 +959,7 @@ pub fn tool_input_system(
         return;
     };
 
-    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let alt = Mods::from_keys(&keys).alt;
 
     // Single-click tools (eyedropper).
     if lmb_just && tool.current == Tool::Eyedropper {
@@ -1017,7 +1018,7 @@ pub fn tool_input_system(
         }
     }
 
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let shift = Mods::from_keys(&keys).shift;
 
     // Shift + click: draw a 3D line from the last placed voxel to the new target.
     // Performs a single-frame stroke; does not enter drag mode.
@@ -1321,7 +1322,7 @@ pub fn move_drag_system(
         let Some(target) = anchor_target(&anchor, origin, dir) else {
             return;
         };
-        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let shift = Mods::from_keys(&keys).shift;
         let new_delta = constrain_move_delta(target - start, anchor.axis, shift);
         if new_delta == drag.applied_delta {
             return;
@@ -1404,7 +1405,7 @@ pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<T
     let alt_just = keys.just_pressed(KeyCode::AltLeft) || keys.just_pressed(KeyCode::AltRight);
     let alt_released =
         keys.just_released(KeyCode::AltLeft) || keys.just_released(KeyCode::AltRight);
-    let alt_held = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let alt_held = Mods::from_keys(&keys).alt;
     let z_just = keys.just_pressed(KeyCode::KeyZ);
     let z = keys.pressed(KeyCode::KeyZ);
 

@@ -1,5 +1,5 @@
 use crate::GridResource;
-use crate::actions::{ActionQueue, ActionState, Origin};
+use crate::actions::{ActionQueue, ActionState, Mods, Origin};
 mod color_picker;
 mod command_palette;
 mod dialogs;
@@ -327,7 +327,7 @@ pub fn ui_system(
 
     // Reflect tool in cursor when pointer is over the viewport.
     if !ctx.is_pointer_over_area() {
-        let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+        let alt = Mods::from_keys(&keys).alt;
         let z = keys.pressed(KeyCode::KeyZ);
         let over_gizmo = gizmo_view.drag.active
             || gizmo_view
