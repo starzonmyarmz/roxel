@@ -428,7 +428,7 @@ pub fn poll_dialogs_system(
     }
     match result {
         Some(DialogResult::OpenProject(path)) => match io::project::load(&path, &mut grid) {
-            Ok(()) => {
+            Ok(_) => {
                 history.undo.clear();
                 history.redo.clear();
                 doc.mark_saved(history.state_id());

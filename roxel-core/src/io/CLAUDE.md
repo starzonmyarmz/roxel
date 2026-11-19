@@ -20,7 +20,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 - `grid::bounding_box()` — `Option<(min, max)>` inclusive.
 - `mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by gltf/svg/obj.
 - `io::atomic::write` / `write_with` — temp file + fsync + rename. **Every file the app writes goes through it** (projects, exporters, palettes, recents, preferences, PNGs); never `fs::write`/`File::create` a user-visible file directly.
-- `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import.
+- `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import and `.rox` load.
 - `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper. Don't add `tempfile`.
 
 ## Coordinate handling

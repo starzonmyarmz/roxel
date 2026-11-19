@@ -15,7 +15,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Shift+click line draw between the last placed voxel and the cursor
 - Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes with add/new/duplicate/rename/delete and drag-to-reorder
 - Orbit / pan / zoom camera with isometric default angle
-- Save / load `.rox` project files (RON), with a 10-entry Open Recent menu
+- Save / load compact `.rox` project files, with a 10-entry Open Recent menu
 - Import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox`
 - Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
 - Import / export Adobe Swatch Exchange `.ase` palettes
@@ -103,15 +103,22 @@ The workflow lives at `.github/workflows/release.yml`. See [Install](#install) f
 
 ## File format
 
-`.rox` projects are RON-serialized. Open-world: only occupied cells are
-stored, no fixed grid size, coordinates are signed so models can sit at any
-position relative to the origin.
+`.rox` is a versioned binary format (little-endian). Open-world: only
+occupied chunks are stored, there's no fixed grid size, and coordinates are
+signed, so models can sit anywhere relative to the origin.
 
-```rust
-struct ProjectFile {
-    voxels: Vec<([i32; 3], Color8)>,
-}
+```text
+"ROXL"  u16 format version
+section* = [u8; 4] tag, u32 length, payload
+  VOXL  u32 decompressed length + zstd frame: chunk edge, sorted RGBA color
+        table, then each 32³ chunk (sorted) as sparse or dense color indices
+  PREV  optional PNG preview
 ```
+
+Readers skip unknown sections, so optional data can be added without a
+version bump. The full layout is documented in
+`roxel-core/src/io/project.rs`. Files from before 0.9 (pretty-printed RON with
+a `voxels` list) still open.
 
 ## License
 
