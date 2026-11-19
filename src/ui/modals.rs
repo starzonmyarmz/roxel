@@ -287,7 +287,7 @@ pub fn draw_about(ctx: &egui::Context, theme: &Theme) -> bool {
                     close = true;
                 }
                 if widgets::dialog_button(ui, theme, "Changelog", false).clicked() {
-                    crate::updater::open_url(crate::menu::CHANGELOG_URL);
+                    crate::updater::open_url(crate::actions::CHANGELOG_URL);
                 }
             });
         });

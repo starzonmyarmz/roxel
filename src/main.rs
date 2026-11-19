@@ -208,9 +208,7 @@ fn main() {
                 .before(apply_pending_view_preset_system)
                 .before(frame_view_system),
         );
-    app.init_resource::<crate::menu::MenuQueue>()
-        .init_resource::<crate::menu::AboutWindow>()
-        .add_systems(Update, crate::menu::apply_menu_actions_system);
+    app.init_resource::<crate::menu::AboutWindow>();
     #[cfg(target_os = "macos")]
     {
         use crate::menu::native;
@@ -220,7 +218,7 @@ fn main() {
                 native::install_menu_system,
                 native::poll_menu_events_system
                     .after(native::install_menu_system)
-                    .before(crate::menu::apply_menu_actions_system),
+                    .before(crate::actions::apply_actions_system),
                 native::update_menu_enabled_system.after(native::install_menu_system),
                 native::update_recent_menu_system.after(native::install_menu_system),
             ),

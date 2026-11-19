@@ -94,7 +94,6 @@ pub struct UiState<'w> {
     pub onboarding_anchors: ResMut<'w, OnboardingAnchors>,
     pub ui_visible: Res<'w, UiVisible>,
     pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
-    pub menu_queue: ResMut<'w, crate::menu::MenuQueue>,
     pub actions: ResMut<'w, ActionQueue>,
     pub recent_files: Res<'w, RecentFiles>,
     pub about: ResMut<'w, crate::menu::AboutWindow>,
@@ -167,7 +166,6 @@ pub fn ui_system(
         mut onboarding_anchors,
         ui_visible,
         mut shot_panel,
-        mut menu_queue,
         mut actions,
         recent_files,
         mut about,
@@ -205,26 +203,44 @@ pub fn ui_system(
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
+    // Snapshot for the menus and the command palette, rebuilt where it's used
+    // because the surfaces in between mutate prefs and palettes.
+    macro_rules! action_state {
+        () => {
+            ActionState {
+                tool: tool.current,
+                shape: shape_options.primitive,
+                has_undo: !history.undo.is_empty(),
+                has_redo: !history.redo.is_empty(),
+                has_selection: selection.aabb.is_some(),
+                selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
+                has_clipboard: clipboard.has_stamp(),
+                has_voxels: grid.count() > 0,
+                dialog_busy: pending.is_active(),
+                flyby_active: flyby.active,
+                checking_updates: updater.is_checking(),
+                palettes: &palettes.0,
+                palette_choice: palette_choice.0,
+                active_colors: palette::display_colors(
+                    &palettes,
+                    &working,
+                    palette_choice.0.min(palettes.0.len().saturating_sub(1)),
+                ),
+                current_color: color.0,
+                prefs: &prefs,
+                recent: &recent_files.0,
+            }
+        };
+    }
+
     // ---------- Floating menu pill ----------
     // On macOS the native menu bar (see `menu.rs`) replaces these controls; on
     // Win/Linux the pill sits at top-center and is gated by the user pref.
     #[cfg(not(target_os = "macos"))]
     if ui_visible.0 && prefs.show_floating_menu_bar && !modal_open {
-        let state = floating::PillMenuState {
-            prefs: &prefs,
-            recent: &recent_files.0,
-            dialog_busy: pending.is_active(),
-            has_undo: !history.undo.is_empty(),
-            has_redo: !history.redo.is_empty(),
-            has_selection: selection.aabb.is_some(),
-            selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
-            has_clipboard: clipboard.has_stamp(),
-            has_voxels: grid.count() > 0,
-            update: updater.available(),
-            checking_updates: updater.is_checking(),
-        };
+        let state = action_state!();
         floating::pill_menu(ctx, &theme, |ui| {
-            floating::pill_menu_contents(ui, &theme, &state, &mut menu_queue.0);
+            floating::pill_menu_contents(ui, &theme, &state, updater.available(), &mut actions);
         });
     }
 
@@ -406,25 +422,7 @@ pub fn ui_system(
     }
 
     if cmd_palette.open {
-        let choice = palette_choice.0.min(palettes.0.len().saturating_sub(1));
-        let state = ActionState {
-            tool: tool.current,
-            shape: shape_options.primitive,
-            has_undo: !history.undo.is_empty(),
-            has_redo: !history.redo.is_empty(),
-            has_selection: selection.aabb.is_some(),
-            selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
-            has_clipboard: clipboard.has_stamp(),
-            has_voxels: grid.count() > 0,
-            dialog_busy: pending.is_active(),
-            flyby_active: flyby.active,
-            palettes: &palettes.0,
-            palette_choice: palette_choice.0,
-            active_colors: palette::display_colors(&palettes, &working, choice),
-            current_color: color.0,
-            prefs: &prefs,
-            recent: &recent_files.0,
-        };
+        let state = action_state!();
         let catalog = command_palette::build_catalog(&state);
         if let Some(action) = command_palette::draw(ctx, &theme, &mut cmd_palette, &catalog) {
             actions.push(action, Origin::Ui);

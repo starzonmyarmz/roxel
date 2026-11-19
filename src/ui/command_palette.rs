@@ -17,6 +17,14 @@ pub struct CommandPalette {
 }
 
 impl CommandPalette {
+    pub fn toggle(&mut self) {
+        if self.open {
+            self.open = false;
+        } else {
+            self.open_fresh();
+        }
+    }
+
     fn open_fresh(&mut self) {
         self.open = true;
         self.search.clear();
@@ -599,6 +607,7 @@ mod tests {
             has_voxels: false,
             dialog_busy: false,
             flyby_active: false,
+            checking_updates: false,
             palettes,
             palette_choice: 0,
             active_colors: &[],

@@ -14,11 +14,13 @@ use crate::camera::{CameraPreset, FlybyState, PendingFrameView, PendingViewPrese
 use crate::camera::{ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom};
 use crate::select::Selection;
 use crate::theme::{Preferences, PreferencesWindow, ThemePref, save_preferences};
-use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
+use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState};
 use crate::ui::{
-    CurrentProjectPath, DeleteConfirm, DialogResult, DiscardConfirm, GuardedAction, Palette,
-    PaletteChoice, Palettes, PendingDialog, RecentFiles, Toasts, UnsavedGuard, WorkingPalette,
+    CommandPalette, CurrentProjectPath, DeleteConfirm, DialogResult, DiscardConfirm, GuardedAction,
+    Palette, PaletteChoice, Palettes, PendingDialog, RecentFiles, Toasts, UnsavedGuard,
+    WorkingPalette,
 };
+use roxel::color_space::ColorSpace;
 use roxel::grid::Color8;
 use roxel::history::History;
 use roxel::shapes::ShapePrimitive;
@@ -312,14 +314,17 @@ pub enum Action {
     NewProject,
     OpenProject,
     OpenRecent(usize),
+    ClearRecent,
     SaveProject,
     SaveProjectAs,
     Import(ImportFormat),
     Export(ExportFormat),
     ExportShot,
+    Quit,
 
     Undo,
     Redo,
+    FillSelection,
     DeleteSelectionContents,
     ClearSelection,
     Copy,
@@ -338,6 +343,7 @@ pub enum Action {
     ToggleFlyby,
     ToggleFloorGrid,
     ToggleOriginAxes,
+    SetColorSpace(ColorSpace),
 
     SelectPalette(usize),
     AddColorToPalette,
@@ -347,9 +353,13 @@ pub enum Action {
     ImportAse,
     ExportAse,
 
+    ShowCommandPalette,
     Preferences,
     SetTheme(ThemePref),
+    ShowOnboarding,
     Changelog,
+    CheckForUpdates,
+    About,
 }
 
 /// Static description of an [`Action`]. `label` stands alone (command
@@ -393,12 +403,59 @@ pub struct ActionState<'a> {
     pub has_voxels: bool,
     pub dialog_busy: bool,
     pub flyby_active: bool,
+    pub checking_updates: bool,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
     pub active_colors: &'a [Color8],
     pub current_color: Color8,
     pub prefs: &'a Preferences,
     pub recent: &'a [PathBuf],
+}
+
+/// Read-only system params that build an [`ActionState`].
+#[derive(SystemParam)]
+pub struct ActionStateParams<'w> {
+    tool: Res<'w, ToolState>,
+    shape: Res<'w, ShapeOptions>,
+    history: Res<'w, History>,
+    selection: Res<'w, Selection>,
+    select_state: Res<'w, crate::select::SelectState>,
+    clipboard: Res<'w, crate::clipboard::Clipboard>,
+    grid: Res<'w, GridResource>,
+    pending: Res<'w, PendingDialog>,
+    flyby: Res<'w, FlybyState>,
+    updater: Res<'w, crate::updater::UpdateCheck>,
+    palettes: Res<'w, Palettes>,
+    choice: Res<'w, PaletteChoice>,
+    working: Res<'w, WorkingPalette>,
+    color: Res<'w, CurrentColor>,
+    prefs: Res<'w, Preferences>,
+    recent: Res<'w, RecentFiles>,
+}
+
+impl ActionStateParams<'_> {
+    pub fn get(&self) -> ActionState<'_> {
+        let choice = self.choice.0.min(self.palettes.0.len().saturating_sub(1));
+        ActionState {
+            tool: self.tool.current,
+            shape: self.shape.primitive,
+            has_undo: !self.history.undo.is_empty(),
+            has_redo: !self.history.redo.is_empty(),
+            has_selection: self.selection.aabb.is_some(),
+            selection_idle: self.select_state.phase == crate::select::SelectPhase::Idle,
+            has_clipboard: self.clipboard.has_stamp(),
+            has_voxels: self.grid.count() > 0,
+            dialog_busy: self.pending.is_active(),
+            flyby_active: self.flyby.active,
+            checking_updates: self.updater.is_checking(),
+            palettes: &self.palettes.0,
+            palette_choice: self.choice.0,
+            active_colors: crate::ui::display_colors(&self.palettes, &self.working, choice),
+            current_color: self.color.0,
+            prefs: &self.prefs,
+            recent: &self.recent.0,
+        }
+    }
 }
 
 impl ActionState<'_> {
@@ -428,8 +485,11 @@ impl Action {
         Action::Export(ExportFormat::Png),
         Action::ExportShot,
         Action::Export(ExportFormat::Svg),
+        Action::ClearRecent,
+        Action::Quit,
         Action::Undo,
         Action::Redo,
+        Action::FillSelection,
         Action::DeleteSelectionContents,
         Action::ClearSelection,
         Action::Cut,
@@ -460,17 +520,26 @@ impl Action {
         Action::ToggleFlyby,
         Action::ToggleFloorGrid,
         Action::ToggleOriginAxes,
+        Action::SetColorSpace(ColorSpace::Hex),
+        Action::SetColorSpace(ColorSpace::Rgb),
+        Action::SetColorSpace(ColorSpace::Hsl),
+        Action::SetColorSpace(ColorSpace::Hsb),
+        Action::SetColorSpace(ColorSpace::Oklch),
         Action::AddColorToPalette,
         Action::NewPalette,
         Action::DuplicatePalette,
         Action::DeletePalette,
         Action::ImportAse,
         Action::ExportAse,
+        Action::ShowCommandPalette,
         Action::Preferences,
         Action::SetTheme(ThemePref::System),
         Action::SetTheme(ThemePref::Light),
         Action::SetTheme(ThemePref::Dark),
+        Action::ShowOnboarding,
         Action::Changelog,
+        Action::CheckForUpdates,
+        Action::About,
     ];
 
     /// Every action the command palette lists for `s`: [`Action::STATIC`]
@@ -514,6 +583,13 @@ impl Action {
                 Some(Chord::cmd(K::KeyO)),
             ),
             Action::OpenRecent(_) => spec("Open recent", "Open recent", C::File, "recent", None),
+            Action::ClearRecent => spec(
+                "Clear recent files",
+                "Clear Menu",
+                C::File,
+                "recent history forget",
+                None,
+            ),
             Action::SaveProject => spec(
                 "Save project",
                 "Save",
@@ -537,6 +613,17 @@ impl Action {
                 "save write png image share social shot dribbble render poster",
                 None,
             ),
+            Action::Quit => spec(
+                "Quit Roxel",
+                QUIT_MENU_LABEL,
+                C::File,
+                "exit close",
+                if cfg!(target_os = "macos") {
+                    Some(Chord::cmd(K::KeyQ))
+                } else {
+                    None
+                },
+            ),
 
             Action::Undo => spec(
                 "Undo",
@@ -551,6 +638,13 @@ impl Action {
                 C::Edit,
                 "history",
                 Some(Chord::cmd_shift(K::KeyZ)),
+            ),
+            Action::FillSelection => spec(
+                "Fill selection",
+                "Fill Selection",
+                C::Edit,
+                "recolor paint bucket",
+                Some(Chord::key(K::KeyF)),
             ),
             Action::DeleteSelectionContents => spec(
                 "Delete selection contents",
@@ -720,6 +814,22 @@ impl Action {
                 "red green blue center point triad toggle",
                 None,
             ),
+            Action::SetColorSpace(space) => {
+                let label = match space {
+                    ColorSpace::Hex => "Color format: Hex",
+                    ColorSpace::Rgb => "Color format: RGB",
+                    ColorSpace::Hsl => "Color format: HSL",
+                    ColorSpace::Hsb => "Color format: HSB",
+                    ColorSpace::Oklch => "Color format: OKLCH",
+                };
+                spec(
+                    label,
+                    space.label(),
+                    C::View,
+                    "color space readout picker",
+                    None,
+                )
+            }
 
             Action::SelectPalette(_) => spec(
                 "Switch to palette",
@@ -767,6 +877,13 @@ impl Action {
                 None,
             ),
 
+            Action::ShowCommandPalette => spec(
+                "Command palette",
+                "Command Palette…",
+                C::View,
+                "search actions",
+                Some(Chord::cmd(K::KeyK)),
+            ),
             Action::Preferences => spec(
                 "Open Preferences…",
                 "Preferences…",
@@ -782,11 +899,32 @@ impl Action {
                 };
                 spec(label, menu_label, C::Preferences, keywords, None)
             }
+            Action::ShowOnboarding => spec(
+                "Show onboarding tour",
+                "Show Onboarding Tour…",
+                C::Help,
+                "tutorial intro welcome help",
+                None,
+            ),
             Action::Changelog => spec(
                 "Open Changelog",
                 "Changelog",
                 C::Help,
                 "release notes github",
+                None,
+            ),
+            Action::CheckForUpdates => spec(
+                "Check for updates…",
+                "Check for Updates…",
+                C::Help,
+                "version release new download",
+                None,
+            ),
+            Action::About => spec(
+                "About Roxel",
+                "About Roxel",
+                C::Help,
+                "version copyright credits",
                 None,
             ),
         }
@@ -826,7 +964,14 @@ impl Action {
     pub fn enabled(self, s: &ActionState) -> bool {
         let dialog_ok = !s.dialog_busy;
         match self {
-            Action::NewProject => true,
+            Action::NewProject
+            | Action::ClearRecent
+            | Action::Quit
+            | Action::SetColorSpace(_)
+            | Action::ShowCommandPalette
+            | Action::ShowOnboarding
+            | Action::About => true,
+            Action::CheckForUpdates => !s.checking_updates,
             Action::OpenProject
             | Action::SaveProject
             | Action::SaveProjectAs
@@ -837,7 +982,9 @@ impl Action {
             Action::ExportShot => s.has_voxels,
             Action::Undo => s.has_undo,
             Action::Redo => s.has_redo,
-            Action::DeleteSelectionContents => s.has_selection && s.selection_idle,
+            Action::FillSelection | Action::DeleteSelectionContents => {
+                s.has_selection && s.selection_idle
+            }
             Action::ClearSelection | Action::Copy | Action::Cut => s.has_selection,
             Action::Paste => s.has_clipboard,
             Action::DoubleDensity | Action::HalveDensity => s.has_voxels,
@@ -864,6 +1011,34 @@ impl Action {
         }
     }
 }
+
+impl Action {
+    /// Shown as a check item in menus.
+    pub fn is_check(self) -> bool {
+        matches!(
+            self,
+            Action::ToggleFloorGrid | Action::ToggleOriginAxes | Action::SetColorSpace(_)
+        )
+    }
+
+    /// Check state for [`Action::is_check`] actions.
+    pub fn checked(self, s: &ActionState) -> bool {
+        match self {
+            Action::ToggleFloorGrid => s.prefs.show_floor_grid,
+            Action::ToggleOriginAxes => s.prefs.show_origin_axes,
+            Action::SetColorSpace(space) => s.prefs.color_space == space,
+            _ => false,
+        }
+    }
+}
+
+const QUIT_MENU_LABEL: &str = if cfg!(target_os = "macos") {
+    "Quit Roxel"
+} else if cfg!(windows) {
+    "Exit"
+} else {
+    "Quit"
+};
 
 fn file_name(p: &Path) -> &str {
     p.file_name()
@@ -896,7 +1071,7 @@ pub struct DocParams<'w> {
     grid: ResMut<'w, GridResource>,
     guard: ResMut<'w, UnsavedGuard>,
     current_path: Res<'w, CurrentProjectPath>,
-    recent: Res<'w, RecentFiles>,
+    recent: ResMut<'w, RecentFiles>,
     toasts: ResMut<'w, Toasts>,
     shot_panel: ResMut<'w, crate::shot::ShotPanel>,
 }
@@ -906,6 +1081,8 @@ pub struct EditParams<'w, 's> {
     selection: ResMut<'w, Selection>,
     clipboard: ResMut<'w, crate::clipboard::Clipboard>,
     color: Res<'w, CurrentColor>,
+    extras: Res<'w, ExtraColors>,
+    recent_colors: ResMut<'w, RecentColors>,
     cursor: crate::clipboard::CursorView<'w, 's>,
 }
 
@@ -932,6 +1109,10 @@ pub struct PaletteOpParams<'w> {
 pub struct AppParams<'w> {
     prefs: ResMut<'w, Preferences>,
     prefs_window: ResMut<'w, PreferencesWindow>,
+    cmd_palette: ResMut<'w, CommandPalette>,
+    onboarding: ResMut<'w, crate::onboarding::Onboarding>,
+    updater: ResMut<'w, crate::updater::UpdateCheck>,
+    about: ResMut<'w, crate::menu::AboutWindow>,
 }
 
 #[derive(SystemParam)]
@@ -966,6 +1147,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
                 doc.guard.request(GuardedAction::Open(Some(path)));
             }
         }
+        Action::ClearRecent => doc.recent.clear(),
         Action::SaveProject => crate::ui::spawn_save(&mut doc.pending, &doc.current_path, last_dir),
         Action::SaveProjectAs => {
             crate::ui::spawn_save_as(&mut doc.pending, &doc.current_path, last_dir)
@@ -993,9 +1175,23 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
                 doc.shot_panel.open_panel();
             }
         }
+        Action::Quit => doc.guard.request(GuardedAction::Quit),
 
         Action::Undo => doc.history.undo(&mut doc.grid),
         Action::Redo => doc.history.redo(&mut doc.grid),
+        Action::FillSelection => {
+            if edit.selection.aabb.is_some() {
+                let pool = crate::tools::color_pool(edit.color.0, &edit.extras.0);
+                for c in crate::select::recolor_selection(
+                    &mut doc.grid,
+                    &mut doc.history,
+                    &edit.selection,
+                    &pool,
+                ) {
+                    edit.recent_colors.push(c);
+                }
+            }
+        }
         Action::DeleteSelectionContents => {
             if edit.selection.aabb.is_some() {
                 crate::select::clear_selection(&mut doc.grid, &mut doc.history, &edit.selection);
@@ -1090,6 +1286,12 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             app.prefs.show_origin_axes = !app.prefs.show_origin_axes;
             save_preferences(&app.prefs);
         }
+        Action::SetColorSpace(space) => {
+            if app.prefs.color_space != space {
+                app.prefs.color_space = space;
+                save_preferences(&app.prefs);
+            }
+        }
 
         Action::SelectPalette(i) => {
             if i < pal.palettes.0.len() {
@@ -1140,12 +1342,16 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             }
         }
 
+        Action::ShowCommandPalette => app.cmd_palette.toggle(),
         Action::Preferences => app.prefs_window.open = !app.prefs_window.open,
         Action::SetTheme(t) => {
             app.prefs.theme = t;
             save_preferences(&app.prefs);
         }
+        Action::ShowOnboarding => app.onboarding.start(),
         Action::Changelog => crate::updater::open_url(CHANGELOG_URL),
+        Action::CheckForUpdates => crate::updater::start_check(&mut app.updater, true),
+        Action::About => app.about.0 = true,
     }
 }
 
@@ -1169,6 +1375,7 @@ mod tests {
             has_voxels: false,
             dialog_busy: false,
             flyby_active: false,
+            checking_updates: false,
             palettes,
             palette_choice: 0,
             active_colors: &[],
@@ -1307,6 +1514,31 @@ mod tests {
         let s = state(&palettes, &prefs);
         assert!(!Action::SelectTool(Tool::Brush).enabled(&s));
         assert!(Action::SelectTool(Tool::Erase).enabled(&s));
+    }
+
+    #[test]
+    fn check_items_reflect_preferences() {
+        let palettes = vec![pal("A", true)];
+        let mut prefs = Preferences::default();
+        prefs.show_origin_axes = false;
+        prefs.color_space = ColorSpace::Hsl;
+        let s = state(&palettes, &prefs);
+        assert!(!Action::ToggleOriginAxes.checked(&s));
+        assert!(Action::SetColorSpace(ColorSpace::Hsl).checked(&s));
+        assert!(!Action::SetColorSpace(ColorSpace::Hex).checked(&s));
+        assert!(Action::SetColorSpace(ColorSpace::Hex).is_check());
+        assert!(!Action::Undo.is_check());
+    }
+
+    #[test]
+    fn fill_selection_waits_for_an_idle_selection() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_selection = true;
+        assert!(Action::FillSelection.enabled(&s));
+        s.selection_idle = false;
+        assert!(!Action::FillSelection.enabled(&s));
     }
 
     #[test]
