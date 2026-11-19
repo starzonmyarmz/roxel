@@ -13,6 +13,7 @@ Release notes.
 ## [Unreleased]
 
 - Saves and exports write to a temp file and rename, so a crash mid-save can't truncate the file.
+- An unreadable `palettes.ron` is kept as a backup instead of being overwritten by the next palette change.
 
 ## [0.7.1] - 2026-06-03
 

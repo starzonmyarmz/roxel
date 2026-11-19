@@ -98,6 +98,11 @@ fn main() {
         let [r, g, b] = resolve_canvas_color(&prefs, &theme);
         Color::srgb_u8(r, g, b)
     };
+    let (palettes, palette_load_issue) = Palettes::with_user_loaded();
+    let mut toasts = Toasts::default();
+    if let Some(msg) = palette_load_issue {
+        toasts.error(msg);
+    }
     let mut app = App::new();
     app.insert_resource(prefs)
         .insert_resource(theme)
@@ -157,7 +162,7 @@ fn main() {
         .init_resource::<WorkingPalette>()
         .init_resource::<DiscardConfirm>()
         .init_resource::<PaletteSwitcher>()
-        .insert_resource(Palettes::with_user_loaded())
+        .insert_resource(palettes)
         .init_resource::<crate::shot::ShotRequest>()
         .init_resource::<crate::shot::ShotSession>()
         .init_resource::<crate::shot::ShotPanel>()
@@ -179,7 +184,7 @@ fn main() {
         })
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
-        .init_resource::<Toasts>()
+        .insert_resource(toasts)
         .init_resource::<crate::updater::UpdateCheck>()
         .init_resource::<CommandPalette>()
         .init_resource::<Onboarding>()

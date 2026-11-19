@@ -8,10 +8,13 @@ pub struct Palettes(pub Vec<Palette>);
 
 impl Palettes {
     /// Built-ins followed by user palettes loaded from disk.
-    pub fn with_user_loaded() -> Self {
+    /// Built-ins plus the user's saved palettes, and a message to toast when
+    /// the saved file couldn't be read.
+    pub fn with_user_loaded() -> (Self, Option<String>) {
         let mut me = Self::default();
-        me.0.extend(io::palettes::load());
-        me
+        let loaded = io::palettes::load();
+        me.0.extend(loaded.palettes);
+        (me, loaded.issue.map(|i| i.message()))
     }
 }
 

@@ -40,7 +40,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 ## Persisted resources
 
-`io::palettes` persists user palettes (built-ins filtered out) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave.
+`io::palettes` persists user palettes (built-ins filtered out) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave. **A file that won't parse is never overwritten:** `load` renames it to `palettes.ron.corrupt-<unix secs>` (`LoadIssue::MovedAside`); if it can't be read or renamed, `save` is turned off for the session (`LoadIssue::SaveDisabled`). `main` toasts `LoadIssue::message()` at startup.
 
 `io::recent` persists recent `.rox` paths (cap `MAX_RECENT = 10`) to `{config_dir}/roxel/recent.ron`. `RecentFiles` resource (`ui/dialogs.rs`) is hydrated on startup; `poll_dialogs_system` pushes after successful open/save. Drives in-app Open Recent submenu (`ui.rs`) and macOS native File menu (`menu.rs`).
 
