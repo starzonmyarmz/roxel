@@ -254,12 +254,14 @@ pub fn ui_system(
         onboarding_anchors.tool_rail = Some(island_resp.rect);
     }
 
+    let bounds = grid.bypass_change_detection().bounding_box_cached();
     let palette_menu = inspector::palette_menu_rows(&action_state!());
     let inspector_resp = inspector::inspector_panel(
         ctx,
         ui_visible.0,
         &theme,
-        &mut grid,
+        &grid,
+        bounds,
         &history,
         &zoom,
         &current_path,

@@ -78,7 +78,8 @@ pub fn inspector_panel(
     ctx: &egui::Context,
     ui_visible_on: bool,
     theme: &Theme,
-    grid: &mut VoxelGrid,
+    grid: &VoxelGrid,
+    bounds: Option<(bevy::math::IVec3, bevy::math::IVec3)>,
     history: &History,
     zoom: &ZoomReadout<'_, '_>,
     current_path: &CurrentProjectPath,
@@ -153,7 +154,7 @@ pub fn inspector_panel(
                                         doc_name.to_string()
                                     };
                                     widgets::stat_row(ui, theme, "File", file_label);
-                                    let design_label = match grid.bounding_box_cached() {
+                                    let design_label = match bounds {
                                         Some((min, max)) => {
                                             let extent = max - min + bevy::math::IVec3::ONE;
                                             format!("{} × {} × {}", extent.x, extent.y, extent.z)
