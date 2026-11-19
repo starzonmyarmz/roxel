@@ -1,4 +1,4 @@
-use crate::grid::{CHUNK_I, Color8, VoxelGrid};
+use crate::grid::{CHUNK, CHUNK_I, Color8, VoxelGrid, local_idx};
 use glam::{IVec3, Vec3};
 
 pub struct Face {
@@ -118,7 +118,7 @@ pub struct GreedyQuad {
 
 /// Greedy-merge every same-color exterior face in the grid, chunk by chunk.
 /// Whole-scene callers (the Shot mesh); the renderer goes through
-/// `greedy_quads_bounded` per dirty chunk.
+/// `greedy_quads_chunk` per dirty chunk.
 pub fn greedy_quads(
     grid: &VoxelGrid,
     hide: Option<IVec3>,
@@ -126,38 +126,78 @@ pub fn greedy_quads(
 ) -> Vec<GreedyQuad> {
     let mut out = Vec::new();
     for coord in grid.chunks.keys().copied().collect::<Vec<_>>() {
-        let min = coord * CHUNK_I;
-        let max = min + IVec3::splat(CHUNK_I);
-        out.extend(greedy_quads_bounded(grid, hide, recolor, min, max));
+        out.extend(greedy_quads_chunk(grid, coord, hide, recolor));
     }
     out
 }
 
-/// Greedy-merge exterior faces of voxels in the half-open box `[min, max)`.
-/// Cross-bounds occlusion still queries the full grid so emitted quads agree
-/// at chunk seams with the equivalent monolithic call. `recolor` swaps the
-/// emitted color for a single cell — used by the Paint preview to ghost the
-/// target color without mutating the grid.
-pub fn greedy_quads_bounded(
+const PAD: usize = CHUNK + 2;
+const PAD_I: i32 = PAD as i32;
+
+#[inline]
+fn padded_idx(p: IVec3) -> usize {
+    (p.x as usize * PAD + p.y as usize) * PAD + p.z as usize
+}
+
+/// Indexed by `padded_idx(world - (coord * CHUNK - 1))`.
+fn padded_chunk(
     grid: &VoxelGrid,
+    coord: IVec3,
     hide: Option<IVec3>,
     recolor: Option<(IVec3, Color8)>,
-    min: IVec3,
-    max: IVec3,
-) -> Vec<GreedyQuad> {
-    let cell_filled = |p: IVec3| -> Option<[u8; 4]> {
-        if hide == Some(p) {
-            return None;
-        }
-        let base = grid.get(p)?;
-        if let Some((cell, c)) = recolor
-            && cell == p
-        {
-            Some([c[0], c[1], c[2], base[3]])
-        } else {
-            Some(base)
-        }
+) -> Vec<Option<Color8>> {
+    let origin = coord * CHUNK_I - IVec3::ONE;
+    let mut cells = vec![None; PAD * PAD * PAD];
+    let span = |n: i32| match n {
+        -1 => 0..=0,
+        0 => 1..=CHUNK_I,
+        _ => PAD_I - 1..=PAD_I - 1,
     };
+    for nx in -1..=1 {
+        for ny in -1..=1 {
+            for nz in -1..=1 {
+                let n = IVec3::new(nx, ny, nz);
+                let Some(chunk) = grid.chunks.get(&(coord + n)) else {
+                    continue;
+                };
+                for x in span(nx) {
+                    for y in span(ny) {
+                        for z in span(nz) {
+                            let p = IVec3::new(x, y, z);
+                            cells[padded_idx(p)] = chunk.cells[local_idx(origin + p)];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let inside = |p: IVec3| p.cmpge(IVec3::ZERO).all() && p.cmplt(IVec3::splat(PAD_I)).all();
+    if let Some(p) = hide.map(|h| h - origin).filter(|&p| inside(p)) {
+        cells[padded_idx(p)] = None;
+    }
+    if let Some((p, c)) = recolor
+        .map(|(r, c)| (r - origin, c))
+        .filter(|&(p, _)| inside(p))
+        && let Some(base) = &mut cells[padded_idx(p)]
+    {
+        *base = [c[0], c[1], c[2], base[3]];
+    }
+    cells
+}
+
+/// `hide` drops a cell and `recolor` swaps one cell's color (alpha kept): the
+/// Erase and Paint previews.
+pub fn greedy_quads_chunk(
+    grid: &VoxelGrid,
+    coord: IVec3,
+    hide: Option<IVec3>,
+    recolor: Option<(IVec3, Color8)>,
+) -> Vec<GreedyQuad> {
+    let min = coord * CHUNK_I;
+    let max = min + IVec3::splat(CHUNK_I);
+    let origin = min - IVec3::ONE;
+    let padded = padded_chunk(grid, coord, hide, recolor);
+    let cell_filled = |p: IVec3| padded[padded_idx(p - origin)];
 
     let mut quads = Vec::new();
     let min_a = [min.x, min.y, min.z];
@@ -389,9 +429,7 @@ mod tests {
             // Independently walk chunk coords and aggregate.
             let mut out = Vec::new();
             for coord in g.chunks.keys().copied().collect::<Vec<_>>() {
-                let min = coord * CHUNK_I;
-                let max = min + IVec3::splat(CHUNK_I);
-                out.extend(greedy_quads_bounded(&g, None, None, min, max));
+                out.extend(greedy_quads_chunk(&g, coord, None, None));
             }
             out
         };
@@ -411,6 +449,22 @@ mod tests {
         let total: i64 = area_by_face(&quads).iter().sum();
         // 2 caps (1 area each) + 4 long sides (2 area each) = 10.
         assert_eq!(total, 10);
+    }
+
+    #[test]
+    fn hiding_a_cell_across_a_seam_exposes_its_neighbours_face() {
+        let mut g = VoxelGrid::default();
+        let left = IVec3::new(CHUNK_I - 1, 0, 0);
+        let right = IVec3::new(CHUNK_I, 0, 0);
+        g.set(left, Some([1, 1, 1, 255]));
+        g.set(right, Some([1, 1, 1, 255]));
+        assert_eq!(greedy_quads_chunk(&g, IVec3::ZERO, None, None).len(), 5);
+        assert_eq!(
+            greedy_quads_chunk(&g, IVec3::ZERO, Some(right), None).len(),
+            6
+        );
+        let neg = greedy_quads_chunk(&g, IVec3::new(-1, 0, 0), None, None);
+        assert!(neg.is_empty());
     }
 
     #[test]

@@ -52,7 +52,7 @@ pub fn chunk_coord(p: IVec3) -> IVec3 {
 }
 
 #[inline]
-fn local_idx(p: IVec3) -> usize {
+pub(crate) fn local_idx(p: IVec3) -> usize {
     let lx = p.x.rem_euclid(CHUNK_I) as usize;
     let ly = p.y.rem_euclid(CHUNK_I) as usize;
     let lz = p.z.rem_euclid(CHUNK_I) as usize;

@@ -3,11 +3,11 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use roxel::grid::{CHUNK_I, Color8, VoxelGrid, chunk_coord};
+use roxel::grid::{Color8, VoxelGrid, chunk_coord};
 use std::collections::HashMap;
 
 pub use roxel::mesh_util::{FACES, face_shade, srgb_to_linear};
-use roxel::mesh_util::{GreedyQuad, greedy_quads, greedy_quads_bounded};
+use roxel::mesh_util::{GreedyQuad, greedy_quads, greedy_quads_chunk};
 
 #[derive(Component)]
 pub struct VoxelMesh;
@@ -169,15 +169,8 @@ pub fn regenerate_mesh_system(
             continue;
         }
 
-        let min = coord * CHUNK_I;
-        let max = min + IVec3::splat(CHUNK_I);
-        let new_mesh = build_mesh_from_quads(greedy_quads_bounded(
-            &grid,
-            hide.cell,
-            hide.recolor,
-            min,
-            max,
-        ));
+        let new_mesh =
+            build_mesh_from_quads(greedy_quads_chunk(&grid, coord, hide.cell, hide.recolor));
 
         if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
             if let Some(slot) = meshes.get_mut(handle) {
