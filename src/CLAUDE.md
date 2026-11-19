@@ -164,6 +164,10 @@ Cards do NOT highlight anchored widgets or draw arrows — proximity to the anch
 
 Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `onboarding_overlay_system` (draws cards in `EguiPrimaryContextPass`).
 
+## Crash log
+
+`crash_log.rs` — `install()` (first line of `main`) chains a panic hook that appends version, OS/arch, thread, location, message and a forced backtrace to `dirs::config_dir()/roxel/crash.log` (rotated to `crash.log.old` past `MAX_LOG_BYTES`), then calls the previous hook. Packaged apps have no visible stderr, so this is the only trace of a crash. No `chrono`: `unix_to_utc` formats the timestamp.
+
 ## Updater
 
 `updater.rs` — background GitHub Releases check via `ureq`. `REPO = "starzonmyarmz/roxel"`, `RATE_LIMIT_SECS = 24h`, `HTTP_TIMEOUT_SECS = 10`. `UpdateCheck(UpdateState)` resource is the state machine (idle/checking/ready/failed). `start_check(state, manual)` spawns the HTTP task on `AsyncComputeTaskPool`; `poll_update_check_system` drains via `block_on(future::poll_once)`. `startup_check_system` honours `preferences.last_update_check` rate limit; manual check from command palette ignores it.

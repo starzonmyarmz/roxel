@@ -3,6 +3,7 @@
 mod actions;
 mod camera;
 mod clipboard;
+mod crash_log;
 mod gizmo;
 mod icon;
 mod lighting;
@@ -89,6 +90,7 @@ use roxel::grid::{
 use roxel::history::History;
 
 fn main() {
+    crash_log::install();
     let prefs = load_preferences();
     let theme = resolve_theme(prefs.theme);
     let initial_shape = ShapeOptions {

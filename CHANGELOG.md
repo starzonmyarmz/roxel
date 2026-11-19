@@ -12,6 +12,8 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- Crashes are written to `crash.log` in Roxel's settings folder, so packaged builds leave a report to attach to an issue.
+
 ## [0.14.1] - 2026-11-19
 
 - Saves and exports write to a temp file and rename, so a crash mid-save can't truncate the file.
