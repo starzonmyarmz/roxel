@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Roxel doesn't work the way it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect to see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a new project
+        2. Pick the Shape tool
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Roxel version
+      description: Shown under Help → About Roxel (on macOS, Roxel → About Roxel).
+      placeholder: e.g. 0.14.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: e.g. macOS 26.1, Windows 11 24H2, Ubuntu 24.04
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash log
+      description: |
+        If Roxel crashed, paste the last report from `crash.log` in Roxel's settings folder:
+        `~/Library/Application Support/roxel/` (macOS), `%APPDATA%\roxel\` (Windows) or `~/.config/roxel/` (Linux).
+      render: text
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or files
+      description: Drag in a screenshot, or a zipped `.rox` / `.vox` file that shows the problem.

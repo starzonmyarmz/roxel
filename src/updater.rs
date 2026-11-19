@@ -121,13 +121,17 @@ pub enum CheckOutcome {
 fn fetch_latest() -> Result<CheckOutcome, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
     let ua = format!("roxel/{}", env!("CARGO_PKG_VERSION"));
-    let resp = ureq::get(&url)
-        .set("User-Agent", &ua)
-        .set("Accept", "application/vnd.github+json")
-        .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(HTTP_TIMEOUT_SECS)))
+        .build()
+        .into();
+    let body = agent
+        .get(&url)
+        .header("User-Agent", &ua)
+        .header("Accept", "application/vnd.github+json")
         .call()
+        .and_then(|mut resp| resp.body_mut().read_to_string())
         .map_err(|e| format!("{e}"))?;
-    let body = resp.into_string().map_err(|e| format!("{e}"))?;
     let rel = parse_release_json(&body).ok_or_else(|| "could not parse release".to_string())?;
     if is_newer(&current_version(), &rel.version) {
         Ok(CheckOutcome::Newer(rel))

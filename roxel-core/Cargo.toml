@@ -14,5 +14,5 @@ dot_vox = "5"
 glam = "0.30"
 ron = "0.12"
 serde = { version = "1", features = ["derive"] }
-dirs = "5"
+dirs = "7"
 zstd = "0.13"

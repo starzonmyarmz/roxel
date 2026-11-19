@@ -1,5 +1,7 @@
 # Contributing to Roxel
 
+Report bugs and request features through the [issue forms](https://github.com/starzonmyarmz/roxel/issues/new/choose). Report security problems privately as described in [SECURITY.md](SECURITY.md). Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## One-time setup
 
 Point git at the tracked hooks:

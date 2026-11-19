@@ -23,6 +23,18 @@ To bypass:
 
 Windows builds are unsigned, so SmartScreen warns on first run. Click **More info** → **Run anyway**.
 
+## If Roxel crashes
+
+Roxel writes a crash report to `crash.log` in its settings folder:
+
+| Platform | Folder |
+| -------- | ------ |
+| macOS    | `~/Library/Application Support/roxel/` |
+| Windows  | `%APPDATA%\roxel\` |
+| Linux    | `~/.config/roxel/` (or `$XDG_CONFIG_HOME/roxel/`) |
+
+Each report has the Roxel version, your OS and where the crash happened. Nothing is sent anywhere. Attach the file when you [open an issue](https://github.com/starzonmyarmz/roxel/issues/new/choose). When the log gets large, Roxel moves it to `crash.log.old` and starts a new one.
+
 ## Building from source
 
 Roxel is a Rust project. With a recent stable toolchain installed:
