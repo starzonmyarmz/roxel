@@ -58,9 +58,11 @@ identifier = "com.danielmarino.roxel"
 icon = ["assets/icons/roxel.icns"]
 category = "public.app-category.graphics-design"
 short_description = "Voxel editor"
+
+[package.metadata.bundle.osx]
 # Merged into the generated Info.plist so macOS associates `.rox` with Roxel
 # (CFBundleDocumentTypes + UTI). The matching launch handler is src/open_file.rs.
-osx_info_plist_exts = ["assets/Info.plist.ext"]
+info_plist_exts = ["assets/Info.plist.ext"]
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
