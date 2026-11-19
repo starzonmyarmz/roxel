@@ -12,7 +12,7 @@ Every `set` flips `dirty`, inserts owning chunk into `dirty_chunks`, plus seam-n
 
 ## Mesher
 
-`regenerate_mesh_system` drains `dirty_chunks` each frame. Chunks with data → spawn/update entity; emptied → despawn. Entities live in `VoxelChunkMeshes`. Mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces in a `[min, max)` chunk-aligned box but queries the **full grid** for cross-bounds occlusion (quads agree at seams). Base colors run through `srgb_to_linear` before upload — Bevy expects linear vertex colors.
+`regenerate_mesh_system` drains `dirty_chunks` each frame. **Every `Update` system that writes the grid is ordered `.before(regenerate_mesh_system)`** (tool input, move drag, arrow nudge, `apply_actions_system`, `poll_dialogs_system`, `apply_new_project_system`) so an edit meshes the same frame; add the constraint to any new writer. Chunks with data → spawn/update entity; emptied → despawn. Entities live in `VoxelChunkMeshes`. Mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces in a `[min, max)` chunk-aligned box but queries the **full grid** for cross-bounds occlusion (quads agree at seams). Base colors run through `srgb_to_linear` before upload — Bevy expects linear vertex colors.
 
 `PreviewHide` (`mesh.rs`): erase preview hides target cell; paint preview swaps it in place via `PreviewHide.recolor`. Change to either re-triggers chunk rebuild even when `grid.dirty` is false. Driven by `brush_preview_system` (`preview.rs`) and `shape_preview_system` (`shape_preview.rs`), both scheduled `before(regenerate_mesh_system)`.
 

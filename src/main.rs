@@ -207,7 +207,8 @@ fn main() {
                 crate::actions::apply_actions_system
                     .before(resolve_unsaved_guard_system)
                     .before(apply_pending_view_preset_system)
-                    .before(frame_view_system),
+                    .before(frame_view_system)
+                    .before(regenerate_mesh_system),
             ),
         );
     app.init_resource::<crate::menu::AboutWindow>();
@@ -242,10 +243,10 @@ fn main() {
         Update,
         (
             alt_eyedropper_system,
-            tool_input_system,
-            move_drag_system,
+            tool_input_system.before(regenerate_mesh_system),
+            move_drag_system.before(regenerate_mesh_system),
             regenerate_mesh_system,
-            poll_dialogs_system,
+            poll_dialogs_system.before(regenerate_mesh_system),
             sync_gizmo_camera,
             gizmo_drag_system,
             update_gizmo_hover,
@@ -270,7 +271,7 @@ fn main() {
         Update,
         (
             crate::select::selection_escape_system,
-            crate::select::move_selection_keys_system,
+            crate::select::move_selection_keys_system.before(regenerate_mesh_system),
             request_quit_on_close_system.before(resolve_unsaved_guard_system),
             resolve_unsaved_guard_system.before(apply_new_project_system),
             apply_new_project_system.before(regenerate_mesh_system),
