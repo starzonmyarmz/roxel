@@ -200,6 +200,7 @@ fn main() {
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
     app.init_resource::<crate::menu::MenuQueue>()
+        .init_resource::<crate::menu::AboutWindow>()
         .add_systems(Update, crate::menu::apply_menu_actions_system);
     #[cfg(target_os = "macos")]
     {

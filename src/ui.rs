@@ -96,6 +96,7 @@ pub struct UiState<'w> {
     pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
     pub menu_queue: ResMut<'w, crate::menu::MenuQueue>,
     pub recent_files: Res<'w, RecentFiles>,
+    pub about: ResMut<'w, crate::menu::AboutWindow>,
 }
 
 #[derive(SystemParam)]
@@ -167,6 +168,7 @@ pub fn ui_system(
         mut shot_panel,
         mut menu_queue,
         recent_files,
+        mut about,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -197,6 +199,7 @@ pub fn ui_system(
         || discard.pending.is_some()
         || delete.pending.is_some()
         || shot_panel.open
+        || about.0
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
@@ -394,6 +397,10 @@ pub fn ui_system(
             &prefs.last_dir,
             prefs.color_space,
         );
+    }
+
+    if about.0 && modals::draw_about(ctx, &theme) {
+        about.0 = false;
     }
 
     if cmd_palette.open {

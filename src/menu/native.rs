@@ -88,7 +88,7 @@ fn build_menu() -> MenuStore {
                 Some(AboutMetadata {
                     name: Some("Roxel".into()),
                     version: Some(env!("CARGO_PKG_VERSION").into()),
-                    copyright: Some("© 2026 Daniel Marino".into()),
+                    copyright: Some(super::COPYRIGHT.into()),
                     ..Default::default()
                 }),
             ),

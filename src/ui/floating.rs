@@ -583,6 +583,7 @@ pub fn pill_menu_contents(
             MenuAction::ShowOnboarding,
         );
         item(ui, out, "Changelog", "", true, MenuAction::Changelog);
+        ui.separator();
         item(
             ui,
             out,
@@ -591,6 +592,7 @@ pub fn pill_menu_contents(
             !s.checking_updates,
             MenuAction::CheckForUpdates,
         );
+        item(ui, out, "About Roxel", "", true, MenuAction::About);
     });
 
     ui.add_space(space::SM);

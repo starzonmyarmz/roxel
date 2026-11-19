@@ -50,6 +50,8 @@ pub enum MenuAction {
     HalveDensity,
     Preferences,
     Changelog,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    About,
     ShowOnboarding,
     CheckForUpdates,
     ShowCommandPalette,
@@ -61,7 +63,13 @@ pub enum MenuAction {
     ToggleOriginAxes,
 }
 
-const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
+pub const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
+pub const COPYRIGHT: &str = "© 2026 Daniel Marino";
+
+/// Whether the About Roxel modal is showing. macOS uses the native About
+/// panel instead.
+#[derive(Resource, Default)]
+pub struct AboutWindow(pub bool);
 
 #[derive(Resource, Default)]
 pub struct MenuQueue(pub Vec<MenuAction>);
@@ -97,6 +105,7 @@ pub struct MenuActionParams<'w> {
     pub toasts: ResMut<'w, crate::ui::Toasts>,
     pub onboarding: ResMut<'w, crate::onboarding::Onboarding>,
     pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
+    pub about: ResMut<'w, AboutWindow>,
 }
 
 pub fn apply_menu_actions_system(mut p: MenuActionParams) {
@@ -206,6 +215,7 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
                 p.prefs_window.open = !p.prefs_window.open;
             }
             MenuAction::Changelog => crate::updater::open_url(CHANGELOG_URL),
+            MenuAction::About => p.about.0 = true,
             MenuAction::ShowOnboarding => {
                 p.onboarding.start();
             }
