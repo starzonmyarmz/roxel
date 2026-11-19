@@ -2,6 +2,10 @@
 
 This walkthrough gets you from a blank grid to a saved model.
 
+## The tour
+
+The first time you open Roxel, a short tour points out the canvas, the tools, the color palette and the orientation cube. Click through it or close it; it won't come back on its own. To see it again, choose **Help → Show Onboarding Tour…**.
+
 ## The canvas
 
 Roxel opens on an open-world 3D voxel grid. You can paint anywhere on the horizontal (X / Z) plane and as high as memory allows. The floor at `y = 0` is the only hard boundary — you can't paint below it.
@@ -31,11 +35,15 @@ The default angle is isometric.
 - **`Cmd/Ctrl + Z`** — undo
 - **`Cmd/Ctrl + Shift + Z`** — redo
 
-Roxel keeps a deep undo history, so experiment freely.
+Roxel keeps the last 200 steps, so experiment freely.
+
+## Finding a command
+
+Press **`Cmd/Ctrl + K`** to open the command palette. Type part of a command's name, like "sphere" or "export", and press `Enter` to run it. Every menu command is there, with its shortcut.
 
 ## Saving your work
 
-Roxel's native project format is `.rox`, a compact binary file. Save and load from the menu. The **Open Recent** menu keeps your last 10 projects one click away.
+Roxel's native project format is `.rox`, a compact binary file. Save with `Cmd/Ctrl + S` and open with `Cmd/Ctrl + O`. The **Open Recent** menu keeps your last 10 projects one click away.
 
 To share or use your model elsewhere, see [Import & Export](import-export.md).
 
