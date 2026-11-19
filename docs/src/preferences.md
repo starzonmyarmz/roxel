@@ -6,6 +6,10 @@ Roxel's UI is canvas-first: a single left inspector, a floating tool island, and
 
 Choose **Light**, **Dark**, or **System** (follows your OS setting).
 
+## UI scale
+
+**Preferences → Appearance → UI scale** sizes the interface from 80% to 150%: panels, menus, dialogs and text. The 3D canvas isn't scaled.
+
 ## Canvas appearance
 
 Independent of the UI theme, you can set:

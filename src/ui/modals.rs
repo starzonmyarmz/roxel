@@ -20,6 +20,15 @@ use bevy_egui::egui;
 use roxel::io;
 use std::path::PathBuf;
 
+const UI_SCALE_LABELS: [(u16, &str); 6] = [
+    (80, "80%"),
+    (90, "90%"),
+    (100, "100%"),
+    (110, "110%"),
+    (125, "125%"),
+    (150, "150%"),
+];
+
 /// Preferences modal: appearance, canvas, visibility, and color-format rows.
 /// Persists `Preferences` only when a field actually changed this frame.
 pub fn draw_preferences(
@@ -37,6 +46,13 @@ pub fn draw_preferences(
                 widgets::chip_button(ui, theme, &mut prefs.theme, ThemePref::System, "System");
                 widgets::chip_button(ui, theme, &mut prefs.theme, ThemePref::Light, "Light");
                 widgets::chip_button(ui, theme, &mut prefs.theme, ThemePref::Dark, "Dark");
+            });
+            widgets::prefs_row(ui, theme, "UI scale", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (scale, label) in UI_SCALE_LABELS {
+                        widgets::chip_button(ui, theme, &mut prefs.ui_scale, scale, label);
+                    }
+                });
             });
         });
 
@@ -591,6 +607,15 @@ pub fn draw_shot_panel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ui_scale_chips_cover_every_offered_scale() {
+        let scales: Vec<u16> = UI_SCALE_LABELS.iter().map(|(s, _)| *s).collect();
+        assert_eq!(scales, crate::theme::UI_SCALES);
+        for (scale, label) in UI_SCALE_LABELS {
+            assert_eq!(label, format!("{scale}%"));
+        }
+    }
 
     #[test]
     fn unsaved_copy_names_the_action_and_document() {

@@ -28,6 +28,9 @@ pub struct GizmoFace {
     pub base: Color,
 }
 
+/// The orientation cube's screen rect in logical window pixels (the space of
+/// `Window::cursor_position`), not egui points, which differ once the UI
+/// scale isn't 100%.
 #[derive(Resource, Default)]
 pub struct GizmoRect(pub Option<bevy::math::Rect>);
 
@@ -285,9 +288,11 @@ pub fn update_gizmo_viewport(
         depth: 0.0..1.0,
     });
 
+    let to_logical = 1.0 / window.scale_factor();
+    let min = UVec2::new(x, y).as_vec2() * to_logical;
     rect_res.0 = Some(bevy::math::Rect {
-        min: Vec2::new(x_pt, y_pt),
-        max: Vec2::new(x_pt + GIZMO_SIZE_PT, y_pt + GIZMO_SIZE_PT),
+        min,
+        max: min + Vec2::splat(size_phys as f32 * to_logical),
     });
     Ok(())
 }

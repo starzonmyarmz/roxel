@@ -499,6 +499,29 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_ui_scale_field() {
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.ui_scale, 100);
+        assert_eq!(p.ui_zoom(), 1.0);
+    }
+
+    #[test]
+    fn ui_zoom_clamps_to_the_offered_range() {
+        let at = |ui_scale| {
+            Preferences {
+                ui_scale,
+                ..Default::default()
+            }
+            .ui_zoom()
+        };
+        assert_eq!(at(125), 1.25);
+        assert_eq!(at(10), 0.8);
+        assert_eq!(at(900), 1.5);
+        assert!(UI_SCALES.contains(&default_ui_scale()));
+    }
+
+    #[test]
     fn preferences_roundtrip_last_shape() {
         let prefs = Preferences {
             last_shape: ShapePrimitive::Ellipse,
@@ -561,6 +584,43 @@ pub struct Preferences {
     /// Last shape primitive chosen for the Shape tool, restored on launch.
     #[serde(default)]
     pub last_shape: ShapePrimitive,
+    /// Interface scale in percent, one of [`UI_SCALES`]. Applied as the egui
+    /// context's scale factor; the 3D canvas is unaffected.
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: u16,
+}
+
+/// UI scale choices offered in Preferences, in percent.
+pub const UI_SCALES: [u16; 6] = [80, 90, 100, 110, 125, 150];
+
+fn default_ui_scale() -> u16 {
+    100
+}
+
+impl Preferences {
+    /// egui points per logical window pixel for [`Preferences::ui_scale`],
+    /// clamped to the offered range so a hand-edited preferences.ron can't
+    /// make the UI unusable.
+    pub fn ui_zoom(&self) -> f32 {
+        let lo = UI_SCALES[0];
+        let hi = UI_SCALES[UI_SCALES.len() - 1];
+        f32::from(self.ui_scale.clamp(lo, hi)) / 100.0
+    }
+}
+
+/// Apply [`Preferences::ui_zoom`] through bevy_egui's per-context scale
+/// factor. egui's own `set_zoom_factor` doesn't stick: bevy_egui calls
+/// `set_pixels_per_point` every frame.
+pub fn apply_ui_scale_system(
+    prefs: Res<Preferences>,
+    mut contexts: Query<&mut bevy_egui::EguiContextSettings, With<bevy_egui::PrimaryEguiContext>>,
+) {
+    let zoom = prefs.ui_zoom();
+    for mut settings in &mut contexts {
+        if settings.scale_factor != zoom {
+            settings.scale_factor = zoom;
+        }
+    }
 }
 
 fn default_auto_update_check() -> bool {
@@ -597,6 +657,7 @@ impl Default for Preferences {
             auto_update_check: default_auto_update_check(),
             last_dir: None,
             last_shape: ShapePrimitive::default(),
+            ui_scale: default_ui_scale(),
         }
     }
 }

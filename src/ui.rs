@@ -319,6 +319,7 @@ pub fn ui_system(
                 .0
                 .zip(ctx.pointer_latest_pos())
                 .is_some_and(|(r, p)| {
+                    let p = p * prefs.ui_zoom();
                     p.x >= r.min.x && p.x <= r.max.x && p.y >= r.min.y && p.y <= r.max.y
                 });
         let cursor = if gizmo_view.drag.active {

@@ -288,6 +288,7 @@ fn main() {
         (
             crate::icon::set_window_icon,
             refresh_theme_system,
+            crate::theme::apply_ui_scale_system,
             zoom_click_system,
             apply_canvas_bg_system,
             floor_dots_system,

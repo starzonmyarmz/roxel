@@ -125,12 +125,16 @@ fn resolve_anchor(
     anchors: &OnboardingAnchors,
     viewport: &ViewportRect,
     gizmo: &GizmoRect,
+    zoom: f32,
 ) -> Option<egui::Rect> {
     match id {
         AnchorId::Viewport => viewport.avail.map(rect_from_bevy),
         AnchorId::ToolRail => anchors.tool_rail,
         AnchorId::ColorPalette => anchors.color_palette,
-        AnchorId::GizmoCube => gizmo.0.map(rect_from_bevy),
+        AnchorId::GizmoCube => gizmo.0.map(|r| {
+            let r = rect_from_bevy(r);
+            egui::Rect::from_min_max(r.min / zoom, r.max / zoom)
+        }),
     }
 }
 
@@ -243,6 +247,7 @@ pub fn onboarding_overlay_system(
         &anchor_params.anchors,
         &anchor_params.viewport,
         &anchor_params.gizmo,
+        prefs.ui_zoom(),
     ) {
         Some(r) => r,
         None => {
