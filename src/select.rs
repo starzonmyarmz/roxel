@@ -559,7 +559,15 @@ pub fn selection_render_system(
     time: Res<Time>,
     snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
     mut gizmos: Gizmos<SelectionGizmos>,
+    mut silhouette: Local<Vec<(u8, IVec3)>>,
 ) {
+    if selection.is_changed() {
+        *silhouette = selection
+            .cells
+            .as_ref()
+            .map(silhouette_edges)
+            .unwrap_or_default();
+    }
     if snapshot_active.0 {
         return;
     }
@@ -578,10 +586,8 @@ pub fn selection_render_system(
 
     // Per-cell mask wins: trace the silhouette of the masked region so the
     // marching ants follow one merged shape instead of every voxel's cube.
-    if state.phase == SelectPhase::Idle
-        && let Some(cells) = &selection.cells
-    {
-        for (axis, anchor) in silhouette_edges(cells) {
+    if state.phase == SelectPhase::Idle && selection.cells.is_some() {
+        for &(axis, anchor) in silhouette.iter() {
             let a = Vec3::new(anchor.x as f32, anchor.y as f32, anchor.z as f32);
             let mut b = a;
             match axis {
