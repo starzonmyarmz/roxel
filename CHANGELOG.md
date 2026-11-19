@@ -28,6 +28,7 @@ Release notes.
 - Keyboard shortcuts no longer act on the scene while you're typing in a text field or a dialog is open.
 - The command palette lists every menu command, including Open Recent, color formats, Rename palette, onboarding and Check for Updates.
 - Palette actions behave the same in the inspector and the command palette; New and Duplicate open the rename field.
+- Every release is published to https://starzonmyarmz.itch.io/roxel after its GitHub Release, so the itch app can install and update Roxel.
 - macOS: Paste from the Edit menu (or ⌘V) lands under the cursor, like it does on Windows and Linux.
 - Edit → Select All (Cmd/Ctrl+A) is now in the menu.
 - Undo, cut, paste, fill, delete and arrow-key nudges wait until you release the mouse, so a drag can always be undone.
