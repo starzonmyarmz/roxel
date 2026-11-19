@@ -1425,55 +1425,6 @@ pub fn move_drag_system(
     drag.reset();
 }
 
-pub fn undo_redo_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut grid: ResMut<GridResource>,
-    mut history: ResMut<History>,
-) {
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
-        return;
-    }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    match history_chord(
-        shift,
-        keys.just_pressed(KeyCode::KeyZ),
-        keys.just_pressed(KeyCode::KeyY),
-        !cfg!(target_os = "macos"),
-    ) {
-        Some(HistoryStep::Undo) => history.undo(&mut grid),
-        Some(HistoryStep::Redo) => history.redo(&mut grid),
-        None => {}
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum HistoryStep {
-    Undo,
-    Redo,
-}
-
-/// Undo/redo for a Cmd/Ctrl chord: Z undoes, Shift+Z redoes, and where
-/// `ctrl_y_redoes` (Windows/Linux convention) Y redoes too.
-fn history_chord(
-    shift: bool,
-    z_pressed: bool,
-    y_pressed: bool,
-    ctrl_y_redoes: bool,
-) -> Option<HistoryStep> {
-    if z_pressed {
-        return Some(if shift {
-            HistoryStep::Redo
-        } else {
-            HistoryStep::Undo
-        });
-    }
-    (y_pressed && !shift && ctrl_y_redoes).then_some(HistoryStep::Redo)
-}
-
 pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<ToolState>) {
     let alt_just = keys.just_pressed(KeyCode::AltLeft) || keys.just_pressed(KeyCode::AltRight);
     let alt_released =
@@ -1492,88 +1443,11 @@ pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<T
     }
 }
 
-pub fn tool_shortcut_system(
-    mut contexts: EguiContexts,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut tool: ResMut<ToolState>,
-    mut shape_options: ResMut<ShapeOptions>,
-) {
-    let wants_kb = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if wants_kb {
-        return;
-    }
-    let modded = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight)
-        || keys.pressed(KeyCode::AltLeft)
-        || keys.pressed(KeyCode::AltRight);
-    if modded {
-        return;
-    }
-    let next = if keys.just_pressed(KeyCode::KeyB) {
-        Some(Tool::Brush)
-    } else if keys.just_pressed(KeyCode::KeyE) {
-        Some(Tool::Erase)
-    } else if keys.just_pressed(KeyCode::KeyP) {
-        Some(Tool::Paint)
-    } else if keys.just_pressed(KeyCode::KeyI) {
-        Some(Tool::Eyedropper)
-    } else if keys.just_pressed(KeyCode::KeyS) {
-        Some(Tool::Shape)
-    } else if keys.just_pressed(KeyCode::KeyM) {
-        Some(Tool::Select)
-    } else if keys.just_pressed(KeyCode::KeyV) {
-        Some(Tool::Move)
-    } else {
-        None
-    };
-    if let Some(t) = next
-        && tool.current != t
-    {
-        tool.previous = tool.current;
-        tool.current = t;
-    } else if keys.just_pressed(KeyCode::KeyS) && tool.current == Tool::Shape {
-        shape_options.primitive = match shape_options.primitive {
-            ShapePrimitive::Rectangle => ShapePrimitive::Ellipse,
-            ShapePrimitive::Ellipse => ShapePrimitive::Line,
-            ShapePrimitive::Line => ShapePrimitive::Sphere,
-            ShapePrimitive::Sphere => ShapePrimitive::Rectangle,
-        };
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use roxel::shapes::{extrude, rect_cells};
     use std::collections::HashSet;
-
-    #[test]
-    fn history_chord_z_undoes_and_shift_z_redoes() {
-        assert_eq!(
-            history_chord(false, true, false, false),
-            Some(HistoryStep::Undo)
-        );
-        assert_eq!(
-            history_chord(true, true, false, false),
-            Some(HistoryStep::Redo)
-        );
-        assert_eq!(history_chord(false, false, false, true), None);
-    }
-
-    #[test]
-    fn history_chord_y_redoes_only_off_macos() {
-        assert_eq!(
-            history_chord(false, false, true, true),
-            Some(HistoryStep::Redo)
-        );
-        assert_eq!(history_chord(false, false, true, false), None);
-        assert_eq!(history_chord(true, false, true, true), None);
-    }
 
     fn cells_set(cells: Vec<IVec3>) -> HashSet<(i32, i32, i32)> {
         cells.into_iter().map(|c| (c.x, c.y, c.z)).collect()

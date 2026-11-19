@@ -13,11 +13,11 @@ A palette is the set of colors you paint with. Roxel ships with classic pixel-ar
 
 ## User palettes
 
-You can manage your own palettes from the inspector:
+You can manage your own palettes from the inspector's **…** menu or the command palette (`Cmd/Ctrl + K`):
 
 - **Add** a color to the current palette
 - Create a **new** palette
-- **Duplicate** an existing one as a starting point
+- **Duplicate** an existing one as a starting point (for a built-in palette this reads **Save as new palette**)
 - **Rename** and **delete** (Roxel asks you to confirm before deleting a palette)
 - **Drag to reorder** swatches
 

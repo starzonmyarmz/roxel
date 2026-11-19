@@ -92,19 +92,12 @@ pub fn panel_compensation_offset(
 }
 
 pub fn frame_view_system(
-    keys: Res<ButtonInput<KeyCode>>,
     mut pending: ResMut<PendingFrameView>,
     mut cameras: Query<(&mut PanOrbitCamera, &GlobalTransform, &Projection)>,
     grid: Res<GridResource>,
     viewport: Res<ViewportRect>,
 ) {
-    let key_trigger = (keys.just_pressed(KeyCode::Digit0) || keys.just_pressed(KeyCode::Numpad0))
-        && (keys.pressed(KeyCode::SuperLeft)
-            || keys.pressed(KeyCode::SuperRight)
-            || keys.pressed(KeyCode::ControlLeft)
-            || keys.pressed(KeyCode::ControlRight));
-    let menu_trigger = std::mem::take(&mut pending.0);
-    if !key_trigger && !menu_trigger {
+    if !std::mem::take(&mut pending.0) {
         return;
     }
 
@@ -560,13 +553,13 @@ pub fn preset_direction(preset: CameraPreset) -> Vec3 {
     )
 }
 
-/// One-shot view-preset request. Written by the keybind system and the
-/// command palette / native menu; consumed by `apply_pending_view_preset_system`.
+/// One-shot view-preset request, written by `actions::dispatch` and consumed
+/// by `apply_pending_view_preset_system`.
 #[derive(Resource, Default)]
 pub struct PendingViewPreset(pub Option<CameraPreset>);
 
-/// One-shot Frame-View request. Written by the native menu click handler
-/// (the keyboard accelerator already calls `frame_view_system` directly).
+/// One-shot Frame-View request, written by `actions::dispatch` and consumed
+/// by `frame_view_system`.
 #[derive(Resource, Default)]
 pub struct PendingFrameView(pub bool);
 
@@ -590,52 +583,6 @@ pub fn apply_pending_view_preset_system(
         cam.target_radius = radius;
         cam.target_yaw = yaw;
         cam.target_pitch = pitch;
-    }
-}
-
-pub fn camera_preset_keys_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut contexts: bevy_egui::EguiContexts,
-    mut pending: ResMut<PendingViewPreset>,
-) {
-    let egui_wants_keyboard = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if egui_wants_keyboard {
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
-        return;
-    }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-
-    let preset = if keys.just_pressed(KeyCode::Digit1) || keys.just_pressed(KeyCode::Numpad1) {
-        Some(if shift {
-            CameraPreset::Back
-        } else {
-            CameraPreset::Front
-        })
-    } else if keys.just_pressed(KeyCode::Digit3) || keys.just_pressed(KeyCode::Numpad3) {
-        Some(if shift {
-            CameraPreset::Left
-        } else {
-            CameraPreset::Right
-        })
-    } else if keys.just_pressed(KeyCode::Digit5) || keys.just_pressed(KeyCode::Numpad5) {
-        Some(CameraPreset::Iso)
-    } else if keys.just_pressed(KeyCode::Digit7) || keys.just_pressed(KeyCode::Numpad7) {
-        Some(CameraPreset::Top)
-    } else {
-        None
-    };
-
-    if let Some(p) = preset {
-        pending.0 = Some(p);
     }
 }
 
@@ -764,40 +711,5 @@ pub fn update_zoom_limits_system(grid: Res<GridResource>, mut cameras: Query<&mu
         if cam.target_radius > upper {
             cam.target_radius = upper;
         }
-    }
-}
-
-pub fn zoom_key_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut contexts: bevy_egui::EguiContexts,
-    mut cameras: Query<&mut PanOrbitCamera>,
-) {
-    let egui_wants_keyboard = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if egui_wants_keyboard {
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
-        return;
-    }
-    let zoom_in = keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd);
-    let zoom_out = keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract);
-    if !zoom_in && !zoom_out {
-        return;
-    }
-    let factor = if zoom_in { ZOOM_STEP_IN } else { ZOOM_STEP_OUT };
-    for mut cam in &mut cameras {
-        cam.target_radius = apply_zoom(
-            cam.target_radius,
-            factor,
-            cam.zoom_lower_limit,
-            cam.zoom_upper_limit,
-        );
     }
 }

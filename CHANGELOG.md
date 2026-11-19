@@ -25,6 +25,11 @@ Release notes.
 - Windows/Linux: the command palette shows Ctrl shortcuts instead of ⌘.
 - Roxel opens a `.rox` file passed on the command line, and release builds no longer open a console window on Windows.
 - The user guide is published at https://starzonmyarmz.github.io/roxel/.
+- Keyboard shortcuts no longer act on the scene while you're typing in a text field or a dialog is open.
+- The command palette lists every menu command, including Open Recent, color formats, Rename palette, onboarding and Check for Updates.
+- Palette actions behave the same in the inspector and the command palette; New and Duplicate open the rename field.
+- macOS: Paste from the Edit menu (or ⌘V) lands under the cursor, like it does on Windows and Linux.
+- Edit → Select All (Cmd/Ctrl+A) is now in the menu.
 
 ## [0.7.1] - 2026-06-03
 

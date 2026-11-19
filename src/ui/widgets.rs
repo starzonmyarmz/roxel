@@ -40,7 +40,6 @@ pub fn tool_button(
     kind: Tool,
     icon_src: egui::ImageSource<'static>,
     label: &str,
-    shortcut: &str,
 ) -> egui::Response {
     let active = tool.current == kind;
     let button_size = size::TOOL_BUTTON;
@@ -102,7 +101,10 @@ pub fn tool_button(
         tool.previous = tool.current;
         tool.current = kind;
     }
-    resp.on_hover_text(format!("{label}  ({shortcut})"))
+    match crate::actions::Action::SelectTool(kind).shortcut_text() {
+        Some(shortcut) => resp.on_hover_text(format!("{label}  ({shortcut})")),
+        None => resp.on_hover_text(label),
+    }
 }
 
 pub fn icon_only_button(
