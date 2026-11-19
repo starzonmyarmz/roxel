@@ -1,4 +1,4 @@
-//! Keyboard-shortcuts cheat sheet (Help → Keyboard Shortcuts, Cmd+/). Lists
+//! Keyboard-shortcuts cheat sheet (Help → Keyboard Shortcuts). Lists
 //! every action chord from the `Action` table plus the contextual canvas keys
 //! that live in their own systems.
 

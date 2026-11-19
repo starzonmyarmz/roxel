@@ -15,6 +15,7 @@ the commit subjects since the previous tag.
 - Crashes are written to `crash.log` in Roxel's settings folder, so packaged builds leave a report to attach to an issue.
 - macOS: Save and Export dialogs open in the last folder you used instead of the default one.
 - The docs explain what the update check sends and how to turn it off.
+- Help → Keyboard Shortcuts no longer has its own shortcut (Cmd/Ctrl+/).
 - Updated dependencies (including the update checker's HTTP client, which still uses rustls) and built with Rust 1.92.
 
 ## [0.14.1] - 2026-11-19
