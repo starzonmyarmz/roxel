@@ -13,6 +13,7 @@ use crate::theme::Theme;
 use crate::tools::{
     CurrentColor, ExtraColors, PointerState, Tool, ToolState, color_pool, sample_color,
 };
+use roxel::grid::Color8;
 
 /// Dedicated gizmo group for tool preview outlines (brush ghost, erase/paint
 /// target highlight, shape silhouette). Uses `depth_bias = -1.0` so the outline
@@ -66,7 +67,7 @@ pub struct BrushPreviewInput<'w, 's> {
 }
 
 #[derive(SystemParam)]
-pub struct BrushPreviewWorld<'w> {
+pub struct BrushPreviewWorld<'w, 's> {
     pub grid: Res<'w, GridResource>,
     pub tool: Res<'w, ToolState>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
@@ -74,6 +75,7 @@ pub struct BrushPreviewWorld<'w> {
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
     pub hide: ResMut<'w, PreviewHide>,
     pub gizmo_view: crate::ui::GizmoView<'w>,
+    pub ghost_color: Local<'s, Option<Color8>>,
 }
 
 #[derive(Component)]
@@ -179,7 +181,10 @@ pub fn brush_preview_system(
         let pos = target.as_vec3() + Vec3::splat(0.5);
         *tf = Transform::from_translation(pos);
         *vis = Visibility::Visible;
-        if let Some(m) = world.materials.get_mut(&world.mat_handle.0) {
+        if *world.ghost_color != Some(c)
+            && let Some(m) = world.materials.get_mut(&world.mat_handle.0)
+        {
+            *world.ghost_color = Some(c);
             m.base_color = Color::srgba(
                 c[0] as f32 / 255.0,
                 c[1] as f32 / 255.0,
