@@ -168,7 +168,7 @@ jobs:
             channel="$(basename "$build" .zip)"
             channel="${channel#Roxel-}"
             echo "::group::${channel}"
-            ./butler push "$build" "starzonmyarmz/roxel:${channel}" --userversion "$version" --if-changed || failed=1
+            ./butler push "$build" "starzonmyarmz/roxel:${channel}" --userversion "$version" || failed=1
             echo "::endgroup::"
           done
           exit "$failed"
