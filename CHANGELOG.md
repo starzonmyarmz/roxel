@@ -12,6 +12,8 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-19
+
 - Crashes are written to `crash.log` in Roxel's settings folder, so packaged builds leave a report to attach to an issue.
 - macOS: Save and Export dialogs open in the last folder you used instead of the default one.
 - The docs explain what the update check sends and how to turn it off.
