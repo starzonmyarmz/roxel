@@ -636,11 +636,8 @@ pub fn process_save_preview_system(
 
     // Preview captured (may be empty = model had no voxels).
     state.path = None;
-    let result = if png_bytes.is_empty() {
-        io::project::save(&path, &grid)
-    } else {
-        io::project::save_with_preview(&path, &grid, &png_bytes)
-    };
+    let preview = (!png_bytes.is_empty()).then_some(png_bytes.as_slice());
+    let result = io::project::save(&path, &grid, preview);
 
     match result {
         Ok(()) => {

@@ -12,29 +12,15 @@ struct ProjectFile {
     preview: Option<String>,
 }
 
-pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
+/// Writes the project, embedding `preview` (a transparent PNG) when given.
+pub fn save(path: &Path, grid: &VoxelGrid, preview: Option<&[u8]>) -> Result<()> {
     let voxels: Vec<([i32; 3], Color8)> = grid
         .iter_occupied()
         .map(|(p, c)| ([p.x, p.y, p.z], c))
         .collect();
     let pf = ProjectFile {
         voxels,
-        preview: None,
-    };
-    let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
-    super::atomic::write(path, s)?;
-    Ok(())
-}
-
-/// Same as [`save`] but embeds a transparent PNG preview into the file.
-pub fn save_with_preview(path: &Path, grid: &VoxelGrid, png_bytes: &[u8]) -> Result<()> {
-    let voxels: Vec<([i32; 3], Color8)> = grid
-        .iter_occupied()
-        .map(|(p, c)| ([p.x, p.y, p.z], c))
-        .collect();
-    let pf = ProjectFile {
-        voxels,
-        preview: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes)),
+        preview: preview.map(|png| base64::engine::general_purpose::STANDARD.encode(png)),
     };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
     super::atomic::write(path, s)?;
@@ -74,7 +60,7 @@ mod tests {
             g.set(p, Some(c));
         }
         let path = tmp_path("roundtrip");
-        save(&path, &g).expect("save");
+        save(&path, &g, None).expect("save");
 
         let mut loaded = VoxelGrid::default();
         loaded.set(IVec3::new(1, 1, 1), Some([9, 9, 9, 255])); // pre-existing data must be cleared
@@ -99,7 +85,7 @@ mod tests {
             g.set(p, Some(c));
         }
         let path = tmp_path("openworld_roundtrip");
-        save(&path, &g).expect("save");
+        save(&path, &g, None).expect("save");
         let mut loaded = VoxelGrid::default();
         load(&path, &mut loaded).expect("load");
         for (p, c) in pts {
@@ -113,7 +99,7 @@ mod tests {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(1, 2, 3), Some([1, 2, 3, 255]));
         let path = tmp_path("sparse");
-        save(&path, &g).expect("save");
+        save(&path, &g, None).expect("save");
         let s = std::fs::read_to_string(&path).expect("read");
         let pf: ProjectFile = ron::from_str(&s).expect("parse");
         assert_eq!(pf.voxels.len(), 1);
