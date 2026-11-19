@@ -17,6 +17,9 @@
 //!   1, 2 or 4 depending on `n`. Mode 0 (sparse): `u32` count, then
 //!   `u16 local, value` pairs. Mode 1 (dense): `E³` values. Local index is
 //!   `lx·E² + ly·E + lz`.
+//! - `PALT` (optional): the palette that was active when saving.
+//!   `u16` name length + UTF-8 name, `u32 n`, then `n` RGBA colors in
+//!   palette order.
 //! - `PREV` (optional): transparent PNG preview.
 //!
 //! Files that don't start with the magic are pre-0.9 RON projects and still
@@ -24,6 +27,7 @@
 
 use super::reader::LeReader;
 use crate::grid::{CHUNK, Color8, VoxelGrid};
+use crate::palette::Palette;
 use anyhow::{Context, Result, bail, ensure};
 use glam::IVec3;
 use serde::Deserialize;
@@ -34,6 +38,7 @@ use std::path::Path;
 const MAGIC: &[u8; 4] = b"ROXL";
 pub const FORMAT_VERSION: u16 = 1;
 const TAG_VOXELS: [u8; 4] = *b"VOXL";
+const TAG_PALETTE: [u8; 4] = *b"PALT";
 const TAG_PREVIEW: [u8; 4] = *b"PREV";
 const ZSTD_LEVEL: i32 = 3;
 const MAX_VOXEL_PAYLOAD: usize = 1 << 30;
@@ -46,12 +51,20 @@ const MODE_DENSE: u8 = 1;
 #[derive(Debug, Default, PartialEq)]
 pub struct Project {
     pub voxels: Vec<(IVec3, Color8)>,
+    /// Palette active at save time. Loaded palettes are never `builtin`.
+    pub palette: Option<Palette>,
     pub preview: Option<Vec<u8>>,
 }
 
-/// Writes the project, embedding `preview` (a transparent PNG) when given.
-pub fn save(path: &Path, grid: &VoxelGrid, preview: Option<&[u8]>) -> Result<()> {
-    let bytes = encode(grid, preview)?;
+/// Writes the project, embedding the active `palette` and a transparent PNG
+/// `preview` when given.
+pub fn save(
+    path: &Path,
+    grid: &VoxelGrid,
+    palette: Option<&Palette>,
+    preview: Option<&[u8]>,
+) -> Result<()> {
+    let bytes = encode(grid, palette, preview)?;
     super::atomic::write(path, bytes)?;
     Ok(())
 }
@@ -68,7 +81,11 @@ pub fn load(path: &Path, grid: &mut VoxelGrid) -> Result<Project> {
     Ok(project)
 }
 
-pub fn encode(grid: &VoxelGrid, preview: Option<&[u8]>) -> Result<Vec<u8>> {
+pub fn encode(
+    grid: &VoxelGrid,
+    palette: Option<&Palette>,
+    preview: Option<&[u8]>,
+) -> Result<Vec<u8>> {
     let body = encode_voxels(grid);
     let compressed = zstd::bulk::compress(&body, ZSTD_LEVEL)?;
     let mut voxl = Vec::with_capacity(4 + compressed.len());
@@ -79,6 +96,9 @@ pub fn encode(grid: &VoxelGrid, preview: Option<&[u8]>) -> Result<Vec<u8>> {
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
     push_section(&mut out, TAG_VOXELS, &voxl)?;
+    if let Some(palette) = palette {
+        push_section(&mut out, TAG_PALETTE, &encode_palette(palette)?)?;
+    }
     if let Some(png) = preview {
         push_section(&mut out, TAG_PREVIEW, png)?;
     }
@@ -95,6 +115,7 @@ pub fn decode(bytes: &[u8]) -> Result<Project> {
         bail!("this project was saved by a newer version of Roxel (format {version})");
     }
     let mut voxels = None;
+    let mut palette = None;
     let mut preview = None;
     while !r.eof() {
         let tag: [u8; 4] = r.bytes(4)?.try_into().unwrap();
@@ -102,12 +123,49 @@ pub fn decode(bytes: &[u8]) -> Result<Project> {
         let payload = r.bytes(len)?;
         match tag {
             TAG_VOXELS => voxels = Some(decode_voxels(payload)?),
+            TAG_PALETTE => palette = Some(decode_palette(payload)?),
             TAG_PREVIEW => preview = Some(payload.to_vec()),
             _ => {}
         }
     }
     let voxels = voxels.context("project has no voxel data")?;
-    Ok(Project { voxels, preview })
+    Ok(Project {
+        voxels,
+        palette,
+        preview,
+    })
+}
+
+fn encode_palette(palette: &Palette) -> Result<Vec<u8>> {
+    let name = palette.name.as_bytes();
+    let name_len = u16::try_from(name.len()).context("palette name is too long")?;
+    let mut out = Vec::with_capacity(6 + name.len() + palette.colors.len() * 4);
+    out.extend_from_slice(&name_len.to_le_bytes());
+    out.extend_from_slice(name);
+    out.extend_from_slice(&len_u32(palette.colors.len())?.to_le_bytes());
+    for c in &palette.colors {
+        out.extend_from_slice(c);
+    }
+    Ok(out)
+}
+
+fn decode_palette(payload: &[u8]) -> Result<Palette> {
+    let mut r = LeReader::new(payload);
+    let name_len = r.u16()? as usize;
+    let name = std::str::from_utf8(r.bytes(name_len)?)
+        .context("palette name is not valid UTF-8")?
+        .to_string();
+    let n = r.u32()? as usize;
+    let colors = r
+        .bytes(n.checked_mul(4).context("too many palette colors")?)?
+        .chunks_exact(4)
+        .map(|c| c.try_into().unwrap())
+        .collect();
+    Ok(Palette {
+        name,
+        colors,
+        builtin: false,
+    })
 }
 
 fn push_section(out: &mut Vec<u8>, tag: [u8; 4], payload: &[u8]) -> Result<()> {
@@ -280,6 +338,7 @@ fn decode_legacy_ron(bytes: &[u8]) -> Result<Project> {
             .into_iter()
             .map(|(p, c)| (IVec3::from_array(p), c))
             .collect(),
+        palette: None,
         preview: None,
     })
 }
@@ -316,7 +375,7 @@ mod tests {
         ];
         let g = grid_of(&pts);
         let path = tmp_path("roundtrip");
-        save(&path, &g, None).expect("save");
+        save(&path, &g, None, None).expect("save");
 
         let mut loaded = VoxelGrid::default();
         loaded.set(IVec3::new(1, 1, 1), Some([9, 9, 9, 255]));
@@ -337,7 +396,7 @@ mod tests {
             (IVec3::new(0, 0, 0), [1, 2, 3, 255]),
             (IVec3::new(-1, 31, -33), [1, 2, 3, 255]),
         ];
-        let decoded = decode(&encode(&grid_of(&pts), None).unwrap()).unwrap();
+        let decoded = decode(&encode(&grid_of(&pts), None, None).unwrap()).unwrap();
         assert_eq!(sorted(decoded.voxels), sorted(pts.to_vec()));
     }
 
@@ -351,7 +410,7 @@ mod tests {
                 }
             }
         }
-        let bytes = encode(&grid_of(&pts), None).unwrap();
+        let bytes = encode(&grid_of(&pts), None, None).unwrap();
         let decoded = decode(&bytes).unwrap();
         assert_eq!(sorted(decoded.voxels), sorted(pts));
     }
@@ -366,13 +425,13 @@ mod tests {
                 )
             })
             .collect();
-        let decoded = decode(&encode(&grid_of(&pts), None).unwrap()).unwrap();
+        let decoded = decode(&encode(&grid_of(&pts), None, None).unwrap()).unwrap();
         assert_eq!(sorted(decoded.voxels), sorted(pts));
     }
 
     #[test]
     fn empty_grid_roundtrips() {
-        let decoded = decode(&encode(&VoxelGrid::default(), None).unwrap()).unwrap();
+        let decoded = decode(&encode(&VoxelGrid::default(), None, None).unwrap()).unwrap();
         assert!(decoded.voxels.is_empty());
     }
 
@@ -380,8 +439,49 @@ mod tests {
     fn preview_roundtrips() {
         let g = grid_of(&[(IVec3::ZERO, [1, 2, 3, 255])]);
         let png = [0x89, b'P', b'N', b'G', 1, 2, 3];
-        let decoded = decode(&encode(&g, Some(&png)).unwrap()).unwrap();
+        let decoded = decode(&encode(&g, None, Some(&png)).unwrap()).unwrap();
         assert_eq!(decoded.preview.as_deref(), Some(&png[..]));
+    }
+
+    #[test]
+    fn palette_roundtrips_in_order() {
+        let palette = Palette {
+            name: "Sunset ☀".into(),
+            colors: vec![[255, 0, 0, 255], [0, 0, 0, 255], [10, 20, 30, 128]],
+            builtin: true,
+        };
+        let g = grid_of(&[(IVec3::ZERO, [1, 2, 3, 255])]);
+        let decoded = decode(&encode(&g, Some(&palette), Some(&[7, 7])).unwrap()).unwrap();
+        let loaded = decoded.palette.expect("palette");
+        assert_eq!(loaded.name, palette.name);
+        assert_eq!(loaded.colors, palette.colors);
+        assert!(!loaded.builtin);
+        assert_eq!(decoded.preview.as_deref(), Some(&[7, 7][..]));
+    }
+
+    #[test]
+    fn projects_without_a_palette_load_with_none() {
+        let g = grid_of(&[(IVec3::ZERO, [1, 2, 3, 255])]);
+        assert!(
+            decode(&encode(&g, None, None).unwrap())
+                .unwrap()
+                .palette
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn malformed_palette_section_errors() {
+        let g = grid_of(&[(IVec3::ZERO, [1, 2, 3, 255])]);
+        for payload in [
+            &[5u8, 0, b'a'][..],
+            &[1, 0, 0xFF, 0, 0, 0, 0][..],
+            &[0, 0, 0xFF, 0xFF, 0xFF, 0xFF][..],
+        ] {
+            let mut bytes = encode(&g, None, None).unwrap();
+            push_section(&mut bytes, TAG_PALETTE, payload).unwrap();
+            assert!(decode(&bytes).is_err(), "{payload:?}");
+        }
     }
 
     #[test]
@@ -400,8 +500,8 @@ mod tests {
             reversed.set(*p, forward.get(*p));
         }
         assert_eq!(
-            encode(&forward, None).unwrap(),
-            encode(&reversed, None).unwrap()
+            encode(&forward, None, None).unwrap(),
+            encode(&reversed, None, None).unwrap()
         );
     }
 
@@ -416,7 +516,7 @@ mod tests {
                 }
             }
         }
-        let bytes = encode(&grid_of(&pts), None).unwrap();
+        let bytes = encode(&grid_of(&pts), None, None).unwrap();
         assert!(
             bytes.len() < pts.len(),
             "{} bytes for {} voxels",
@@ -427,7 +527,7 @@ mod tests {
 
     #[test]
     fn starts_with_magic_and_version() {
-        let bytes = encode(&VoxelGrid::default(), None).unwrap();
+        let bytes = encode(&VoxelGrid::default(), None, None).unwrap();
         assert_eq!(&bytes[..4], b"ROXL");
         assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), FORMAT_VERSION);
     }
@@ -435,7 +535,7 @@ mod tests {
     #[test]
     fn unknown_sections_are_skipped() {
         let g = grid_of(&[(IVec3::new(1, 2, 3), [4, 5, 6, 255])]);
-        let mut bytes = encode(&g, None).unwrap();
+        let mut bytes = encode(&g, None, None).unwrap();
         push_section(&mut bytes, *b"XTRA", b"future data").unwrap();
         let decoded = decode(&bytes).unwrap();
         assert_eq!(decoded.voxels, vec![(IVec3::new(1, 2, 3), [4, 5, 6, 255])]);
@@ -443,7 +543,7 @@ mod tests {
 
     #[test]
     fn newer_format_version_is_refused() {
-        let mut bytes = encode(&VoxelGrid::default(), None).unwrap();
+        let mut bytes = encode(&VoxelGrid::default(), None, None).unwrap();
         bytes[4..6].copy_from_slice(&(FORMAT_VERSION + 1).to_le_bytes());
         let err = decode(&bytes).unwrap_err().to_string();
         assert!(err.contains("newer version"), "{err}");
@@ -455,7 +555,7 @@ mod tests {
             (IVec3::new(1, 2, 3), [4, 5, 6, 255]),
             (IVec3::new(-40, 9, 70), [7, 8, 9, 255]),
         ]);
-        let bytes = encode(&g, None).unwrap();
+        let bytes = encode(&g, None, None).unwrap();
         for len in 0..bytes.len() {
             assert!(decode(&bytes[..len]).is_err(), "len {len}");
         }

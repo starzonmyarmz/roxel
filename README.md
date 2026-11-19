@@ -112,6 +112,7 @@ signed, so models can sit anywhere relative to the origin.
 section* = [u8; 4] tag, u32 length, payload
   VOXL  u32 decompressed length + zstd frame: chunk edge, sorted RGBA color
         table, then each 32³ chunk (sorted) as sparse or dense color indices
+  PALT  optional active palette (name + RGBA colors)
   PREV  optional PNG preview
 ```
 

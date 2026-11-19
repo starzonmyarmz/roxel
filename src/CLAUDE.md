@@ -133,7 +133,7 @@ The preview render is split across **two cameras / render layers** captured pixe
 
 ## `.rox` project format
 
-`roxel-core/src/io/project.rs` — binary: `"ROXL"` + `u16 FORMAT_VERSION`, then tagged sections (`[u8; 4]` tag, `u32` len). `VOXL` holds a zstd frame: sorted color table, then chunks in sorted coord order, each sparse (`u16` local + index) or dense (`E³` indices), whichever is smaller. `PREV` is the optional PNG preview. Layout spec is the module doc comment — keep it current.
+`roxel-core/src/io/project.rs` — binary: `"ROXL"` + `u16 FORMAT_VERSION`, then tagged sections (`[u8; 4]` tag, `u32` len). `VOXL` holds a zstd frame: sorted color table, then chunks in sorted coord order, each sparse (`u16` local + index) or dense (`E³` indices), whichever is smaller. `PALT` is the active palette at save time (`ui::palette::active_palette`, scratch edits included); on open, `poll_dialogs_system` hands it to `adopt_project_palette`, which keeps/selects a palette showing the same colors or adds a user palette (then `io::palettes::save`). `PREV` is the optional PNG preview. Layout spec is the module doc comment — keep it current.
 
 - **Additive changes get a new section, not a version bump.** Readers skip unknown tags. Bump `FORMAT_VERSION` only for a change old readers would misread; `decode` refuses newer versions with a toast-able error.
 - **Saves are deterministic** — sorted chunks, cells and colors — so re-saving an unchanged scene produces identical bytes. Don't iterate `grid.chunks` (a `HashMap`) straight into the output.
