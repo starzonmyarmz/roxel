@@ -14,9 +14,7 @@ pub mod tokens;
 mod visibility;
 mod widgets;
 
-pub use command_palette::{CommandPalette, command_palette_shortcut_system};
-#[cfg(not(target_os = "macos"))]
-pub use dialogs::file_shortcut_system;
+pub use command_palette::CommandPalette;
 pub use dialogs::{
     CurrentProjectPath, DialogResult, DocStatus, GuardedAction, PendingDialog, PendingImport,
     RecentFiles, SavePreviewState, UnsavedGuard, poll_dialogs_system, process_save_preview_system,
@@ -220,7 +218,7 @@ pub fn ui_system(
                 flyby_active: flyby.active,
                 checking_updates: updater.is_checking(),
                 palettes: &palettes.0,
-                palette_choice: palette_choice.0,
+                palette_choice: palette_choice.0.min(palettes.0.len().saturating_sub(1)),
                 active_colors: palette::display_colors(
                     &palettes,
                     &working,

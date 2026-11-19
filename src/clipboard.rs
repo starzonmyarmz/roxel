@@ -1,4 +1,3 @@
-use crate::GridResource;
 use crate::picking::{cursor_ray, pick};
 use crate::select::{Selection, SelectionAabb, clear_selection};
 use bevy::ecs::system::SystemParam;
@@ -166,19 +165,6 @@ pub fn execute_paste(
     }
 }
 
-/// Cmd+C / Cmd+X / Cmd+V handler. Paste anchors at the cell the cursor is
-/// hovering (`hit.cell + hit.normal`), falling back to the active selection's
-/// AABB min, then to the stamp's original origin. After paste, the selection
-/// updates to the pasted region so the user can nudge with the Move tool.
-#[derive(SystemParam)]
-pub struct ClipboardEdit<'w> {
-    clipboard: ResMut<'w, Clipboard>,
-    grid: ResMut<'w, GridResource>,
-    history: ResMut<'w, History>,
-    selection: ResMut<'w, Selection>,
-    toasts: ResMut<'w, crate::ui::Toasts>,
-}
-
 #[derive(SystemParam)]
 pub struct CursorView<'w, 's> {
     cameras: Query<'w, 's, (&'static Camera, &'static GlobalTransform), With<PanOrbitCamera>>,
@@ -191,60 +177,6 @@ impl CursorView<'_, '_> {
         cursor_ray(&self.cameras, &self.windows)
             .and_then(|(o, d)| pick(grid, o, d))
             .map(|h| h.cell + h.normal)
-    }
-}
-
-pub fn clipboard_key_system(
-    mut contexts: bevy_egui::EguiContexts,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut edit: ClipboardEdit,
-    view: CursorView,
-) {
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if egui_wants {
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
-        return;
-    }
-    if keys.just_pressed(KeyCode::KeyC) {
-        if let Some(stamp) = copy_selection(&edit.grid, &edit.selection) {
-            let n = stamp.voxel_count();
-            edit.clipboard.stamp = Some(stamp);
-            edit.toasts.info(format!("Copied {n} voxels"));
-        }
-        return;
-    }
-    if keys.just_pressed(KeyCode::KeyX) {
-        if let Some(stamp) = cut_selection(&mut edit.grid, &mut edit.history, &edit.selection) {
-            let n = stamp.voxel_count();
-            edit.clipboard.stamp = Some(stamp);
-            edit.toasts.info(format!("Cut {n} voxels"));
-        }
-        return;
-    }
-    if keys.just_pressed(KeyCode::KeyV) {
-        let Some(stamp) = edit.clipboard.stamp.clone() else {
-            return;
-        };
-        let cursor_hit = cursor_ray(&view.cameras, &view.windows)
-            .and_then(|(o, d)| pick(&edit.grid, o, d))
-            .map(|h| h.cell + h.normal);
-        execute_paste(
-            &mut edit.grid,
-            &mut edit.history,
-            &mut edit.selection,
-            &mut edit.toasts,
-            &stamp,
-            cursor_hit,
-        );
     }
 }
 

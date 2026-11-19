@@ -177,17 +177,16 @@ pub fn update_menu_enabled_system(
     state: ActionStateParams,
 ) {
     let Some(store) = store else { return };
-    // AppKit routes a plain-key equivalent (F, Backspace) before the key
-    // reaches the winit view, blind to egui text focus. A disabled item
-    // doesn't fire, so the key still reaches a focused text field.
+    // AppKit routes a key equivalent before the key reaches the winit view,
+    // blind to egui text focus. A disabled item doesn't fire, so the key
+    // still reaches a focused text field.
     let typing = contexts
         .ctx_mut()
         .map(|c| c.wants_keyboard_input())
         .unwrap_or(false);
     let s = state.get();
     for (action, item) in &store.items {
-        let plain_key = action.shortcut().is_some_and(|c| !c.cmd);
-        let enabled = action.enabled(&s) && !(typing && plain_key);
+        let enabled = action.enabled(&s) && !(typing && action.clashes_with_typing());
         match item {
             NativeItem::Plain(item) => {
                 if item.is_enabled() != enabled {

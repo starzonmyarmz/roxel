@@ -3,7 +3,7 @@ use crate::theme::Theme;
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, width};
 use crate::ui::{icons, widgets};
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::egui;
 
 /// Resource backing the Cmd+K command palette. Holds open/close state, the
 /// search query, the current selection index in the filtered list, and a
@@ -99,7 +99,7 @@ fn matches_entry(entry: &CatalogEntry, query: &str) -> Option<i32> {
     let kw_score = if entry.keywords.is_empty() {
         None
     } else {
-        fuzzy_match(&entry.keywords, query).map(|s| s - 4) // small penalty vs label hits
+        fuzzy_match(entry.keywords, query).map(|s| s - 4) // small penalty vs label hits
     };
     match (label_score, kw_score) {
         (Some(a), Some(b)) => Some(a.max(b)),
@@ -114,6 +114,7 @@ fn matches_entry(entry: &CatalogEntry, query: &str) -> Option<i32> {
 pub fn build_catalog(state: &ActionState) -> Vec<CatalogEntry> {
     Action::all(state)
         .into_iter()
+        .filter(|&a| a != Action::ShowCommandPalette)
         .map(|action| {
             let spec = action.spec();
             CatalogEntry {
@@ -145,39 +146,6 @@ pub fn rank(entries: &[CatalogEntry], query: &str) -> Vec<usize> {
             .then(entries[a.0].label.cmp(&entries[b.0].label)) // tie-break alpha
     });
     scored.into_iter().map(|(i, _)| i).collect()
-}
-
-// -------- Shortcut system (Cmd+K / Ctrl+K) --------
-
-pub fn command_palette_shortcut_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut contexts: EguiContexts,
-    mut palette: ResMut<CommandPalette>,
-) {
-    if !keys.just_pressed(KeyCode::KeyK) {
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if !cmd {
-        return;
-    }
-    // If egui already owns the keyboard (e.g. inline rename editor) AND the
-    // palette isn't already open, defer to it.
-    let captured = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if captured && !palette.open {
-        return;
-    }
-    if palette.open {
-        palette.open = false;
-    } else {
-        palette.open_fresh();
-    }
 }
 
 // -------- Renderer (called from ui_system) --------
@@ -690,6 +658,14 @@ mod tests {
         assert!(switches.iter().any(|e| e.label.contains("Beta")));
         assert!(switches.iter().any(|e| e.label.contains("Gamma")));
         assert!(switches.iter().all(|e| !e.label.contains("Alpha")));
+    }
+
+    #[test]
+    fn catalog_omits_the_command_palette_itself() {
+        let palettes = vec![pal("p1", true)];
+        let prefs = Preferences::default();
+        let cat = build_catalog(&state(&palettes, &prefs));
+        assert!(cat.iter().all(|e| e.action != Action::ShowCommandPalette));
     }
 
     #[test]

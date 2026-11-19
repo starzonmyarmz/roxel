@@ -83,6 +83,7 @@ fn edit_menu() -> Vec<MenuEntry> {
         Separator,
         Item(Action::FillSelection),
         Item(Action::DeleteSelectionContents),
+        Item(Action::SelectAll),
         Item(Action::ClearSelection),
         Separator,
         Item(Action::Cut),

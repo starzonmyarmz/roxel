@@ -1,8 +1,5 @@
 use crate::GridResource;
-use crate::tools::{
-    CurrentColor, ExtraColors, RecentColors, StrokeAnchor, Tool, ToolState, color_pool,
-};
-use bevy::ecs::system::SystemParam;
+use crate::tools::{StrokeAnchor, Tool, ToolState};
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
@@ -640,81 +637,23 @@ pub fn selection_render_system(
     }
 }
 
-/// Backspace/Delete clears voxels inside selection. F fills it with the current
-/// color (the Fill tool's selection path, reachable from the keyboard under any
-/// tool). Esc clears the selection. All gated on egui not capturing keys.
-#[derive(SystemParam)]
-pub struct KeyActionColors<'w> {
-    color: Res<'w, CurrentColor>,
-    extras: Res<'w, ExtraColors>,
-    recent: ResMut<'w, RecentColors>,
-}
-
-#[derive(SystemParam)]
-pub struct SelectGuards<'w> {
-    tool: Res<'w, ToolState>,
-    select_state: Res<'w, SelectState>,
-}
-
-pub fn selection_key_action_system(
+/// Esc clears the selection under any tool but Select, whose own Esc handling
+/// in `tool_input_system` cancels an in-progress drag first.
+pub fn selection_escape_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
+    tool: Res<ToolState>,
     mut selection: ResMut<Selection>,
-    mut grid: ResMut<GridResource>,
-    mut history: ResMut<History>,
-    guards: SelectGuards,
-    mut colors: KeyActionColors,
 ) {
+    if !keys.just_pressed(KeyCode::Escape) || tool.current == Tool::Select {
+        return;
+    }
     let egui_wants = contexts
         .ctx_mut()
         .map(|c| c.wants_keyboard_input())
         .unwrap_or(false);
-    if egui_wants {
-        return;
-    }
-    if keys.just_pressed(KeyCode::Escape) {
-        // When the Select tool is active, tool_input_system already handles Esc
-        // (it cancels in-progress phases first, then clears the selection on a
-        // second press). Avoid clearing twice for the same key event.
-        if guards.tool.current != Tool::Select && selection.aabb.is_some() {
-            selection.clear();
-        }
-        return;
-    }
-    let cmd = keys.pressed(KeyCode::SuperLeft)
-        || keys.pressed(KeyCode::SuperRight)
-        || keys.pressed(KeyCode::ControlLeft)
-        || keys.pressed(KeyCode::ControlRight);
-    if cmd && keys.just_pressed(KeyCode::KeyD) && selection.aabb.is_some() {
+    if !egui_wants && selection.aabb.is_some() {
         selection.clear();
-        return;
-    }
-    if cmd && keys.just_pressed(KeyCode::KeyA) {
-        let cells: HashSet<IVec3> = grid.iter_occupied().map(|(p, _)| p).collect();
-        if !cells.is_empty() {
-            selection.set_cells(cells);
-        }
-        return;
-    }
-    if (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete))
-        && selection.aabb.is_some()
-        && guards.select_state.phase == SelectPhase::Idle
-    {
-        clear_selection(&mut grid, &mut history, &selection);
-        return;
-    }
-    // F fills the selection with the current color pool (per-cell sampled) — the
-    // keyboard path to the Fill tool's selection behavior, usable under any tool.
-    // Empty cells stay empty.
-    if keys.just_pressed(KeyCode::KeyF)
-        && !cmd
-        && selection.aabb.is_some()
-        && guards.select_state.phase == SelectPhase::Idle
-    {
-        let pool = color_pool(colors.color.0, &colors.extras.0);
-        for c in recolor_selection(&mut grid, &mut history, &selection, &pool) {
-            colors.recent.push(c);
-        }
     }
 }
 

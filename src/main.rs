@@ -48,9 +48,9 @@ use std::collections::HashMap;
 
 use crate::camera::{
     EMPTY_WORLD_RADIUS, FlybyState, PendingFrameView, PendingViewPreset, RecenterRequest,
-    ViewportRect, apply_pending_view_preset_system, apply_recenter_system,
-    camera_preset_keys_system, default_camera_focus, flyby_system, frame_view_system, spawn_camera,
-    update_viewport_rect, update_zoom_limits_system, zoom_click_system, zoom_key_system,
+    ViewportRect, apply_pending_view_preset_system, apply_recenter_system, default_camera_focus,
+    flyby_system, frame_view_system, spawn_camera, update_viewport_rect, update_zoom_limits_system,
+    zoom_click_system,
 };
 use crate::gizmo::{
     AxisGizmoGroup, GizmoDrag, GizmoHover, GizmoRect, configure_axis_gizmo,
@@ -74,15 +74,13 @@ use crate::theme::{
 };
 use crate::tools::{
     CurrentColor, MoveDragState, PointerState, RecentColors, ShapeOptions, ShapeState, ToolState,
-    alt_eyedropper_system, move_drag_system, tool_input_system, tool_shortcut_system,
-    undo_redo_system,
+    alt_eyedropper_system, move_drag_system, tool_input_system,
 };
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, DiscardConfirm, DocStatus, GuardedAction,
     PaletteChoice, PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles,
-    SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
-    command_palette_shortcut_system, poll_dialogs_system, process_save_preview_system,
-    tab_toggle_system, toast_lifetime_system, ui_system,
+    SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette, poll_dialogs_system,
+    process_save_preview_system, tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -203,10 +201,13 @@ fn main() {
     app.init_resource::<crate::actions::ActionQueue>()
         .add_systems(
             Update,
-            crate::actions::apply_actions_system
-                .before(resolve_unsaved_guard_system)
-                .before(apply_pending_view_preset_system)
-                .before(frame_view_system),
+            (
+                crate::actions::shortcut_system.before(crate::actions::apply_actions_system),
+                crate::actions::apply_actions_system
+                    .before(resolve_unsaved_guard_system)
+                    .before(apply_pending_view_preset_system)
+                    .before(frame_view_system),
+            ),
         );
     app.init_resource::<crate::menu::AboutWindow>();
     #[cfg(target_os = "macos")]
@@ -224,11 +225,6 @@ fn main() {
             ),
         );
     }
-    #[cfg(not(target_os = "macos"))]
-    app.add_systems(
-        Update,
-        crate::ui::file_shortcut_system.before(resolve_unsaved_guard_system),
-    );
 
     app.add_systems(
         Startup,
@@ -247,8 +243,6 @@ fn main() {
             alt_eyedropper_system,
             tool_input_system,
             move_drag_system,
-            tool_shortcut_system,
-            undo_redo_system,
             regenerate_mesh_system,
             poll_dialogs_system,
             sync_gizmo_camera,
@@ -272,9 +266,8 @@ fn main() {
     .add_systems(
         Update,
         (
-            crate::select::selection_key_action_system,
+            crate::select::selection_escape_system,
             crate::select::move_selection_keys_system,
-            crate::clipboard::clipboard_key_system,
             request_quit_on_close_system.before(resolve_unsaved_guard_system),
             resolve_unsaved_guard_system.before(apply_new_project_system),
             apply_new_project_system.before(regenerate_mesh_system),
@@ -287,17 +280,14 @@ fn main() {
             crate::icon::set_window_icon,
             refresh_theme_system,
             zoom_click_system,
-            zoom_key_system,
             apply_canvas_bg_system,
             floor_dots_system,
             draw_origin_system,
             perf_warn_system,
-            command_palette_shortcut_system,
             apply_recenter_system,
             update_zoom_limits_system,
             flyby_system,
-            camera_preset_keys_system,
-            apply_pending_view_preset_system.after(camera_preset_keys_system),
+            apply_pending_view_preset_system,
             crate::updater::startup_check_system,
             crate::updater::poll_update_check_system,
             onboarding_autostart_system,

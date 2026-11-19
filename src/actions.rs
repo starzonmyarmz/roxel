@@ -58,6 +58,30 @@ pub enum KeyToken {
     Key(Cow<'static, str>),
 }
 
+/// Modifiers held this frame. Super and Ctrl both count as `cmd` on every
+/// platform.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mods {
+    pub cmd: bool,
+    pub shift: bool,
+    pub alt: bool,
+}
+
+impl Mods {
+    pub fn from_keys(keys: &ButtonInput<KeyCode>) -> Self {
+        Self {
+            cmd: keys.any_pressed([
+                KeyCode::SuperLeft,
+                KeyCode::SuperRight,
+                KeyCode::ControlLeft,
+                KeyCode::ControlRight,
+            ]),
+            shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
+            alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
+        }
+    }
+}
+
 impl Chord {
     pub const fn key(key: KeyCode) -> Self {
         Self {
@@ -120,6 +144,32 @@ impl Chord {
         let sep = if platform == Platform::Mac { "" } else { "+" };
         parts.collect::<Vec<_>>().join(sep)
     }
+
+    /// Whether this chord fired this frame. Cmd and Alt must match exactly, and
+    /// so must Shift unless the chord is a bare key (B, F, Backspace), which
+    /// works with Shift held. Numpad
+    /// numpad digits, numpad +/- and Delete count as their main-keyboard keys.
+    pub fn matches(self, mods: Mods, just_pressed: impl Fn(KeyCode) -> bool) -> bool {
+        let shift_matters = self.cmd || self.shift;
+        if mods.cmd != self.cmd || (shift_matters && mods.shift != self.shift) || mods.alt {
+            return false;
+        }
+        just_pressed(self.key) || key_alias(self.key).is_some_and(&just_pressed)
+    }
+}
+
+fn key_alias(key: KeyCode) -> Option<KeyCode> {
+    Some(match key {
+        KeyCode::Digit0 => KeyCode::Numpad0,
+        KeyCode::Digit1 => KeyCode::Numpad1,
+        KeyCode::Digit3 => KeyCode::Numpad3,
+        KeyCode::Digit5 => KeyCode::Numpad5,
+        KeyCode::Digit7 => KeyCode::Numpad7,
+        KeyCode::Equal => KeyCode::NumpadAdd,
+        KeyCode::Minus => KeyCode::NumpadSubtract,
+        KeyCode::Backspace => KeyCode::Delete,
+        _ => return None,
+    })
 }
 
 fn key_name(key: KeyCode, platform: Platform) -> Cow<'static, str> {
@@ -326,6 +376,7 @@ pub enum Action {
     Redo,
     FillSelection,
     DeleteSelectionContents,
+    SelectAll,
     ClearSelection,
     Copy,
     Cut,
@@ -335,6 +386,7 @@ pub enum Action {
 
     SelectTool(Tool),
     SelectShape(ShapePrimitive),
+    CycleShape,
 
     FrameView,
     ViewPreset(CameraPreset),
@@ -449,7 +501,7 @@ impl ActionStateParams<'_> {
             flyby_active: self.flyby.active,
             checking_updates: self.updater.is_checking(),
             palettes: &self.palettes.0,
-            palette_choice: self.choice.0,
+            palette_choice: choice,
             active_colors: crate::ui::display_colors(&self.palettes, &self.working, choice),
             current_color: self.color.0,
             prefs: &self.prefs,
@@ -491,6 +543,7 @@ impl Action {
         Action::Redo,
         Action::FillSelection,
         Action::DeleteSelectionContents,
+        Action::SelectAll,
         Action::ClearSelection,
         Action::Cut,
         Action::Copy,
@@ -508,6 +561,7 @@ impl Action {
         Action::SelectShape(ShapePrimitive::Ellipse),
         Action::SelectShape(ShapePrimitive::Line),
         Action::SelectShape(ShapePrimitive::Sphere),
+        Action::CycleShape,
         Action::FrameView,
         Action::ViewPreset(CameraPreset::Front),
         Action::ViewPreset(CameraPreset::Back),
@@ -653,6 +707,13 @@ impl Action {
                 "clear remove voxels",
                 Some(Chord::key(K::Backspace)),
             ),
+            Action::SelectAll => spec(
+                "Select all",
+                "Select All",
+                C::Edit,
+                "everything voxels",
+                Some(Chord::cmd(K::KeyA)),
+            ),
             Action::ClearSelection => spec(
                 "Clear selection",
                 "Clear Selection",
@@ -736,6 +797,13 @@ impl Action {
                 };
                 spec(label, menu_label, C::Shape, keywords, None)
             }
+            Action::CycleShape => spec(
+                "Next shape",
+                "Next Shape",
+                C::Shape,
+                "cycle rectangle ellipse line sphere",
+                Some(Chord::key(K::KeyS)),
+            ),
 
             Action::FrameView => spec(
                 "Frame view (fit to content)",
@@ -987,9 +1055,12 @@ impl Action {
             }
             Action::ClearSelection | Action::Copy | Action::Cut => s.has_selection,
             Action::Paste => s.has_clipboard,
-            Action::DoubleDensity | Action::HalveDensity => s.has_voxels,
+            Action::SelectAll | Action::DoubleDensity | Action::HalveDensity => s.has_voxels,
             Action::SelectTool(t) => s.tool != t,
             Action::SelectShape(p) => s.shape != p,
+            // Shares S with SelectTool(Shape), which is disabled once Shape is
+            // the current tool.
+            Action::CycleShape => s.tool == Tool::Shape,
             Action::FrameView
             | Action::ViewPreset(_)
             | Action::ZoomIn
@@ -1013,6 +1084,24 @@ impl Action {
 }
 
 impl Action {
+    /// Every chord that triggers this action: its shortcut, plus Ctrl+Y for
+    /// Redo off macOS and Cmd+Shift+= (Cmd+Plus) for Zoom In.
+    pub fn chords(self) -> impl Iterator<Item = Chord> {
+        let extra = match self {
+            Action::Redo if Platform::CURRENT == Platform::Other => Some(Chord::cmd(KeyCode::KeyY)),
+            Action::ZoomIn => Some(Chord::cmd_shift(KeyCode::Equal)),
+            _ => None,
+        };
+        self.shortcut().into_iter().chain(extra)
+    }
+
+    /// Whether the macOS menu must disable this action while a text field has
+    /// focus: AppKit would otherwise take its key before the field sees it.
+    pub fn clashes_with_typing(self) -> bool {
+        matches!(self, Action::SelectAll | Action::ClearSelection)
+            || self.shortcut().is_some_and(|c| !c.cmd)
+    }
+
     /// Shown as a check item in menus.
     pub fn is_check(self) -> bool {
         matches!(
@@ -1044,6 +1133,79 @@ fn file_name(p: &Path) -> &str {
     p.file_name()
         .and_then(|s| s.to_str())
         .unwrap_or_else(|| p.to_str().unwrap_or("file"))
+}
+
+/// What's holding the keyboard when a shortcut fires.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ShortcutGate {
+    pub typing: bool,
+    pub modal: bool,
+    pub palette_open: bool,
+    pub prefs_open: bool,
+}
+
+impl ShortcutGate {
+    /// Shortcuts stay out of focused text fields and open modals, except the
+    /// two that close the modal they opened.
+    fn allows(self, action: Action) -> bool {
+        let free = !self.typing && !self.modal;
+        match action {
+            Action::ShowCommandPalette => free || self.palette_open,
+            Action::Preferences => free || self.prefs_open,
+            _ => free,
+        }
+    }
+}
+
+/// The action whose chord fired this frame, if it's enabled and allowed.
+pub fn shortcut_action(
+    mods: Mods,
+    just_pressed: impl Fn(KeyCode) -> bool,
+    s: &ActionState,
+    gate: ShortcutGate,
+) -> Option<Action> {
+    Action::STATIC.iter().copied().find(|&action| {
+        action.chords().any(|c| c.matches(mods, &just_pressed))
+            && action.enabled(s)
+            && gate.allows(action)
+    })
+}
+
+#[derive(SystemParam)]
+pub struct ShortcutInput<'w, 's> {
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    contexts: bevy_egui::EguiContexts<'w, 's>,
+    modal: Res<'w, crate::ui::ModalActive>,
+    cmd_palette: Res<'w, CommandPalette>,
+    prefs_window: Res<'w, PreferencesWindow>,
+}
+
+/// The one keyboard-shortcut handler: matches this frame's keys against every
+/// action's chords. On macOS a menu key equivalent consumes its key before
+/// winit sees it, so this only catches chords the menu bar doesn't own.
+pub fn shortcut_system(
+    mut input: ShortcutInput,
+    state: ActionStateParams,
+    mut queue: ResMut<ActionQueue>,
+) {
+    if input.keys.get_just_pressed().next().is_none() {
+        return;
+    }
+    let gate = ShortcutGate {
+        typing: input
+            .contexts
+            .ctx_mut()
+            .map(|c| c.wants_keyboard_input())
+            .unwrap_or(false),
+        modal: input.modal.0,
+        palette_open: input.cmd_palette.open,
+        prefs_open: input.prefs_window.open,
+    };
+    let mods = Mods::from_keys(&input.keys);
+    let keys = &input.keys;
+    if let Some(action) = shortcut_action(mods, |k| keys.just_pressed(k), &state.get(), gate) {
+        queue.push(action, Origin::Canvas);
+    }
 }
 
 /// Where an action was triggered. Paste lands under the cursor only for
@@ -1197,6 +1359,13 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
                 crate::select::clear_selection(&mut doc.grid, &mut doc.history, &edit.selection);
             }
         }
+        Action::SelectAll => {
+            let cells: std::collections::HashSet<IVec3> =
+                doc.grid.iter_occupied().map(|(p, _)| p).collect();
+            if !cells.is_empty() {
+                edit.selection.set_cells(cells);
+            }
+        }
         Action::ClearSelection => edit.selection.clear(),
         Action::Copy => {
             if let Some(stamp) = crate::clipboard::copy_selection(&doc.grid, &edit.selection) {
@@ -1255,6 +1424,17 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             save_preferences(&app.prefs);
         }
 
+        Action::CycleShape => {
+            let next = match view.shape.primitive {
+                ShapePrimitive::Rectangle => ShapePrimitive::Ellipse,
+                ShapePrimitive::Ellipse => ShapePrimitive::Line,
+                ShapePrimitive::Line => ShapePrimitive::Sphere,
+                ShapePrimitive::Sphere => ShapePrimitive::Rectangle,
+            };
+            view.shape.primitive = next;
+            app.prefs.last_shape = next;
+            save_preferences(&app.prefs);
+        }
         Action::FrameView => view.frame_view.0 = true,
         Action::ViewPreset(preset) => view.view_preset.0 = Some(preset),
         Action::ZoomIn | Action::ZoomOut => {
@@ -1474,8 +1654,10 @@ mod tests {
     #[test]
     fn toggle_labels_follow_state() {
         let palettes = vec![pal("A", true)];
-        let mut prefs = Preferences::default();
-        prefs.show_floor_grid = true;
+        let prefs = Preferences {
+            show_floor_grid: true,
+            ..Default::default()
+        };
         let mut s = state(&palettes, &prefs);
         assert_eq!(Action::ToggleFloorGrid.label(&s), "Hide floor grid");
         assert_eq!(Action::ToggleFlyby.label(&s), "Start flyby camera");
@@ -1519,9 +1701,11 @@ mod tests {
     #[test]
     fn check_items_reflect_preferences() {
         let palettes = vec![pal("A", true)];
-        let mut prefs = Preferences::default();
-        prefs.show_origin_axes = false;
-        prefs.color_space = ColorSpace::Hsl;
+        let prefs = Preferences {
+            show_origin_axes: false,
+            color_space: ColorSpace::Hsl,
+            ..Default::default()
+        };
         let s = state(&palettes, &prefs);
         assert!(!Action::ToggleOriginAxes.checked(&s));
         assert!(Action::SetColorSpace(ColorSpace::Hsl).checked(&s));
@@ -1539,6 +1723,200 @@ mod tests {
         assert!(Action::FillSelection.enabled(&s));
         s.selection_idle = false;
         assert!(!Action::FillSelection.enabled(&s));
+    }
+
+    fn fire(s: &ActionState, mods: Mods, key: KeyCode, gate: ShortcutGate) -> Option<Action> {
+        shortcut_action(mods, |k| k == key, s, gate)
+    }
+
+    const CMD: Mods = Mods {
+        cmd: true,
+        shift: false,
+        alt: false,
+    };
+    const CMD_SHIFT: Mods = Mods {
+        cmd: true,
+        shift: true,
+        alt: false,
+    };
+    const NONE: Mods = Mods {
+        cmd: false,
+        shift: false,
+        alt: false,
+    };
+
+    #[test]
+    fn chord_needs_exact_modifiers() {
+        let undo = Chord::cmd(KeyCode::KeyZ);
+        assert!(undo.matches(CMD, |k| k == KeyCode::KeyZ));
+        assert!(!undo.matches(CMD_SHIFT, |k| k == KeyCode::KeyZ));
+        assert!(!undo.matches(NONE, |k| k == KeyCode::KeyZ));
+        let alt = Mods { alt: true, ..NONE };
+        assert!(!Chord::key(KeyCode::KeyB).matches(alt, |k| k == KeyCode::KeyB));
+    }
+
+    #[test]
+    fn bare_key_chords_ignore_shift_but_cmd_chords_do_not() {
+        let shift = Mods {
+            shift: true,
+            ..NONE
+        };
+        assert!(Chord::key(KeyCode::KeyB).matches(shift, |k| k == KeyCode::KeyB));
+        assert!(!Chord::cmd(KeyCode::KeyZ).matches(CMD_SHIFT, |k| k == KeyCode::KeyZ));
+    }
+
+    #[test]
+    fn zoom_in_also_fires_on_cmd_shift_equal() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let s = state(&palettes, &prefs);
+        assert_eq!(
+            fire(&s, CMD_SHIFT, KeyCode::Equal, ShortcutGate::default()),
+            Some(Action::ZoomIn)
+        );
+    }
+
+    #[test]
+    fn plain_keys_and_select_chords_clash_with_typing() {
+        assert!(Action::FillSelection.clashes_with_typing());
+        assert!(Action::SelectAll.clashes_with_typing());
+        assert!(Action::ClearSelection.clashes_with_typing());
+        assert!(!Action::SaveProject.clashes_with_typing());
+    }
+
+    #[test]
+    fn chord_accepts_numpad_and_delete_aliases() {
+        assert!(Chord::cmd(KeyCode::Digit1).matches(CMD, |k| k == KeyCode::Numpad1));
+        assert!(Chord::cmd(KeyCode::Equal).matches(CMD, |k| k == KeyCode::NumpadAdd));
+        assert!(Chord::key(KeyCode::Backspace).matches(NONE, |k| k == KeyCode::Delete));
+    }
+
+    #[test]
+    fn shortcuts_dispatch_their_actions() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_undo = true;
+        s.has_redo = true;
+        let free = ShortcutGate::default();
+        assert_eq!(fire(&s, CMD, KeyCode::KeyZ, free), Some(Action::Undo));
+        assert_eq!(fire(&s, CMD_SHIFT, KeyCode::KeyZ, free), Some(Action::Redo));
+        assert_eq!(
+            fire(&s, CMD, KeyCode::Digit1, free),
+            Some(Action::ViewPreset(CameraPreset::Front))
+        );
+        assert_eq!(
+            fire(&s, CMD_SHIFT, KeyCode::Digit3, free),
+            Some(Action::ViewPreset(CameraPreset::Left))
+        );
+        assert_eq!(
+            fire(&s, NONE, KeyCode::KeyE, free),
+            Some(Action::SelectTool(Tool::Erase))
+        );
+        assert_eq!(fire(&s, CMD, KeyCode::KeyN, free), Some(Action::NewProject));
+    }
+
+    #[test]
+    fn ctrl_y_redoes_only_off_macos() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_redo = true;
+        let expected = (!cfg!(target_os = "macos")).then_some(Action::Redo);
+        assert_eq!(
+            fire(&s, CMD, KeyCode::KeyY, ShortcutGate::default()),
+            expected
+        );
+    }
+
+    #[test]
+    fn s_switches_to_shape_then_cycles_shapes() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        let free = ShortcutGate::default();
+        assert_eq!(
+            fire(&s, NONE, KeyCode::KeyS, free),
+            Some(Action::SelectTool(Tool::Shape))
+        );
+        s.tool = Tool::Shape;
+        assert_eq!(
+            fire(&s, NONE, KeyCode::KeyS, free),
+            Some(Action::CycleShape)
+        );
+    }
+
+    #[test]
+    fn no_two_actions_fire_on_the_same_chord() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        for tool in [Tool::Brush, Tool::Shape] {
+            let mut s = state(&palettes, &prefs);
+            s.tool = tool;
+            s.has_undo = true;
+            s.has_redo = true;
+            s.has_selection = true;
+            s.has_clipboard = true;
+            s.has_voxels = true;
+            let live: Vec<(Action, Chord)> = Action::STATIC
+                .iter()
+                .filter(|a| a.enabled(&s))
+                .flat_map(|&a| a.chords().map(move |c| (a, c)))
+                .collect();
+            for (i, (a, c)) in live.iter().enumerate() {
+                for (b, d) in &live[..i] {
+                    assert!(c != d, "{a:?} and {b:?} both on {c:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn typing_and_modals_block_shortcuts() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_undo = true;
+        let typing = ShortcutGate {
+            typing: true,
+            ..Default::default()
+        };
+        assert_eq!(fire(&s, CMD, KeyCode::KeyZ, typing), None);
+        assert_eq!(fire(&s, NONE, KeyCode::KeyB, typing), None);
+        let modal = ShortcutGate {
+            modal: true,
+            ..Default::default()
+        };
+        assert_eq!(fire(&s, CMD, KeyCode::KeyZ, modal), None);
+        assert_eq!(fire(&s, CMD, KeyCode::KeyK, modal), None);
+    }
+
+    #[test]
+    fn open_palette_and_prefs_close_with_their_own_shortcut() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let s = state(&palettes, &prefs);
+        let palette = ShortcutGate {
+            typing: true,
+            modal: true,
+            palette_open: true,
+            prefs_open: false,
+        };
+        assert_eq!(
+            fire(&s, CMD, KeyCode::KeyK, palette),
+            Some(Action::ShowCommandPalette)
+        );
+        let prefs_gate = ShortcutGate {
+            typing: false,
+            modal: true,
+            palette_open: false,
+            prefs_open: true,
+        };
+        assert_eq!(
+            fire(&s, CMD, KeyCode::Comma, prefs_gate),
+            Some(Action::Preferences)
+        );
+        assert_eq!(fire(&s, CMD, KeyCode::KeyK, prefs_gate), None);
     }
 
     #[test]
