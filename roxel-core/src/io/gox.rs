@@ -30,6 +30,8 @@ const BLOCK_VOXELS: usize = BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE;
 const BLOCK_BYTES: usize = BLOCK_VOXELS * 4;
 const BLOCK_I: i32 = BLOCK_SIZE as i32;
 const PNG_MAGIC: [u8; 4] = [0x89, 0x50, 0x4E, 0x47];
+/// LAYR block ref: index, x, y, z (`i32` each) + 8 reserved bytes.
+const LAYR_ENTRY_BYTES: usize = 4 * 4 + 8;
 
 /// A 16³ block keyed by its block coord: `((bx, by, bz), raw RGBA bytes)`.
 type BlockEntry = ((i32, i32, i32), Box<[u8; BLOCK_BYTES]>);
@@ -121,7 +123,7 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     while !r.eof() {
         let mut typ = [0u8; 4];
         typ.copy_from_slice(r.bytes(4)?);
-        let size = r.i32()? as usize;
+        let size = r.len_i32()?;
         let data = r.bytes(size)?.to_vec();
         let _crc = r.i32()?;
 
@@ -145,8 +147,8 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
                     continue;
                 }
                 let mut lr = LeReader::new(&data);
-                let n = lr.i32()? as usize;
-                let mut collected = Vec::with_capacity(n);
+                let n = lr.len_i32()?;
+                let mut collected = Vec::with_capacity(n.min(lr.remaining() / LAYR_ENTRY_BYTES));
                 for _ in 0..n {
                     let idx = lr.i32()?;
                     let gx = lr.i32()?;
@@ -168,9 +170,15 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
 
     let mut dropped = 0usize;
     for (idx, gx, gy, gz) in refs {
-        let Some(block) = blocks.get(idx as usize) else {
+        let Some(block) = usize::try_from(idx).ok().and_then(|i| blocks.get(i)) else {
             continue;
         };
+        if [gx, gy, gz]
+            .iter()
+            .any(|g| g.checked_add(BLOCK_I).is_none())
+        {
+            bail!("Goxel block position ({gx}, {gy}, {gz}) is out of range");
+        }
         // Goxel block min in Roxel coords: (rx, ry, rz) = (gx, gz, gy).
         let base_rx = gx;
         let base_ry = gz;
@@ -328,6 +336,64 @@ mod tests {
         let err = import(&path, &mut g).unwrap_err().to_string();
         assert!(err.contains("PNG"), "want PNG error, got: {err}");
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn gox_with_chunks(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GOX ");
+        buf.extend_from_slice(&2i32.to_le_bytes());
+        for (typ, data) in chunks {
+            write_chunk(&mut buf, typ, data);
+        }
+        buf
+    }
+
+    /// Imports `buf` and returns the voxel count.
+    fn import_bytes(name: &str, buf: &[u8]) -> Result<usize> {
+        let path = tmp_path(name, "gox");
+        std::fs::write(&path, buf).unwrap();
+        let mut g = VoxelGrid::default();
+        let res = import(&path, &mut g);
+        let _ = std::fs::remove_file(&path);
+        res.map(|()| g.count())
+    }
+
+    #[test]
+    fn import_rejects_a_negative_chunk_size() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GOX ");
+        buf.extend_from_slice(&2i32.to_le_bytes());
+        buf.extend_from_slice(b"LAYR");
+        buf.extend_from_slice(&(-8i32).to_le_bytes());
+        let err = import_bytes("neg-size", &buf).unwrap_err().to_string();
+        assert!(err.contains("negative"), "got: {err}");
+    }
+
+    #[test]
+    fn import_rejects_a_negative_or_inflated_ref_count() {
+        let neg = gox_with_chunks(&[(b"LAYR", (-1i32).to_le_bytes().to_vec())]);
+        assert!(import_bytes("neg-count", &neg).is_err());
+        let huge = gox_with_chunks(&[(b"LAYR", i32::MAX.to_le_bytes().to_vec())]);
+        assert!(import_bytes("huge-count", &huge).is_err());
+    }
+
+    #[test]
+    fn import_skips_a_negative_block_index_and_rejects_overflowing_positions() {
+        let mut block = vec![0u8; BLOCK_BYTES];
+        block[..4].copy_from_slice(&[9, 9, 9, 255]);
+        let layr = |idx: i32, x: i32| {
+            let mut d = 1i32.to_le_bytes().to_vec();
+            for v in [idx, x, 0, 0] {
+                d.extend_from_slice(&v.to_le_bytes());
+            }
+            d.extend_from_slice(&[0; 8]);
+            d
+        };
+        let neg_idx = gox_with_chunks(&[(b"BL16", block.clone()), (b"LAYR", layr(-1, 0))]);
+        assert_eq!(import_bytes("neg-idx", &neg_idx).unwrap(), 0);
+        let far = gox_with_chunks(&[(b"BL16", block), (b"LAYR", layr(0, i32::MAX - 4))]);
+        let err = import_bytes("far", &far).unwrap_err().to_string();
+        assert!(err.contains("out of range"), "got: {err}");
     }
 
     #[test]
