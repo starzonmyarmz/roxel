@@ -13,9 +13,6 @@ use std::path::Path;
 const CODEFLAG: u32 = 2;
 const NEXTSLICE: u32 = 6;
 
-/// Largest matrix volume accepted. An RLE run can claim a whole slice from
-/// 12 bytes, so a malformed size would otherwise expand into billions of
-/// writes.
 const MAX_CELLS: u64 = 1 << 28;
 
 pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {

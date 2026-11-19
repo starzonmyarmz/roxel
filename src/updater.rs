@@ -16,16 +16,12 @@ pub struct Release {
     pub html_url: String,
 }
 
-/// A semver version, ordered by semver precedence: a pre-release
-/// (`1.0.0-rc.1`) sorts below its release, build metadata is ignored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Version {
     pub core: (u32, u32, u32),
     pub pre: Vec<PreId>,
 }
 
-/// One dot-separated pre-release identifier. Numeric ones sort below
-/// alphanumeric ones, which the variant order gives the derived `Ord`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PreId {
     Num(u64),
@@ -216,8 +212,6 @@ pub fn poll_update_check_system(
     };
 }
 
-/// Only a check that reached GitHub starts the 24 h wait; a failed one (say,
-/// offline at launch) leaves the next launch free to retry.
 fn stamps_rate_limit(result: &Result<CheckOutcome, String>) -> bool {
     result.is_ok()
 }

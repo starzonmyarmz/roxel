@@ -13,8 +13,6 @@ const VOX_MAX_EXTENT: i32 = 256;
 // (x, y_roxel, z_roxel) <-> (x_vox, z_vox, y_vox) so foreign .vox files load
 // upright and Roxel-exported files open upright in MagicaVoxel.
 
-/// Writes `grid` as a single-model `.vox`. Returns how many colors past the
-/// format's 255 were merged into their nearest palette entry.
 pub fn export(path: &Path, grid: &VoxelGrid) -> Result<usize> {
     // Open-world grids can carry negative coords; `.vox` coords are unsigned
     // and start at origin. Shift the whole model by `-min` so its min corner
@@ -83,13 +81,8 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<usize> {
     Ok(merged)
 }
 
-/// `.vox` palette slots usable for colors (index 0 is reserved as empty).
 const VOX_MAX_COLORS: usize = 255;
 
-/// The export palette and each scene color's index into it. The most-used
-/// colors (ties broken by value, so output is deterministic) get exact slots;
-/// any past [`VOX_MAX_COLORS`] map to their nearest slot. Also returns how
-/// many colors were merged that way.
 fn build_palette(grid: &VoxelGrid) -> (Vec<Color>, HashMap<Color8, u8>, usize) {
     let mut counts: HashMap<Color8, usize> = HashMap::new();
     for (_, c) in grid.iter_occupied() {
@@ -132,9 +125,6 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<Vec<Color8>> {
     place_models(&data, grid)
 }
 
-/// Places every visible model instance from the scene graph, then shifts the
-/// whole import so its lowest model box corner sits at the origin — a single
-/// untransformed model lands at its raw voxel coords, as before.
 fn place_models(data: &DotVoxData, grid: &mut VoxelGrid) -> Result<Vec<Color8>> {
     if data.models.is_empty() {
         anyhow::bail!("file contains no models");
@@ -193,12 +183,11 @@ fn palette_color(data: &DotVoxData, i: u8) -> Color8 {
     [c.r, c.g, c.b, 255]
 }
 
-/// MagicaVoxel (x, y, z) Z-up → Roxel (x, z, y) Y-up.
 fn mv_to_roxel(p: [i64; 3]) -> [i64; 3] {
     [p[0], p[2], p[1]]
 }
 
-/// Deep enough for any real scene; stops a cyclic graph from recursing forever.
+/// Stops a cyclic scene graph from recursing forever.
 const MAX_SCENE_DEPTH: usize = 64;
 
 fn collect_instances(
@@ -243,8 +232,8 @@ fn collect_instances(
 }
 
 /// A scene-graph transform: signed permutation matrix `r` (row-major, in
-/// MagicaVoxel's Z-up space) and translation `t`. `i64` so hostile
-/// translations nested [`MAX_SCENE_DEPTH`] deep can't overflow.
+/// MagicaVoxel's Z-up space) and translation `t`. `i64` so nested hostile
+/// translations can't overflow.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Xform {
     r: [[i64; 3]; 3],
@@ -553,8 +542,6 @@ mod tests {
         }
     }
 
-    /// Root transform → group → one transform + shape per model, the second
-    /// translated 10 along MV x; `hide_second` marks its transform hidden.
     fn two_model_scene(hide_second: bool) -> DotVoxData {
         let hidden: &[(&str, &str)] = if hide_second {
             &[("_hidden", "1")]
@@ -610,8 +597,6 @@ mod tests {
 
     #[test]
     fn import_applies_rotation_about_the_model_center() {
-        // _r 17: row 0 takes -y, row 1 takes x — 90° about MV's Z. The
-        // model's MV-x line turns to run along MV y, which is Roxel z.
         let data = scene_data(
             vec![model((3, 1, 1), &[(0, 0, 0, 0), (2, 0, 0, 1)])],
             vec![trn(1, &[("_r", "17")], &[]), shp(0)],
@@ -657,7 +642,6 @@ mod tests {
             scene_data(vec![model((1, 1, 1), &[(0, 0, 0, 0)])], scenes)
         };
         let mut g = VoxelGrid::default();
-        // Two models would pin `min`; one nested chain just must not panic or wrap.
         place_models(&nest(40), &mut g).expect("single far model imports");
         assert_eq!(g.count(), 1);
 
@@ -706,7 +690,6 @@ mod tests {
             r: Xform::IDENTITY.r,
             t: [1, 0, 0],
         };
-        // Parent rotates the child's +x offset onto +y, then adds its own t.
         assert_eq!(rot.then(shift).t, [5, 1, 0]);
     }
 

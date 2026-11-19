@@ -451,7 +451,6 @@ pub struct ActionState<'a> {
     pub shape: ShapePrimitive,
     pub has_undo: bool,
     pub has_redo: bool,
-    /// A drag is mid-stroke; one-shot edits wait for it to finish.
     pub stroke_open: bool,
     pub has_selection: bool,
     pub selection_idle: bool,
@@ -460,7 +459,6 @@ pub struct ActionState<'a> {
     pub dialog_busy: bool,
     pub flyby_active: bool,
     pub checking_updates: bool,
-    /// Tag of a newer release found by the update check.
     pub update_tag: Option<&'a str>,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
@@ -1119,7 +1117,6 @@ impl Action {
 }
 
 impl Action {
-    /// One-shot edits that write their own history stroke.
     fn edits_scene(self) -> bool {
         matches!(
             self,
@@ -1188,8 +1185,6 @@ const QUIT_MENU_LABEL: &str = if cfg!(target_os = "macos") {
     "Quit"
 };
 
-/// Check for Updates' label once a newer release is known: it opens that
-/// release instead of checking again.
 fn download_label(s: &ActionState) -> Cow<'static, str> {
     format!("Download Roxel {}…", s.update_tag.unwrap_or_default()).into()
 }

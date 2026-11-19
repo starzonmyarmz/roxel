@@ -16,8 +16,6 @@ pub struct Stroke {
     // mid-stroke so freshly placed voxels are invisible to the next pick —
     // prevents runaway stacking. Replaces the old full-grid snapshot.
     pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
-    /// Inclusive hull of `touched`, so the picker's ray budget still reaches
-    /// cells erased this stroke after their chunk dropped.
     pub touched_bounds: Option<(IVec3, IVec3)>,
     /// Monotonic id assigned in `end` when the stroke commits. Used by the
     /// document-dirty check: the editor records the id of the top-of-undo
@@ -40,8 +38,6 @@ impl bevy_ecs::prelude::Resource for History {}
 const MAX_UNDO: usize = 200;
 
 impl History {
-    /// Starts a stroke. A stroke still open (a drag interrupted by a key
-    /// command) is committed first so its edits stay undoable.
     pub fn begin(&mut self) {
         self.end();
         self.current = Some(Stroke::default());
@@ -87,7 +83,6 @@ impl History {
             .copied()
     }
 
-    /// Hull of the cells the open stroke has touched.
     pub fn pre_stroke_bounds(&self) -> Option<(IVec3, IVec3)> {
         self.current.as_ref()?.touched_bounds
     }

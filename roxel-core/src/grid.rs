@@ -151,10 +151,6 @@ impl VoxelGrid {
         }
     }
 
-    /// Queues a rebuild of the chunk holding `p`, plus the neighbour chunk
-    /// across any seam `p` touches: a boundary cell changes face occlusion
-    /// there. Seams are marked unconditionally; the mesher skips dirty coords
-    /// with no loaded chunk.
     pub fn mark_cell_dirty(&mut self, p: IVec3) {
         let coord = chunk_coord(p);
         self.dirty = true;
@@ -226,8 +222,6 @@ impl VoxelGrid {
         Some((min, max))
     }
 
-    /// Inclusive cell bounds of every allocated chunk: a loose hull of the
-    /// occupied cells that costs one pass over the chunk keys, not the cells.
     pub fn chunk_bounds(&self) -> Option<(IVec3, IVec3)> {
         let mut keys = self.chunks.keys();
         let first = *keys.next()?;

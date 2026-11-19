@@ -35,15 +35,9 @@ pub fn union_bounds(
     }
 }
 
-/// Ceiling on DDA steps per ray, so a scene with one far-flung voxel can't
-/// make every missing ray walk billions of cells on the main thread.
 const MAX_DDA_STEPS: u64 = 1 << 16;
 
-/// DDA steps after which a ray starting in `start` can't reach any cell in
-/// `bounds`: each step moves one cell along one axis, so this is the L1
-/// distance to the box's farthest corner. Scales with how far the camera
-/// sits from the scene instead of a fixed cap that misses big, zoomed-out
-/// scenes.
+/// L1 distance from `start` to the farthest corner of `bounds`, capped.
 fn step_budget(start: IVec3, bounds: Option<(IVec3, IVec3)>) -> u64 {
     let Some((min, max)) = bounds else {
         return 0;
@@ -56,7 +50,7 @@ fn step_budget(start: IVec3, bounds: Option<(IVec3, IVec3)>) -> u64 {
 /// DDA voxel raycaster parameterised by an arbitrary cell-reader. Used by
 /// the stroke path to overlay pre-stroke values from `StrokeShadow` over
 /// the live grid, so voxels placed earlier in the same stroke are invisible
-/// to the picker. `bounds` holds every cell `read` can return.
+/// to the picker.
 ///
 /// Terminates on: hit, the ray passing beyond `bounds`, or ray exits below
 /// the floor going further down (no point continuing — there's nothing there).

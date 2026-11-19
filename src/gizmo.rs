@@ -14,8 +14,6 @@ const GIZMO_SIZE_PT: f32 = 100.0;
 const GIZMO_MARGIN: f32 = 12.0;
 const DRAG_SENSITIVITY: f32 = 0.012;
 const FACE_HALF: f32 = 0.55;
-/// Cursor travel (points) below which a press-release on the cube is a click
-/// that snaps to the hovered face rather than a drag.
 const CLICK_SLOP: f32 = 4.0;
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -376,8 +374,6 @@ fn brighten(c: Color, amount: f32) -> Color {
     Color::linear_rgba(mix(l.red), mix(l.green), mix(l.blue), l.alpha)
 }
 
-/// (yaw, pitch) that looks straight at cube face `index` (+X, −X, +Y, −Y,
-/// +Z, −Z), matching the view presets; −Y looks up from below.
 fn face_angles(index: usize) -> Option<(f32, f32)> {
     let preset = match index {
         0 => CameraPreset::Right,
@@ -391,8 +387,6 @@ fn face_angles(index: usize) -> Option<(f32, f32)> {
     Some(preset_angles(preset))
 }
 
-/// `target` shifted by whole turns to sit within half a turn of `current`,
-/// so the camera takes the short way round instead of unwinding past spins.
 fn nearest_turn(current: f32, target: f32) -> f32 {
     current + (target - current + PI).rem_euclid(TAU) - PI
 }

@@ -52,7 +52,6 @@ impl<'a> LeReader<'a> {
         Ok(self.u32()? as i32)
     }
 
-    /// A size or count stored as `i32`; negative values are malformed.
     pub fn len_i32(&mut self) -> Result<usize> {
         let at = self.pos;
         let v = self.i32()?;

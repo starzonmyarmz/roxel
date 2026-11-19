@@ -30,7 +30,6 @@ const BLOCK_VOXELS: usize = BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE;
 const BLOCK_BYTES: usize = BLOCK_VOXELS * 4;
 const BLOCK_I: i32 = BLOCK_SIZE as i32;
 const PNG_MAGIC: [u8; 4] = [0x89, 0x50, 0x4E, 0x47];
-/// LAYR block ref: index, x, y, z (`i32` each) + 8 reserved bytes.
 const LAYR_ENTRY_BYTES: usize = 4 * 4 + 8;
 
 /// A 16³ block keyed by its block coord: `((bx, by, bz), raw RGBA bytes)`.
@@ -348,7 +347,6 @@ mod tests {
         buf
     }
 
-    /// Imports `buf` and returns the voxel count.
     fn import_bytes(name: &str, buf: &[u8]) -> Result<usize> {
         let path = tmp_path(name, "gox");
         std::fs::write(&path, buf).unwrap();

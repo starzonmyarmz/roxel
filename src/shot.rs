@@ -833,9 +833,6 @@ struct ShotAssets<'a, 'w, 's> {
     images: &'a mut Assets<Image>,
 }
 
-/// Despawns the throwaway scene, frees its assets and returns the session to
-/// idle so the next shot can start. A capture still in flight for this
-/// session no longer matches its screenshot ids and is ignored.
 fn teardown(session: &mut ShotSession, assets: &mut ShotAssets) {
     for e in session.entities.drain(..) {
         assets.commands.entity(e).despawn();

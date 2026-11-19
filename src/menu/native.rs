@@ -15,11 +15,7 @@ use crate::ui::RecentFiles;
 use roxel::io::recent::MAX_RECENT;
 
 enum NativeItem {
-    /// `label` mirrors the item text so per-frame label sync skips unchanged items.
-    Plain {
-        item: MenuItem,
-        label: String,
-    },
+    Plain { item: MenuItem, label: String },
     Check(CheckMenuItem),
 }
 

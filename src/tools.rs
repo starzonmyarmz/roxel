@@ -692,8 +692,7 @@ fn select_commit(state: &mut SelectState, selection: &mut Selection) {
     state.reset();
 }
 
-/// Esc or RMB aborts an in-progress select drag. Idle, Esc deselects but RMB
-/// doesn't — it's reserved for camera orbit. Returns whether either fired.
+/// Idle, RMB must not deselect: it's reserved for camera orbit.
 fn cancel_select(
     state: &mut SelectState,
     selection: &mut Selection,
@@ -995,8 +994,6 @@ pub fn tool_input_system(
     // they never enter drag mode. A plain single click on a voxel falls through
     // to the per-voxel stroke below (freehand recolor).
     if lmb_just && tool.current == Tool::Paint {
-        // A click on a selected voxel fills the whole selection (per-cell
-        // sampled), one history stroke. Reachable from the keyboard via `F` too.
         if hits_selection(&selection, pick(&grid, origin, dir)) {
             let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
             for c in used {
@@ -1209,8 +1206,6 @@ pub fn tool_input_system(
     }
 }
 
-/// Whether a click landed on a selected voxel, so Paint and Erase act on the
-/// whole selection rather than the single cell.
 fn hits_selection(selection: &Selection, hit: Option<Hit>) -> bool {
     hit.is_some_and(|h| h.hit_voxel && selection.contains(h.cell))
 }
