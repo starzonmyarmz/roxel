@@ -989,9 +989,9 @@ pub fn tool_input_system(
     // they never enter drag mode. A plain single click on a voxel falls through
     // to the per-voxel stroke below (freehand recolor).
     if lmb_just && tool.current == Tool::Paint {
-        // Active selection: a click fills the whole selection (per-cell sampled),
-        // one history stroke. Reachable from the keyboard via `F` too.
-        if selection.aabb.is_some() {
+        // A click on a selected voxel fills the whole selection (per-cell
+        // sampled), one history stroke. Reachable from the keyboard via `F` too.
+        if hits_selection(&selection, pick(&grid, origin, dir)) {
             let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
             for c in used {
                 recent.push(c);
@@ -1088,14 +1088,10 @@ pub fn tool_input_system(
 
     // Erase on a voxel inside the active selection → clear the whole selection
     // in a single history stroke. Click outside the selection falls through to
-    // normal single-cell stroke behavior. (Recoloring a selection lives on the
-    // Fill tool.)
+    // normal single-cell stroke behavior.
     if lmb_just
         && tool.current == Tool::Erase
-        && selection.aabb.is_some()
-        && let Some(hit) = pick(&grid, origin, dir)
-        && hit.hit_voxel
-        && selection.contains(hit.cell)
+        && hits_selection(&selection, pick(&grid, origin, dir))
     {
         clear_selection(&mut grid, &mut history, &selection);
         return;
@@ -1204,6 +1200,12 @@ pub fn tool_input_system(
             Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
         }
     }
+}
+
+/// Whether a click landed on a selected voxel, so Paint and Erase act on the
+/// whole selection rather than the single cell.
+fn hits_selection(selection: &Selection, hit: Option<Hit>) -> bool {
+    hit.is_some_and(|h| h.hit_voxel && selection.contains(h.cell))
 }
 
 /// Mouse drag for `Tool::Move`. Press inside a selected voxel anchors a face
@@ -1459,6 +1461,28 @@ mod tests {
             normal,
             hit_voxel: true,
         }
+    }
+
+    #[test]
+    fn only_a_click_on_a_selected_voxel_hits_the_selection() {
+        let mut selection = Selection::default();
+        selection.set_aabb(SelectionAabb::from_corners(IVec3::ZERO, IVec3::splat(2)));
+        let inside = IVec3::ONE;
+        assert!(hits_selection(&selection, Some(hit(inside, IVec3::Y))));
+        assert!(!hits_selection(
+            &selection,
+            Some(hit(IVec3::splat(5), IVec3::Y))
+        ));
+        let floor = Hit {
+            hit_voxel: false,
+            ..hit(inside, IVec3::Y)
+        };
+        assert!(!hits_selection(&selection, Some(floor)));
+        assert!(!hits_selection(&selection, None));
+        assert!(!hits_selection(
+            &Selection::default(),
+            Some(hit(inside, IVec3::Y))
+        ));
     }
 
     #[test]

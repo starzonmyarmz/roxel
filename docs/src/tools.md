@@ -8,11 +8,11 @@ Places voxels in the active color. Drag to paint a stroke. Paints onto the face 
 
 ## Erase — `E`
 
-Removes voxels under the cursor. Drag to erase a stroke.
+Removes voxels under the cursor. Drag to erase a stroke. With a selection active, clicking a selected voxel clears the whole selection.
 
 ## Paint (recolor) — `P`
 
-Recolors an existing voxel in place without adding or removing geometry.
+Recolors an existing voxel in place without adding or removing geometry. With a selection active, clicking a selected voxel recolors the whole selection; clicks elsewhere recolor as usual.
 
 ## Eyedropper — `I`
 
