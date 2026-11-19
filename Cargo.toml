@@ -24,7 +24,7 @@ egui_extras = { version = "0.33.3", features = ["svg"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 winit = "0.30"
 dirs = "5"
-ureq = { version = "2", default-features = false, features = ["tls"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 open = "5"
 
 [features]
