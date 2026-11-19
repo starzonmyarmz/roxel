@@ -11,7 +11,8 @@ use crate::theme::Theme;
 use crate::tools::{
     CurrentColor, ExtraColors, ShapeOptions, ShapeState, Tool, ToolState, color_pool, sample_color,
 };
-use roxel::shapes::compute_shape_cells;
+use roxel::grid::Color8;
+use roxel::shapes::{ShapePrimitive, compute_shape_cells};
 
 #[derive(Component)]
 pub struct ShapePreview;
@@ -75,11 +76,29 @@ pub struct ShapePreviewAssets<'w> {
     materials: ResMut<'w, Assets<StandardMaterial>>,
 }
 
+#[derive(PartialEq)]
+struct PreviewKey {
+    primitive: ShapePrimitive,
+    c1: IVec3,
+    c2: IVec3,
+    axis: usize,
+    thickness: i32,
+    normal_sign: i32,
+    pool: Vec<Color8>,
+}
+
+#[derive(Default)]
+pub struct PreviewCache {
+    key: Option<PreviewKey>,
+    segments: Vec<(Vec3, Vec3)>,
+}
+
 pub fn shape_preview_system(
     inputs: ShapePreviewInputs,
     mut assets: ShapePreviewAssets,
     mut q: Query<&mut Visibility, With<ShapePreview>>,
     mut gizmos: Gizmos<PreviewGizmos>,
+    mut cache: Local<PreviewCache>,
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
@@ -101,56 +120,71 @@ pub fn shape_preview_system(
         return;
     };
 
-    let cells = compute_shape_cells(
-        inputs.options.primitive,
+    let pool = color_pool(inputs.color.0, &inputs.extras.0);
+    let key = PreviewKey {
+        primitive: inputs.options.primitive,
         c1,
         c2,
-        anchor.axis,
-        inputs.state.thickness,
-        inputs.state.normal_sign,
-    );
-
-    let pool = color_pool(inputs.color.0, &inputs.extras.0);
-    let multi = pool.len() > 1;
-
-    let Some(mesh) = assets.meshes.get_mut(&inputs.handles.mesh) else {
-        *vis = Visibility::Hidden;
-        return;
+        axis: anchor.axis,
+        thickness: inputs.state.thickness,
+        normal_sign: inputs.state.normal_sign,
+        pool,
     };
-    let (positions, normals, indices) = build_cubes_mesh(&cells);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    if multi {
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_COLOR,
-            build_cube_vertex_colors(&cells, &pool),
+    if cache.key.as_ref() != Some(&key) {
+        let Some(mesh) = assets.meshes.get_mut(&inputs.handles.mesh) else {
+            *vis = Visibility::Hidden;
+            return;
+        };
+        let cells = compute_shape_cells(
+            key.primitive,
+            c1,
+            c2,
+            key.axis,
+            key.thickness,
+            key.normal_sign,
         );
-    } else {
-        mesh.remove_attribute(Mesh::ATTRIBUTE_COLOR.id);
-    }
-    mesh.insert_indices(Indices::U32(indices));
-
-    if let Some(m) = assets.materials.get_mut(&inputs.handles.material) {
+        let multi = key.pool.len() > 1;
+        let (positions, normals, indices) = build_cubes_mesh(&cells);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         if multi {
-            // White base lets vertex colors show through unmodified.
-            m.base_color = Color::srgba(1.0, 1.0, 1.0, 0.4);
-        } else {
-            let c = inputs.color.0;
-            m.base_color = Color::srgba(
-                c[0] as f32 / 255.0,
-                c[1] as f32 / 255.0,
-                c[2] as f32 / 255.0,
-                0.4,
+            mesh.insert_attribute(
+                Mesh::ATTRIBUTE_COLOR,
+                build_cube_vertex_colors(&cells, &key.pool),
             );
+        } else {
+            mesh.remove_attribute(Mesh::ATTRIBUTE_COLOR.id);
         }
+        mesh.insert_indices(Indices::U32(indices));
+
+        if let Some(m) = assets.materials.get_mut(&inputs.handles.material) {
+            if multi {
+                // White base lets vertex colors show through unmodified.
+                m.base_color = Color::srgba(1.0, 1.0, 1.0, 0.4);
+            } else {
+                let c = inputs.color.0;
+                m.base_color = Color::srgba(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.4,
+                );
+            }
+        }
+
+        cache.segments = silhouette_segments(&cells);
+        cache.key = Some(key);
     }
 
-    draw_silhouette(&mut gizmos, &cells, accent_outline_color(&inputs.theme));
+    let color = accent_outline_color(&inputs.theme);
+    for &(a, b) in &cache.segments {
+        gizmos.line(a, b, color);
+    }
 
     *vis = Visibility::Visible;
 }
 
-fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: Color) {
+fn silhouette_segments(cells: &[IVec3]) -> Vec<(Vec3, Vec3)> {
     const OFFSETS: [(usize, f32, IVec3); 6] = [
         (0, 1.0, IVec3::X),
         (0, 0.0, IVec3::NEG_X),
@@ -161,6 +195,7 @@ fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: C
     ];
     const UV: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
     let set: HashSet<IVec3> = cells.iter().copied().collect();
+    let mut out = Vec::new();
     for &cell in cells {
         let p = cell.as_vec3();
         for &(axis, face_coord, normal) in &OFFSETS {
@@ -193,10 +228,11 @@ fn draw_silhouette(gizmos: &mut Gizmos<PreviewGizmos>, cells: &[IVec3], color: C
                 if neighbor_face_exposed {
                     continue;
                 }
-                gizmos.line(corners[a], corners[b], color);
+                out.push((corners[a], corners[b]));
             }
         }
     }
+    out
 }
 
 /// Per-vertex RGBA colors (24 verts/cell, six faces × four corners) sampled
@@ -304,4 +340,22 @@ pub(crate) fn build_cubes_mesh(cells: &[IVec3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>
         }
     }
     (pos, nor, idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn silhouette_segments_outline_every_edge_of_a_lone_cube() {
+        assert_eq!(silhouette_segments(&[IVec3::ZERO]).len(), 24);
+    }
+
+    #[test]
+    fn silhouette_segments_skip_the_seam_between_coplanar_faces() {
+        let segments = silhouette_segments(&[IVec3::ZERO, IVec3::X]);
+        assert_eq!(segments.len(), 32);
+        let seam = |&(a, b): &(Vec3, Vec3)| a.x == 1.0 && b.x == 1.0;
+        assert!(!segments.iter().any(seam));
+    }
 }
