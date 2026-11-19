@@ -192,8 +192,10 @@ pub fn poll_update_check_system(
         }
         _ => return,
     };
-    prefs.last_update_check = Some(SystemTime::now());
-    save_preferences(&prefs);
+    if stamps_rate_limit(&result) {
+        prefs.last_update_check = Some(SystemTime::now());
+        save_preferences(&prefs);
+    }
     state.0 = match result {
         Ok(CheckOutcome::Newer(rel)) => {
             toasts.info(format!("Roxel {} available", rel.tag));
@@ -212,6 +214,12 @@ pub fn poll_update_check_system(
             UpdateState::Error(e)
         }
     };
+}
+
+/// Only a check that reached GitHub starts the 24 h wait; a failed one (say,
+/// offline at launch) leaves the next launch free to retry.
+fn stamps_rate_limit(result: &Result<CheckOutcome, String>) -> bool {
+    result.is_ok()
 }
 
 pub fn startup_check_system(
@@ -367,6 +375,12 @@ mod tests {
             now,
             Duration::from_secs(60 * 60)
         ));
+    }
+
+    #[test]
+    fn only_a_completed_check_stamps_the_rate_limit() {
+        assert!(stamps_rate_limit(&Ok(CheckOutcome::UpToDate)));
+        assert!(!stamps_rate_limit(&Err("offline".into())));
     }
 
     #[test]
