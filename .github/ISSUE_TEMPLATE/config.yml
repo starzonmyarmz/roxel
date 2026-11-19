@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/starzonmyarmz/roxel/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: User guide
+    url: https://starzonmyarmz.github.io/roxel/
+    about: How to use Roxel's tools, shortcuts and file formats.

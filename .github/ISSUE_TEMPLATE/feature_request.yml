@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest a tool, shortcut, file format or other improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the model you're building or the task that's harder than it should be.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you'd like it to work. Mention another editor if it does this well.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you do it today?
+      description: Any workaround you use now, if there is one.
