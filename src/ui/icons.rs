@@ -61,6 +61,9 @@ pub fn arrow_big_up() -> egui::ImageSource<'static> {
 pub fn command() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/command.svg")
 }
+pub fn option() -> egui::ImageSource<'static> {
+    egui::include_image!("../../assets/icons/option.svg")
+}
 pub fn square() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/square.svg")
 }

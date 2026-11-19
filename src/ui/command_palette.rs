@@ -1,8 +1,8 @@
-use crate::actions::{Action, ActionState, Category, Chord, KeyToken, Platform};
+use crate::actions::{Action, ActionState, Category, Chord, Platform};
 use crate::theme::Theme;
-use crate::ui::icons;
 use crate::ui::search_popover::{self, SearchNav, SearchPopover};
-use crate::ui::tokens::{font, icon, radius, size, space, width};
+use crate::ui::tokens::{font, radius, size, space, width};
+use crate::ui::widgets;
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -277,7 +277,6 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
         theme.text_dim
     };
     let dim = theme.text_dim;
-    let chip_color = theme.text;
 
     // Category chip (left).
     let chip_x = rect.left() + space::FIELD_PAD_X;
@@ -302,111 +301,17 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     ui.painter()
         .galley(egui::pos2(label_x, label_y), label_galley, text_color);
 
-    // Shortcut (right) — per-key chips (text or Lucide icons), surface fill.
     if let Some(sc) = entry.shortcut {
-        let chip_h = icon::XS + space::SM; // 20, matches footer chip
-        let tokens: Vec<ShortcutToken> = sc
-            .tokens(Platform::CURRENT)
-            .into_iter()
-            .map(ShortcutToken::from)
-            .collect();
-        let gap = space::XXS;
-        let widths: Vec<f32> = tokens
-            .iter()
-            .map(|t| match t {
-                ShortcutToken::Text(s) => {
-                    let g = ui.painter().layout_no_wrap(
-                        s.clone(),
-                        egui::FontId::monospace(font::SMALL),
-                        chip_color,
-                    );
-                    g.size().x + space::SX * 2.0
-                }
-                ShortcutToken::Command | ShortcutToken::Shift => icon::XS + space::SX * 2.0,
-            })
-            .collect();
-        let total: f32 = widths.iter().sum::<f32>() + gap * (tokens.len().saturating_sub(1)) as f32;
-        let mut x = rect.right() - space::FIELD_PAD_X - total;
-        let y = rect.center().y - chip_h * 0.5;
-        for tok in &tokens {
-            let w = match tok {
-                ShortcutToken::Text(s) => {
-                    let g = ui.painter().layout_no_wrap(
-                        s.clone(),
-                        egui::FontId::monospace(font::SMALL),
-                        chip_color,
-                    );
-                    let tw = g.size().x + space::SX * 2.0;
-                    let chip_rect =
-                        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(tw, chip_h));
-                    ui.painter().rect_filled(
-                        chip_rect,
-                        egui::CornerRadius::same(radius::XS),
-                        theme.surface,
-                    );
-                    let pos = egui::pos2(
-                        chip_rect.center().x - g.size().x * 0.5,
-                        chip_rect.center().y - g.size().y * 0.5,
-                    );
-                    ui.painter().galley(pos, g, chip_color);
-                    tw
-                }
-                ShortcutToken::Command | ShortcutToken::Shift => {
-                    let tw = icon::XS + space::SX * 2.0;
-                    let chip_rect =
-                        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(tw, chip_h));
-                    ui.painter().rect_filled(
-                        chip_rect,
-                        egui::CornerRadius::same(radius::XS),
-                        theme.surface,
-                    );
-                    let img_rect = egui::Rect::from_center_size(
-                        chip_rect.center(),
-                        egui::vec2(icon::XS, icon::XS),
-                    );
-                    if let Some(src) = tok.icon_source() {
-                        egui::Image::new(src)
-                            .tint(chip_color)
-                            .paint_at(ui, img_rect);
-                    }
-                    tw
-                }
-            };
-            x += w + gap;
-        }
+        widgets::paint_key_segs(
+            ui,
+            theme,
+            &widgets::chord_segs(sc, Platform::CURRENT),
+            rect.right() - space::FIELD_PAD_X,
+            rect.center().y,
+        );
     }
 
     resp.clicked() && entry.enabled
-}
-
-/// A single chip in a shortcut display — either text or a Lucide icon for a
-/// modifier key.
-#[derive(Debug, PartialEq)]
-enum ShortcutToken {
-    Text(String),
-    Command,
-    Shift,
-}
-
-impl From<KeyToken> for ShortcutToken {
-    fn from(t: KeyToken) -> Self {
-        match t {
-            KeyToken::Command => ShortcutToken::Command,
-            KeyToken::Shift => ShortcutToken::Shift,
-            KeyToken::Control => ShortcutToken::Text("Ctrl".into()),
-            KeyToken::Key(k) => ShortcutToken::Text(k.into_owned()),
-        }
-    }
-}
-
-impl ShortcutToken {
-    fn icon_source(&self) -> Option<egui::ImageSource<'static>> {
-        match self {
-            ShortcutToken::Command => Some(icons::command()),
-            ShortcutToken::Shift => Some(icons::arrow_big_up()),
-            _ => None,
-        }
-    }
 }
 
 // -------- Tests --------
@@ -597,22 +502,5 @@ mod tests {
                 cat[i].label
             );
         }
-    }
-
-    #[test]
-    fn shortcut_tokens_map_to_chips() {
-        assert_eq!(
-            ShortcutToken::from(KeyToken::Control),
-            ShortcutToken::Text("Ctrl".into())
-        );
-        assert_eq!(
-            ShortcutToken::from(KeyToken::Key("N".into())),
-            ShortcutToken::Text("N".into())
-        );
-        assert_eq!(ShortcutToken::from(KeyToken::Shift), ShortcutToken::Shift);
-        assert_eq!(
-            ShortcutToken::from(KeyToken::Command),
-            ShortcutToken::Command
-        );
     }
 }

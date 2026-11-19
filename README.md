@@ -75,7 +75,6 @@ Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to k
 | `Cmd/Ctrl + Z`           | Undo                                                           |
 | `Cmd/Ctrl + Shift + Z`   | Redo                                                           |
 | `` ` ``                  | Focus mode — toggle inspector + floating chrome                |
-| `Cmd/Ctrl + /`           | Keyboard shortcuts cheat sheet                                 |
 
 Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
 

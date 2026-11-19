@@ -1008,7 +1008,7 @@ impl Action {
                 "Keyboard Shortcuts",
                 C::Help,
                 "keys hotkeys keybindings cheat sheet help",
-                Some(Chord::cmd(K::Slash)),
+                None,
             ),
             Action::Changelog => spec(
                 "Open Changelog",
@@ -1227,7 +1227,6 @@ pub struct ShortcutGate {
     pub modal: bool,
     pub palette_open: bool,
     pub prefs_open: bool,
-    pub shortcuts_open: bool,
 }
 
 impl ShortcutGate {
@@ -1238,7 +1237,6 @@ impl ShortcutGate {
         match action {
             Action::ShowCommandPalette => free || self.palette_open,
             Action::Preferences => free || self.prefs_open,
-            Action::ShowShortcuts => free || self.shortcuts_open,
             _ => free,
         }
     }
@@ -1265,7 +1263,6 @@ pub struct ShortcutInput<'w, 's> {
     modal: Res<'w, crate::ui::ModalActive>,
     cmd_palette: Res<'w, CommandPalette>,
     prefs_window: Res<'w, PreferencesWindow>,
-    shortcuts: Res<'w, ShortcutsWindow>,
 }
 
 /// The one keyboard-shortcut handler: matches this frame's keys against every
@@ -1284,7 +1281,6 @@ pub fn shortcut_system(
         modal: input.modal.0,
         palette_open: input.cmd_palette.open,
         prefs_open: input.prefs_window.open,
-        shortcuts_open: input.shortcuts.0,
     };
     let mods = Mods::from_keys(&input.keys);
     let keys = &input.keys;
@@ -2139,16 +2135,6 @@ mod tests {
             Some(Action::Preferences)
         );
         assert_eq!(fire(&s, CMD, KeyCode::KeyK, prefs_gate), None);
-        let sheet = ShortcutGate {
-            modal: true,
-            shortcuts_open: true,
-            ..Default::default()
-        };
-        assert_eq!(
-            fire(&s, CMD, KeyCode::Slash, sheet),
-            Some(Action::ShowShortcuts)
-        );
-        assert_eq!(fire(&s, CMD, KeyCode::Comma, sheet), None);
     }
 
     #[test]
