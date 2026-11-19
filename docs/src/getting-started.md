@@ -6,7 +6,7 @@ This walkthrough gets you from a blank grid to a saved model.
 
 Roxel opens on an open-world 3D voxel grid. You can paint anywhere on the horizontal (X / Z) plane and as high as memory allows. The floor at `y = 0` is the only hard boundary — you can't paint below it.
 
-A permanent RGB axis triad marks the world origin so you always know which way is which.
+An RGB axis triad marks the world origin so you know which way is which on an empty canvas. It fades out as you build around it, and **View → Origin Axes** turns it off.
 
 ## Moving the camera
 
