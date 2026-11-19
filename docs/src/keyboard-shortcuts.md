@@ -59,4 +59,5 @@ Right mouse drag orbits the camera. Scroll to zoom.
 | ---------------------- | ------------------------------------------ |
 | `Cmd/Ctrl + Z`         | Undo                                       |
 | `Cmd/Ctrl + Shift + Z` | Redo                                       |
+| `Ctrl + Y`             | Redo (Windows and Linux)                   |
 | `` ` ``                | Focus mode — toggle inspector + chrome     |
