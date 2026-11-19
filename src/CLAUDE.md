@@ -77,7 +77,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Gizmo overlay
 
-`gizmo.rs` — second `Camera3d` on `RenderLayers::layer(1)`, `clear_color: None`, draws orientation cube into viewport rect from `update_gizmo_viewport` (`after(ui_system)`). `GizmoRect`/`GizmoDrag`/`GizmoHover` read by `tool_input_system` (suppress clicks), preview systems (hide while dragging), `ui_system` (cursor swap).
+`gizmo.rs` — second `Camera3d` on `RenderLayers::layer(1)`, `clear_color: None`, draws orientation cube into viewport rect from `update_gizmo_viewport` (`after(ui_system)`). `GizmoRect`/`GizmoDrag`/`GizmoHover` read by `tool_input_system` (suppress clicks), preview systems (hide while dragging), `ui_system` (cursor swap). Drag orbits; a press-release within `CLICK_SLOP` on a hovered face snaps yaw/pitch to that face (`face_angles`, the view-preset angles plus a bottom view), taking the short way round (`nearest_turn`) and keeping focus/zoom.
 
 ## Canvas chrome
 

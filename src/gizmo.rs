@@ -4,8 +4,9 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use bevy_panorbit_camera::PanOrbitCamera;
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
+use crate::camera::{CameraPreset, TOP_PRESET_PITCH, preset_angles};
 use crate::ui::UiVisible;
 
 const GIZMO_LAYER: usize = 1;
@@ -13,6 +14,9 @@ const GIZMO_SIZE_PT: f32 = 100.0;
 const GIZMO_MARGIN: f32 = 12.0;
 const DRAG_SENSITIVITY: f32 = 0.012;
 const FACE_HALF: f32 = 0.55;
+/// Cursor travel (points) below which a press-release on the cube is a click
+/// that snaps to the hovered face rather than a drag.
+const CLICK_SLOP: f32 = 4.0;
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
 pub struct AxisGizmoGroup;
@@ -33,6 +37,7 @@ pub struct GizmoRect(pub Option<bevy::math::Rect>);
 pub struct GizmoDrag {
     pub active: bool,
     last_cursor: Vec2,
+    press_cursor: Vec2,
 }
 
 #[derive(Resource, Default)]
@@ -371,11 +376,34 @@ fn brighten(c: Color, amount: f32) -> Color {
     Color::linear_rgba(mix(l.red), mix(l.green), mix(l.blue), l.alpha)
 }
 
+/// (yaw, pitch) that looks straight at cube face `index` (+X, −X, +Y, −Y,
+/// +Z, −Z), matching the view presets; −Y looks up from below.
+fn face_angles(index: usize) -> Option<(f32, f32)> {
+    let preset = match index {
+        0 => CameraPreset::Right,
+        1 => CameraPreset::Left,
+        2 => CameraPreset::Top,
+        3 => return Some((0.0, -TOP_PRESET_PITCH)),
+        4 => CameraPreset::Front,
+        5 => CameraPreset::Back,
+        _ => return None,
+    };
+    Some(preset_angles(preset))
+}
+
+/// `target` shifted by whole turns to sit within half a turn of `current`,
+/// so the camera takes the short way round instead of unwinding past spins.
+fn nearest_turn(current: f32, target: f32) -> f32 {
+    current + (target - current + PI).rem_euclid(TAU) - PI
+}
+
 pub fn gizmo_drag_system(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     gizmo_rect: Res<GizmoRect>,
+    hover: Res<GizmoHover>,
     mut drag: ResMut<GizmoDrag>,
+    mut flyby: ResMut<crate::camera::FlybyState>,
     mut cameras: Query<&mut PanOrbitCamera>,
 ) {
     let Ok(window) = windows.single() else {
@@ -388,8 +416,17 @@ pub fn gizmo_drag_system(
         return;
     };
 
-    if mouse.just_released(MouseButton::Left) {
+    if mouse.just_released(MouseButton::Left) && drag.active {
         drag.active = false;
+        if cursor.distance(drag.press_cursor) < CLICK_SLOP
+            && let Some((yaw, pitch)) = hover.hovered_index.and_then(face_angles)
+            && let Ok(mut cam) = cameras.single_mut()
+        {
+            flyby.active = false;
+            cam.target_yaw = nearest_turn(cam.target_yaw, yaw);
+            cam.target_pitch = pitch;
+        }
+        return;
     }
 
     if mouse.just_pressed(MouseButton::Left)
@@ -398,6 +435,7 @@ pub fn gizmo_drag_system(
     {
         drag.active = true;
         drag.last_cursor = cursor;
+        drag.press_cursor = cursor;
     }
 
     if !drag.active || !mouse.pressed(MouseButton::Left) {
@@ -412,5 +450,35 @@ pub fn gizmo_drag_system(
     if let Ok(mut cam) = cameras.single_mut() {
         cam.target_yaw -= delta.x * DRAG_SENSITIVITY;
         cam.target_pitch += delta.y * DRAG_SENSITIVITY;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn offset(yaw: f32, pitch: f32) -> Vec3 {
+        Vec3::new(
+            yaw.sin() * pitch.cos(),
+            pitch.sin(),
+            yaw.cos() * pitch.cos(),
+        )
+    }
+
+    #[test]
+    fn each_face_puts_the_camera_on_that_side() {
+        let normals = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z];
+        for (i, n) in normals.into_iter().enumerate() {
+            let (yaw, pitch) = face_angles(i).expect("face");
+            assert!(offset(yaw, pitch).dot(n) > 0.99, "face {i}");
+        }
+        assert_eq!(face_angles(6), None);
+    }
+
+    #[test]
+    fn nearest_turn_takes_the_short_way_round() {
+        assert!((nearest_turn(0.0, FRAC_PI_2) - FRAC_PI_2).abs() < 1e-5);
+        assert!((nearest_turn(4.0 * TAU, FRAC_PI_2) - (4.0 * TAU + FRAC_PI_2)).abs() < 1e-4);
+        assert!((nearest_turn(PI - 0.1, -PI + 0.1) - (PI + 0.1)).abs() < 1e-5);
     }
 }

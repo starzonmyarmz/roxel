@@ -54,7 +54,7 @@ On macOS use `Cmd`; on Windows and Linux use `Ctrl`. Shortcuts don't fire while 
 | `Cmd/Ctrl + -`           | Zoom out 2×                                  |
 | `Cmd/Ctrl + 0`           | Frame view on the voxel cluster (panel-aware)|
 
-Right mouse drag orbits the camera. Scroll to zoom.
+Right mouse drag orbits the camera. Scroll to zoom. The orientation cube in the top-right corner orbits when you drag it; click one of its faces to look straight at that side.
 
 ## History & UI
 
