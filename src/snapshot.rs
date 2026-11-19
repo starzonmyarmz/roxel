@@ -82,6 +82,9 @@ pub fn start_snapshot_system(
     grid: Res<GridResource>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    if snap.request.0.is_none() || grid.dirty {
+        return;
+    }
     let Some(path) = snap.request.0.take() else {
         return;
     };

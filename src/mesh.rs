@@ -3,8 +3,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
+use bevy::tasks::ComputeTaskPool;
 use roxel::grid::{Color8, VoxelGrid, chunk_coord};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub use roxel::mesh_util::{FACES, face_shade, srgb_to_linear};
 use roxel::mesh_util::{GreedyQuad, greedy_quads, greedy_quads_chunk};
@@ -125,6 +126,7 @@ pub fn regenerate_mesh_system(
     mut hide: ResMut<PreviewHide>,
     mut chunk_meshes: ResMut<VoxelChunkMeshes>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut queue: Local<RemeshQueue>,
 ) {
     let hide_changed = hide.cell != hide.last_cell;
     let recolor_changed = hide.recolor != hide.last_recolor;
@@ -149,29 +151,42 @@ pub fn regenerate_mesh_system(
         }
     }
 
-    if grid.dirty_chunks.is_empty() {
-        grid.dirty = false;
-        hide.last_cell = hide.cell;
-        hide.last_recolor = hide.recolor;
+    if !grid.dirty_chunks.is_empty() {
+        let fresh: Vec<IVec3> = grid.dirty_chunks.drain().collect();
+        queue.extend(fresh);
+    }
+    let batch = queue.take(MAX_REMESH_PER_FRAME);
+    let pending = !queue.is_empty();
+    if grid.dirty != pending {
+        grid.dirty = pending;
+    }
+    hide.last_cell = hide.cell;
+    hide.last_recolor = hide.recolor;
+    if batch.is_empty() {
         return;
     }
 
-    let dirty: Vec<IVec3> = grid.dirty_chunks.drain().collect();
-    let material = chunk_meshes.material.clone();
-
-    for coord in dirty {
-        let has_data = grid.chunks.contains_key(&coord);
-
-        if !has_data {
-            if let Some((entity, _)) = chunk_meshes.chunks.remove(&coord) {
-                commands.entity(entity).despawn();
-            }
-            continue;
+    let (live, gone): (Vec<IVec3>, Vec<IVec3>) =
+        batch.into_iter().partition(|c| grid.chunks.contains_key(c));
+    for coord in gone {
+        if let Some((entity, _)) = chunk_meshes.chunks.remove(&coord) {
+            commands.entity(entity).despawn();
         }
+    }
 
-        let new_mesh =
-            build_mesh_from_quads(greedy_quads_chunk(&grid, coord, hide.cell, hide.recolor));
+    let voxels: &VoxelGrid = &grid;
+    let (cell, recolor) = (hide.cell, hide.recolor);
+    let built = ComputeTaskPool::get().scope(|scope| {
+        for coord in live {
+            scope.spawn(async move {
+                let quads = greedy_quads_chunk(voxels, coord, cell, recolor);
+                (coord, build_mesh_from_quads(quads))
+            });
+        }
+    });
 
+    let material = chunk_meshes.material.clone();
+    for (coord, new_mesh) in built {
         if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
             if let Some(slot) = meshes.get_mut(handle) {
                 *slot = new_mesh;
@@ -189,15 +204,55 @@ pub fn regenerate_mesh_system(
             chunk_meshes.chunks.insert(coord, (entity, handle));
         }
     }
+}
 
-    grid.dirty = false;
-    hide.last_cell = hide.cell;
-    hide.last_recolor = hide.recolor;
+const MAX_REMESH_PER_FRAME: usize = 128;
+
+#[derive(Default)]
+pub struct RemeshQueue {
+    order: VecDeque<IVec3>,
+    queued: HashSet<IVec3>,
+}
+
+impl RemeshQueue {
+    fn extend(&mut self, coords: impl IntoIterator<Item = IVec3>) {
+        for c in coords {
+            if self.queued.insert(c) {
+                self.order.push_back(c);
+            }
+        }
+    }
+
+    fn take(&mut self, max: usize) -> Vec<IVec3> {
+        let n = max.min(self.order.len());
+        let batch: Vec<IVec3> = self.order.drain(..n).collect();
+        for c in &batch {
+            self.queued.remove(c);
+        }
+        batch
+    }
+
+    fn is_empty(&self) -> bool {
+        self.order.is_empty()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remesh_queue_is_fifo_and_dedupes_requeued_chunks() {
+        let (a, b, c) = (IVec3::X, IVec3::Y, IVec3::Z);
+        let mut q = RemeshQueue::default();
+        q.extend([a, b, a]);
+        q.extend([c, b]);
+        assert_eq!(q.take(2), vec![a, b]);
+        q.extend([a]);
+        assert_eq!(q.take(5), vec![c, a]);
+        assert!(q.is_empty());
+        assert!(q.take(1).is_empty());
+    }
 
     #[test]
     fn srgb_linear_roundtrip_endpoints_and_midpoint() {
