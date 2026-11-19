@@ -24,6 +24,7 @@ Release notes.
 - Windows/Linux: the menu pill now has the macOS File, Edit, View and Help menus, including Open Recent, camera views, Changelog and an About screen.
 - Windows/Linux: the command palette shows Ctrl shortcuts instead of ⌘.
 - Roxel opens a `.rox` file passed on the command line, and release builds no longer open a console window on Windows.
+- The user guide is published at https://starzonmyarmz.github.io/roxel/.
 
 ## [0.7.1] - 2026-06-03
 
