@@ -14,6 +14,8 @@ Roxel's native format is **`.rox`** — a human-readable RON project file. Save 
 | `.qb`  | Qubicle        |
 | `.gox` | Goxel          |
 
+An imported model is added to the current scene at its original coordinates. The whole import is one step you can undo. If a file can't be read, nothing in your scene changes.
+
 ## Exporting models
 
 | Format | Target / use                          |

@@ -14,6 +14,7 @@ Release notes.
 
 - Saves and exports write to a temp file and rename, so a crash mid-save can't truncate the file.
 - An unreadable `palettes.ron` is kept as a backup instead of being overwritten by the next palette change.
+- `.vox`/`.qb`/`.gox` imports can be undone and no longer wipe your undo history; a file that fails to parse leaves the scene untouched.
 
 ## [0.7.1] - 2026-06-03
 

@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
 use roxel::io;
 use std::path::{Path, PathBuf};
@@ -74,25 +75,20 @@ pub struct CurrentProjectPath(pub Option<PathBuf>);
 
 /// Tracks whether the open document has unsaved changes. `saved_state_id` is
 /// the `History::state_id()` captured at the last save / open / new; the doc is
-/// modified when the live state id differs. `forced_dirty` covers content that
-/// has no clean baseline in the history stack — e.g. a `.vox`/`.qb`/`.gox`
-/// import, which replaces the grid but leaves the undo stack empty (state id
-/// `0`), so without this flag it would read as a clean, empty document.
+/// modified when the live state id differs.
 #[derive(Resource, Default)]
 pub struct DocStatus {
     pub saved_state_id: u64,
-    pub forced_dirty: bool,
 }
 
 impl DocStatus {
-    /// Mark the current grid state as the saved baseline (clears `forced_dirty`).
+    /// Mark the current grid state as the saved baseline.
     pub fn mark_saved(&mut self, state_id: u64) {
         self.saved_state_id = state_id;
-        self.forced_dirty = false;
     }
 
     pub fn is_modified(&self, history: &History) -> bool {
-        self.forced_dirty || history.state_id() != self.saved_state_id
+        history.state_id() != self.saved_state_id
     }
 }
 
@@ -404,55 +400,22 @@ pub fn poll_dialogs_system(
             Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
             Err(e) => toasts.error(format!("Export .gox failed: {e}")),
         },
-        Some(DialogResult::ImportGox(path)) => match io::gox::import(&path, &mut grid) {
-            Ok(()) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
+        Some(
+            r @ (DialogResult::ImportVox(_)
+            | DialogResult::ImportQb(_)
+            | DialogResult::ImportGox(_)),
+        ) => {
+            if finish_import(
+                &r,
+                &mut grid,
+                &mut history,
+                &mut palettes,
+                &mut palette_choice,
+                &mut toasts,
+            ) {
                 pending_import.0 = true;
-                toasts.success(format!("Imported {}", file_label(&path)));
             }
-            Err(e) => toasts.error(format!("Import .gox failed: {e}")),
-        },
-        Some(DialogResult::ImportVox(path)) => match io::vox::import(&path, &mut grid) {
-            Ok(colors) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
-                pending_import.0 = true;
-                // Carry the model's used colors in as a new swatch palette so the
-                // user can keep painting with them. Mirrors the .ase import path.
-                if !colors.is_empty() {
-                    let stem = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Imported");
-                    let name = crate::ui::palette::unique_palette_name(&palettes.0, stem);
-                    palettes.0.push(Palette {
-                        name,
-                        colors,
-                        builtin: false,
-                    });
-                    palette_choice.0 = palettes.0.len() - 1;
-                    io::palettes::save(&palettes.0);
-                }
-                toasts.success(format!("Imported {}", file_label(&path)));
-            }
-            Err(e) => toasts.error(format!("Import .vox failed: {e}")),
-        },
-        Some(DialogResult::ImportQb(path)) => match io::qb::import(&path, &mut grid) {
-            Ok(()) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
-                pending_import.0 = true;
-                toasts.success(format!("Imported {}", file_label(&path)));
-            }
-            Err(e) => toasts.error(format!("Import .qb failed: {e}")),
-        },
+        }
         Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
             Ok((name, colors)) => {
                 if colors.is_empty() {
@@ -478,6 +441,82 @@ pub fn poll_dialogs_system(
         }
         None => {}
     }
+}
+
+/// A parsed model and, for `.vox`, the colors it uses.
+type ImportedModel = (VoxelGrid, Vec<Color8>);
+
+/// Parse a `.vox`/`.qb`/`.gox` import into a fresh grid, so a file that fails
+/// halfway never touches the scene. Returns the format's extension and, for
+/// `.vox`, the colors the model uses. `None` for any other result.
+fn read_import(result: &DialogResult) -> Option<(&'static str, anyhow::Result<ImportedModel>)> {
+    let mut scratch = VoxelGrid::default();
+    let (ext, read) = match result {
+        DialogResult::ImportVox(p) => ("vox", io::vox::import(p, &mut scratch)),
+        DialogResult::ImportQb(p) => ("qb", io::qb::import(p, &mut scratch).map(|()| Vec::new())),
+        DialogResult::ImportGox(p) => {
+            ("gox", io::gox::import(p, &mut scratch).map(|()| Vec::new()))
+        }
+        _ => return None,
+    };
+    Some((ext, read.map(|colors| (scratch, colors))))
+}
+
+/// Merge `imported` into the scene as one undoable stroke. Returns how many
+/// cells changed.
+fn merge_import(grid: &mut VoxelGrid, history: &mut History, imported: &VoxelGrid) -> usize {
+    history.begin();
+    for (p, c) in imported.iter_occupied() {
+        history.record(grid, p, Some(c));
+    }
+    let changed = history.current.as_ref().map_or(0, |s| s.deltas.len());
+    history.end();
+    changed
+}
+
+/// Finish a model import: merge it into the scene through `History` (so it can
+/// be undone and marks the document modified), add a `.vox` file's colors as a
+/// new palette, and toast. Returns whether anything was imported; a model that
+/// changes no cells adds no palette and says so.
+fn finish_import(
+    result: &DialogResult,
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    palettes: &mut Palettes,
+    palette_choice: &mut PaletteChoice,
+    toasts: &mut Toasts,
+) -> bool {
+    let Some((ext, read)) = read_import(result) else {
+        return false;
+    };
+    let path = result.path();
+    let (imported, colors) = match read {
+        Ok(r) => r,
+        Err(e) => {
+            toasts.error(format!("Import .{ext} failed: {e}"));
+            return false;
+        }
+    };
+    if merge_import(grid, history, &imported) == 0 {
+        toasts.info(format!("Nothing to import from {}", file_label(path)));
+        return false;
+    }
+    if !colors.is_empty() {
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Imported");
+        let name = crate::ui::palette::unique_palette_name(&palettes.0, stem);
+        palettes.0.push(Palette {
+            name,
+            colors,
+            builtin: false,
+        });
+        palette_choice.0 = palettes.0.len() - 1;
+        io::palettes::save(&palettes.0);
+    }
+    toasts.success(format!("Imported {}", file_label(path)));
+    true
 }
 
 /// Completes a deferred save-with-preview. Runs every frame and returns
@@ -586,15 +625,90 @@ mod tests {
     }
 
     #[test]
-    fn doc_status_forced_dirty_overrides_clean_state() {
-        let history = History::default();
-        // e.g. after a .vox import (empty undo stack but unsaved content).
-        let mut doc = DocStatus {
-            forced_dirty: true,
-            ..Default::default()
-        };
+    fn merge_import_is_one_undoable_stroke_that_keeps_existing_work() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let doc = DocStatus::default();
+
+        history.begin();
+        history.record(&mut grid, IVec3::new(9, 0, 9), Some([1, 1, 1, 255]));
+        history.end();
+        let undo_before = history.undo.len();
+
+        let mut imported = VoxelGrid::default();
+        imported.set(IVec3::new(0, 0, 0), Some([2, 2, 2, 255]));
+        imported.set(IVec3::new(1, 0, 0), Some([3, 3, 3, 255]));
+        assert_eq!(merge_import(&mut grid, &mut history, &imported), 2);
+
+        assert_eq!(history.undo.len(), undo_before + 1);
         assert!(doc.is_modified(&history));
-        doc.mark_saved(history.state_id());
-        assert!(!doc.is_modified(&history));
+        assert_eq!(grid.get(IVec3::new(9, 0, 9)), Some([1, 1, 1, 255]));
+        assert_eq!(grid.count(), 3);
+
+        history.undo(&mut grid);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), None);
+    }
+
+    #[test]
+    fn import_that_changes_nothing_says_so_and_adds_no_palette() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::ZERO, Some([10, 20, 30, 255]));
+        let path = std::env::temp_dir().join(format!("roxel-test-{}-same.vox", std::process::id()));
+        io::vox::export(&path, &grid).unwrap();
+
+        let mut history = History::default();
+        let mut palettes = Palettes::default();
+        let palettes_before = palettes.0.len();
+        let mut choice = PaletteChoice::default();
+        let mut toasts = Toasts::default();
+        let ok = finish_import(
+            &DialogResult::ImportVox(path.clone()),
+            &mut grid,
+            &mut history,
+            &mut palettes,
+            &mut choice,
+            &mut toasts,
+        );
+        let _ = std::fs::remove_file(&path);
+
+        assert!(!ok);
+        assert!(history.undo.is_empty());
+        assert_eq!(palettes.0.len(), palettes_before);
+        assert_eq!(toasts.0.len(), 1);
+        assert!(toasts.0[0].message.starts_with("Nothing to import"));
+    }
+
+    #[test]
+    fn failed_import_leaves_scene_and_history_untouched() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        history.begin();
+        history.record(&mut grid, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        history.end();
+
+        let path =
+            std::env::temp_dir().join(format!("roxel-test-{}-truncated.qb", std::process::id()));
+        std::fs::write(&path, [1u8, 0, 0, 0, 0, 0]).unwrap();
+        let mut palettes = Palettes::default();
+        let mut choice = PaletteChoice::default();
+        let mut toasts = Toasts::default();
+        let ok = finish_import(
+            &DialogResult::ImportQb(path.clone()),
+            &mut grid,
+            &mut history,
+            &mut palettes,
+            &mut choice,
+            &mut toasts,
+        );
+        let _ = std::fs::remove_file(&path);
+
+        assert!(!ok);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(history.undo.len(), 1);
+        assert_eq!(toasts.0.len(), 1);
     }
 }

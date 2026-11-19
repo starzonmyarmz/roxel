@@ -12,7 +12,7 @@ Sync `rfd::FileDialog` **blocks winit's event loop on macOS** (beachball). All s
 
 Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::FileDialog::*` in egui draw code.**
 
-`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`; `.vox`/`.qb`/`.gox` imports set `doc.forced_dirty` and clear `CurrentProjectPath` (imported-but-unsaved content). The "Open project…" dialog is spawned by `dialogs::spawn_open`, gated by `OpenRequest` so an unsaved document confirms first.
+`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`. `.vox`/`.qb`/`.gox` imports go through `dialogs::finish_import`: the file is parsed into a scratch grid (a failed parse never touches the scene), then merged into the scene as one `History` stroke — undoable, and it dirties the document like any edit. The current project path is kept, since the import becomes part of the open document. The "Open project…" dialog is spawned by `dialogs::spawn_open`, gated by `OpenRequest` so an unsaved document confirms first.
 
 ## Shared helpers — use them, don't reroll
 
@@ -27,7 +27,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 - **Axis remap**: `.vox` and `.gox` are Z-up → swap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` on import + export. `.qb` is Y-up natively. `.gox` BL16 written as raw 16³ RGBA; PNG-encoded BL16 rejected with clear error.
 - **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
-- Imports `grid.set` each voxel at the source coord. No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
+- Format importers `grid.set` each voxel at the source coord into the scratch grid they're handed (never the live scene). No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
 **`io::vox::import` also returns a palette** — the distinct colors actually placed (ascending palette-index order, deduped; the full 256-entry MV ramp is *not* returned, unused entries are noise). `poll_dialogs_system`'s `ImportVox` arm pushes them as a new user `Palette` (named after the file stem via `palette::unique_palette_name`), selects it, and calls `io::palettes::save`. Mirrors the `.ase` import path. `.qb`/`.gox` imports remain grid-only.
 
