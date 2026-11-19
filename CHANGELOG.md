@@ -6,9 +6,9 @@ All notable changes to Roxel are recorded here. Format follows
 
 Add bullets under `## [Unreleased]` as you land work. When a `v*` tag is
 pushed, `.github/workflows/release.yml` renames the section to the new
-version + date, regenerates the bullets from the tag's commit range,
-commits the result back to `main`, and uses the same body for the GitHub
-Release notes.
+version + date, commits the result back to `main`, and uses the same
+bullets for the GitHub Release notes. If Unreleased is empty, it fills in
+the commit subjects since the previous tag.
 
 ## [Unreleased]
 
