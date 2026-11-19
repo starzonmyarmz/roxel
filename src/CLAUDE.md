@@ -133,9 +133,12 @@ The preview render is split across **two cameras / render layers** captured pixe
 
 ## `.rox` project format
 
-`ron`-serialized `ProjectFile { voxels: Vec<([i32; 3], Color8)> }`. Only occupied cells. No `version`, no `size` — open world has neither. Signed coords roundtrip exactly.
+`roxel-core/src/io/project.rs` — binary: `"ROXL"` + `u16 FORMAT_VERSION`, then tagged sections (`[u8; 4]` tag, `u32` len). `VOXL` holds a zstd frame: sorted color table, then chunks in sorted coord order, each sparse (`u16` local + index) or dense (`E³` indices), whichever is smaller. `PALT` is the active palette at save time (`ui::palette::active_palette`, scratch edits included); on open, `poll_dialogs_system` hands it to `adopt_project_palette`, which keeps/selects a palette showing the same colors or adds a user palette (then `io::palettes::save`). `PREV` is the optional PNG preview. Layout spec is the module doc comment — keep it current.
 
-Old (`version`, `size`, `voxels`) layout was dropped. ron silently ignores unknown fields, so older v1 files happen to load if `voxels` matches. **Not a compat code path** — side effect of lax deserialization. Don't add explicit v1 handling.
+- **Additive changes get a new section, not a version bump.** Readers skip unknown tags. Bump `FORMAT_VERSION` only for a change old readers would misread; `decode` refuses newer versions with a toast-able error.
+- **Saves are deterministic** — sorted chunks, cells and colors — so re-saving an unchanged scene produces identical bytes. Don't iterate `grid.chunks` (a `HashMap`) straight into the output.
+- `decode` is bounds-checked (`LeReader`, capped decompressed size, validated indices and coords) and `load` decodes fully before clearing the grid, so a corrupt file never touches the scene.
+- Files without the magic go to `decode_legacy_ron` (pre-0.9 pretty-printed RON `voxels` list). The even older (`version`, `size`, `voxels`) layout loads only because ron ignores unknown fields — **not a compat code path**; don't add explicit handling for it.
 
 ## New-project flow
 

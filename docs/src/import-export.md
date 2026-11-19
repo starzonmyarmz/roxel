@@ -4,7 +4,7 @@ Roxel interoperates with the common voxel, 3D, and image formats. Every save / l
 
 ## Projects
 
-Roxel's native format is **`.rox`** — a human-readable RON project file. Save and load from the menu. The **Open Recent** menu lists your last 10 projects.
+Roxel's native format is **`.rox`**, a compact, compressed project file. Projects saved by older versions (which wrote human-readable RON) still open; they're converted the next time you save. A project remembers the palette you were using; see [Palettes](palettes.md#palettes-in-projects). Save and load from the menu. The **Open Recent** menu lists your last 10 projects.
 
 If your project has unsaved changes, Roxel asks before anything replaces it — starting a new project, opening another one (from the menu, Open Recent or by double-clicking a file), or quitting. Choose **Save** to save first, **Don't Save** to discard your changes, or **Cancel** to go back. Pressing Enter picks Save.
 

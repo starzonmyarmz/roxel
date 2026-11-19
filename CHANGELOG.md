@@ -18,6 +18,8 @@ Release notes.
 - Quitting, Open Recent and opening a file from Finder now ask before discarding unsaved changes.
 - The unsaved-changes prompt offers Save, Don't Save and Cancel; Enter saves instead of discarding.
 - Deleting a palette asks for confirmation.
+- `.rox` projects are saved in a compact, versioned binary format (about 20× smaller), and saving an unchanged scene writes identical bytes. Older projects still open.
+- Projects remember their palette: opening one switches to it, adding it as a user palette if you don't have it.
 
 ## [0.7.1] - 2026-06-03
 

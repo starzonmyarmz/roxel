@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Palette {
     pub name: String,
     pub colors: Vec<[u8; 4]>,

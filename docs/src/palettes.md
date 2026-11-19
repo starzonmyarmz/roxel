@@ -23,6 +23,10 @@ You can manage your own palettes from the inspector:
 
 User palettes persist between sessions.
 
+## Palettes in projects
+
+Saving a `.rox` project also saves the palette you're using, including any unsaved edits to a built-in. Opening the project switches back to that palette. If none of your palettes has those colors, Roxel adds it as a new user palette.
+
 ## Importing & exporting palettes
 
 Roxel reads and writes the **Adobe Swatch Exchange** (`.ase`) format, so you can move palettes between Roxel and other design tools. See [Import & Export](import-export.md).

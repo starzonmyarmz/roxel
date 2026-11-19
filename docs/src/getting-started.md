@@ -35,7 +35,7 @@ Roxel keeps a deep undo history, so experiment freely.
 
 ## Saving your work
 
-Roxel's native project format is `.rox` (a human-readable RON file). Save and load from the menu. The **Open Recent** menu keeps your last 10 projects one click away.
+Roxel's native project format is `.rox`, a compact binary file. Save and load from the menu. The **Open Recent** menu keeps your last 10 projects one click away.
 
 To share or use your model elsewhere, see [Import & Export](import-export.md).
 

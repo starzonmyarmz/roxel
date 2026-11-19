@@ -22,7 +22,7 @@ impl<'a> LeReader<'a> {
     }
 
     fn need(&self, n: usize) -> Result<()> {
-        if self.pos + n > self.b.len() {
+        if self.pos.checked_add(n).is_none_or(|end| end > self.b.len()) {
             bail!("unexpected end of file at offset {}", self.pos);
         }
         Ok(())
@@ -32,6 +32,13 @@ impl<'a> LeReader<'a> {
         self.need(1)?;
         let v = self.b[self.pos];
         self.pos += 1;
+        Ok(v)
+    }
+
+    pub fn u16(&mut self) -> Result<u16> {
+        self.need(2)?;
+        let v = u16::from_le_bytes(self.b[self.pos..self.pos + 2].try_into().unwrap());
+        self.pos += 2;
         Ok(v)
     }
 
@@ -62,11 +69,13 @@ mod tests {
     fn reads_le_integers_in_sequence() {
         let bytes = [
             0xAB, // u8
+            0x34, 0x12, // u16 = 0x1234
             0x01, 0x00, 0x00, 0x00, // u32 = 1
             0xFF, 0xFF, 0xFF, 0xFF, // i32 = -1
         ];
         let mut r = LeReader::new(&bytes);
         assert_eq!(r.u8().unwrap(), 0xAB);
+        assert_eq!(r.u16().unwrap(), 0x1234);
         assert_eq!(r.u32().unwrap(), 1);
         assert_eq!(r.i32().unwrap(), -1);
         assert!(r.eof());
@@ -77,6 +86,14 @@ mod tests {
         let bytes = [1u8, 2, 3];
         let mut r = LeReader::new(&bytes);
         assert!(r.u32().is_err());
+    }
+
+    #[test]
+    fn huge_length_errors_instead_of_overflowing() {
+        let bytes = [1u8, 2, 3];
+        let mut r = LeReader::new(&bytes);
+        r.u8().unwrap();
+        assert!(r.bytes(usize::MAX).is_err());
     }
 
     #[test]

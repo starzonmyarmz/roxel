@@ -155,6 +155,54 @@ pub fn display_colors<'a>(
     }
 }
 
+/// The active palette as shown (scratch edits included), for saving into a
+/// project. `None` when there's nothing worth saving.
+pub fn active_palette(
+    palettes: &Palettes,
+    choice: &PaletteChoice,
+    working: &WorkingPalette,
+) -> Option<Palette> {
+    let palette = palettes.0.get(choice.0)?;
+    let colors = display_colors(palettes, working, choice.0);
+    (!colors.is_empty()).then(|| Palette {
+        name: palette.name.clone(),
+        colors: colors.to_vec(),
+        builtin: false,
+    })
+}
+
+/// Make a project's saved palette active: keep the current palette if it
+/// already shows those colors, else select a palette that does (preferring
+/// one with the same name), else add it as a new user palette. Scratch edits
+/// stay attached to their built-in. Returns `true` when a palette was added,
+/// so the caller persists via `io::palettes::save`.
+pub fn adopt_project_palette(
+    palettes: &mut Palettes,
+    choice: &mut PaletteChoice,
+    working: &WorkingPalette,
+    saved: Palette,
+) -> bool {
+    let shows = |i: usize| display_colors(palettes, working, i) == saved.colors.as_slice();
+    if choice.0 < palettes.0.len() && shows(choice.0) {
+        return false;
+    }
+    let found = (0..palettes.0.len())
+        .filter(|&i| shows(i))
+        .min_by_key(|&i| palettes.0[i].name != saved.name);
+    if let Some(i) = found {
+        choice.0 = i;
+        return false;
+    }
+    let name = unique_palette_name(&palettes.0, &saved.name);
+    palettes.0.push(Palette {
+        name,
+        colors: saved.colors,
+        builtin: false,
+    });
+    choice.0 = palettes.0.len() - 1;
+    true
+}
+
 /// Mutable colors for editing palette `idx`. For a built-in, lazily seeds the
 /// scratch buffer from the built-in and marks it dirty. Returns `true` when the
 /// edit should be persisted to disk (user palettes only — built-ins live in the
@@ -505,5 +553,101 @@ mod tests {
         assert_eq!(forked.colors, vec![[1, 1, 1, 255], [7, 7, 7, 255]]);
         assert!(!working.dirty, "scratch cleared after save");
         assert_eq!(working.source, None);
+    }
+
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+
+    fn saved(name: &str, colors: Vec<[u8; 4]>) -> Palette {
+        Palette {
+            name: name.into(),
+            colors,
+            builtin: false,
+        }
+    }
+
+    #[test]
+    fn active_palette_includes_scratch_edits() {
+        let mut palettes = Palettes(vec![builtin("B", vec![RED])]);
+        let mut working = WorkingPalette::default();
+        edit_colors(&mut palettes, &mut working, 0).0.push(BLUE);
+        let p = active_palette(&palettes, &PaletteChoice(0), &working).unwrap();
+        assert_eq!(p.name, "B");
+        assert_eq!(p.colors, vec![RED, BLUE]);
+        assert!(!p.builtin);
+    }
+
+    #[test]
+    fn active_palette_skips_empty_and_out_of_range() {
+        let palettes = Palettes(vec![user("Empty")]);
+        let working = WorkingPalette::default();
+        assert!(active_palette(&palettes, &PaletteChoice(0), &working).is_none());
+        assert!(active_palette(&palettes, &PaletteChoice(5), &working).is_none());
+    }
+
+    #[test]
+    fn adopt_keeps_current_palette_when_it_matches() {
+        let mut palettes = Palettes(vec![builtin("A", vec![RED]), builtin("B", vec![RED])]);
+        let mut choice = PaletteChoice(1);
+        let working = WorkingPalette::default();
+        let added =
+            adopt_project_palette(&mut palettes, &mut choice, &working, saved("A", vec![RED]));
+        assert!(!added);
+        assert_eq!(choice.0, 1);
+    }
+
+    #[test]
+    fn adopt_selects_matching_palette_preferring_same_name() {
+        let mut palettes = Palettes(vec![
+            builtin("Other", vec![BLUE]),
+            builtin("X", vec![RED]),
+            builtin("Mine", vec![RED]),
+        ]);
+        let mut choice = PaletteChoice(0);
+        let working = WorkingPalette::default();
+        let added = adopt_project_palette(
+            &mut palettes,
+            &mut choice,
+            &working,
+            saved("Mine", vec![RED]),
+        );
+        assert!(!added);
+        assert_eq!(choice.0, 2);
+        assert_eq!(palettes.0.len(), 3);
+    }
+
+    #[test]
+    fn adopt_adds_unknown_palette_with_unique_name() {
+        let mut palettes = Palettes(vec![builtin("Sweetie 16", vec![RED])]);
+        let mut choice = PaletteChoice(0);
+        let working = WorkingPalette::default();
+        let added = adopt_project_palette(
+            &mut palettes,
+            &mut choice,
+            &working,
+            saved("Sweetie 16", vec![RED, BLUE]),
+        );
+        assert!(added);
+        assert_eq!(choice.0, 1);
+        assert_eq!(palettes.0[1].name, "Sweetie 16 2");
+        assert_eq!(palettes.0[1].colors, vec![RED, BLUE]);
+        assert!(!palettes.0[1].builtin);
+    }
+
+    #[test]
+    fn adopt_matches_scratch_edits_and_keeps_them() {
+        let mut palettes = Palettes(vec![builtin("B", vec![RED]), builtin("C", vec![BLUE])]);
+        let mut working = WorkingPalette::default();
+        edit_colors(&mut palettes, &mut working, 0).0.push(BLUE);
+        let mut choice = PaletteChoice(1);
+        let added = adopt_project_palette(
+            &mut palettes,
+            &mut choice,
+            &working,
+            saved("B", vec![RED, BLUE]),
+        );
+        assert!(!added);
+        assert_eq!(choice.0, 0);
+        assert!(working.is_dirty_for(0));
     }
 }

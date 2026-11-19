@@ -1,7 +1,7 @@
 use crate::GridResource;
 use crate::icon::set_finder_icon;
 use crate::snapshot::{CapturedPreview, SavePreviewCapture, SnapshotRequest};
-use crate::ui::palette::{Palette, PaletteChoice, Palettes};
+use crate::ui::palette::{Palette, PaletteChoice, Palettes, WorkingPalette};
 use crate::ui::toast::Toasts;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -372,6 +372,7 @@ pub struct DialogDoc<'w> {
 pub struct DialogSinks<'w> {
     palettes: ResMut<'w, Palettes>,
     palette_choice: ResMut<'w, PaletteChoice>,
+    working_palette: Res<'w, WorkingPalette>,
     snapshot: ResMut<'w, SnapshotRequest>,
     shot: ResMut<'w, crate::shot::ShotRequest>,
     prefs: ResMut<'w, crate::theme::Preferences>,
@@ -404,6 +405,7 @@ pub fn poll_dialogs_system(
     let DialogSinks {
         mut palettes,
         mut palette_choice,
+        working_palette,
         mut snapshot,
         mut shot,
         mut prefs,
@@ -428,7 +430,23 @@ pub fn poll_dialogs_system(
     }
     match result {
         Some(DialogResult::OpenProject(path)) => match io::project::load(&path, &mut grid) {
-            Ok(()) => {
+            Ok(project) => {
+                if let Some(saved) = project.palette {
+                    let before = palette_choice.0;
+                    let added = crate::ui::palette::adopt_project_palette(
+                        &mut palettes,
+                        &mut palette_choice,
+                        &working_palette,
+                        saved,
+                    );
+                    let name = &palettes.0[palette_choice.0].name;
+                    if added {
+                        io::palettes::save(&palettes.0);
+                        toasts.info(format!("Added palette {name}"));
+                    } else if palette_choice.0 != before {
+                        toasts.info(format!("Switched to palette {name}"));
+                    }
+                }
                 history.undo.clear();
                 history.redo.clear();
                 doc.mark_saved(history.state_id());
@@ -624,6 +642,7 @@ pub fn process_save_preview_system(
     mut doc: ResMut<DocStatus>,
     mut recent_files: ResMut<RecentFiles>,
     mut toasts: ResMut<Toasts>,
+    palette: (Res<Palettes>, Res<PaletteChoice>, Res<WorkingPalette>),
 ) {
     let path = match state.path.clone() {
         Some(p) => p,
@@ -636,11 +655,10 @@ pub fn process_save_preview_system(
 
     // Preview captured (may be empty = model had no voxels).
     state.path = None;
-    let result = if png_bytes.is_empty() {
-        io::project::save(&path, &grid)
-    } else {
-        io::project::save_with_preview(&path, &grid, &png_bytes)
-    };
+    let preview = (!png_bytes.is_empty()).then_some(png_bytes.as_slice());
+    let (palettes, choice, working) = palette;
+    let active = crate::ui::palette::active_palette(&palettes, &choice, &working);
+    let result = io::project::save(&path, &grid, active.as_ref(), preview);
 
     match result {
         Ok(()) => {
