@@ -1,14 +1,13 @@
 use crate::grid::VoxelGrid;
-use crate::mesh_util::for_each_exposed_face;
+use crate::mesh_util::{FACES, greedy_quads};
 use anyhow::Result;
 use std::io::Write;
 use std::path::Path;
 
 // glTF 2.0 binary (.glb) exporter. Single-file, embedded buffer. Y-up matches
 // the spec default and Roxel's runtime orientation, so Unity and Godot import
-// upright with no extra transform. Per-face quads with per-vertex sRGB colors
-// in COLOR_0; greedy meshing intentionally skipped so the importer sees the
-// same face-quad structure as the OBJ export.
+// upright with no extra transform. Greedy-merged quads (the renderer's mesher)
+// with per-vertex sRGB colors in COLOR_0, same quads as the OBJ export.
 
 const GLB_MAGIC: u32 = 0x46546C67; // "glTF"
 const GLB_VERSION: u32 = 2;
@@ -40,14 +39,11 @@ fn build_mesh(grid: &VoxelGrid) -> MeshData {
     let mut pos_min = [f32::INFINITY; 3];
     let mut pos_max = [f32::NEG_INFINITY; 3];
 
-    for_each_exposed_face(grid, |cell, face, rgba| {
+    for quad in greedy_quads(grid, None, None) {
+        let face = &FACES[quad.face_idx];
         let base = positions.len() as u32;
-        for c in &face.corners {
-            let v = [
-                (cell.x + c[0]) as f32,
-                (cell.y + c[1]) as f32,
-                (cell.z + c[2]) as f32,
-            ];
+        for c in &quad.corners {
+            let v = c.to_array();
             for k in 0..3 {
                 if v[k] < pos_min[k] {
                     pos_min[k] = v[k];
@@ -58,7 +54,7 @@ fn build_mesh(grid: &VoxelGrid) -> MeshData {
             }
             positions.push(v);
             normals.push(face.normal);
-            colors.push(rgba);
+            colors.push(quad.color);
         }
         // Two triangles per quad: (0,1,2) + (0,2,3). FACES corners are CCW
         // viewed from outside, which matches glTF's default front-face winding.
@@ -68,7 +64,7 @@ fn build_mesh(grid: &VoxelGrid) -> MeshData {
         indices.push(base);
         indices.push(base + 2);
         indices.push(base + 3);
-    });
+    }
 
     if positions.is_empty() {
         pos_min = [0.0; 3];
@@ -276,6 +272,18 @@ mod tests {
         for c in &mesh.colors {
             assert_eq!(*c, [10, 20, 30, 255]);
         }
+    }
+
+    #[test]
+    fn same_color_row_merges_into_six_quads() {
+        let mut g = VoxelGrid::default();
+        for x in 0..4 {
+            g.set(IVec3::new(x, 0, 0), Some([9, 9, 9, 255]));
+        }
+        let mesh = build_mesh(&g);
+        assert_eq!(mesh.positions.len(), 24);
+        assert_eq!(mesh.pos_min, [0.0, 0.0, 0.0]);
+        assert_eq!(mesh.pos_max, [4.0, 1.0, 1.0]);
     }
 
     #[test]

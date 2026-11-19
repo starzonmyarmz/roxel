@@ -68,19 +68,6 @@ pub const FACES: [Face; 6] = [
     },
 ];
 
-pub fn for_each_exposed_face(
-    grid: &crate::grid::VoxelGrid,
-    mut f: impl FnMut(IVec3, &Face, crate::grid::Color8),
-) {
-    for (cell, rgba) in grid.iter_occupied() {
-        for face in &FACES {
-            if grid.get(cell + face.d).is_none() {
-                f(cell, face, rgba);
-            }
-        }
-    }
-}
-
 pub fn face_shade(normal: [f32; 3]) -> f32 {
     if normal[1] > 0.5 {
         1.0
