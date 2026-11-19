@@ -1,6 +1,6 @@
 use crate::GridResource;
 use crate::actions::Mods;
-use crate::tools::{StrokeAnchor, Tool, ToolState};
+use crate::tools::{StrokeAnchor, Tool, ToolState, note_used};
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
@@ -213,9 +213,7 @@ fn recolor_aabb(
         if grid.in_bounds(cell) && grid.get(cell).is_some() {
             let c = crate::tools::sample_color(cell, pool);
             history.record(grid, cell, Some(c));
-            if !used.contains(&c) {
-                used.push(c);
-            }
+            note_used(&mut used, c);
         }
     }
     history.end();
@@ -238,9 +236,7 @@ pub fn recolor_selection(
             if grid.in_bounds(*cell) && grid.get(*cell).is_some() {
                 let c = crate::tools::sample_color(*cell, pool);
                 history.record(grid, *cell, Some(c));
-                if !used.contains(&c) {
-                    used.push(c);
-                }
+                note_used(&mut used, c);
             }
         }
         history.end();
@@ -381,9 +377,7 @@ fn recolor_cells(
             continue;
         }
         history.record(grid, cell, Some(c));
-        if !used.contains(&c) {
-            used.push(c);
-        }
+        note_used(&mut used, c);
     }
     history.end();
     used

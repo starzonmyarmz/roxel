@@ -134,6 +134,19 @@ impl RecentColors {
         self.0.insert(0, c);
         self.0.truncate(8);
     }
+
+    pub fn push_all(&mut self, colors: impl IntoIterator<Item = Color8>) {
+        for c in colors {
+            self.push(c);
+        }
+    }
+}
+
+/// Record `c` among a stroke's distinct colors, keeping first-use order.
+pub fn note_used(used: &mut Vec<Color8>, c: Color8) {
+    if !used.contains(&c) {
+        used.push(c);
+    }
 }
 
 /// Additional swatches shift-clicked alongside `CurrentColor`. Together with
@@ -168,10 +181,8 @@ impl ExtraColors {
 pub fn color_pool(primary: Color8, extras: &[Color8]) -> Vec<Color8> {
     let mut out = Vec::with_capacity(1 + extras.len());
     out.push(primary);
-    for c in extras {
-        if !out.contains(c) {
-            out.push(*c);
-        }
+    for &c in extras {
+        note_used(&mut out, c);
     }
     out
 }
@@ -613,15 +624,11 @@ fn shape_commit(
         if grid.in_bounds(cell) {
             let c = sample_color(cell, pool);
             history.record(grid, cell, Some(c));
-            if !used.contains(&c) {
-                used.push(c);
-            }
+            note_used(&mut used, c);
         }
     }
     history.end();
-    for c in used {
-        recent.push(c);
-    }
+    recent.push_all(used);
     state.reset();
 }
 
@@ -863,9 +870,7 @@ pub fn tool_input_system(
         state.stroking = false;
         state.anchor = None;
         state.stroke_origin = None;
-        for c in state.stroke_used.drain(..) {
-            recent.push(c);
-        }
+        recent.push_all(state.stroke_used.drain(..));
     }
 
     if tool.current != Tool::Shape && shape_state.phase.is_some() {
@@ -983,9 +988,7 @@ pub fn tool_input_system(
     if lmb_just && tool.current == Tool::Paint {
         if hits_selection(&selection, pick(&grid, origin, dir)) {
             let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
-            for c in used {
-                recent.push(c);
-            }
+            recent.push_all(used);
             return;
         }
         // Double-click a voxel → flood-fill its 6-connected same-color region
@@ -1005,9 +1008,7 @@ pub fn tool_input_system(
                 // nowhere.
                 let used = fill_region(&mut grid, &mut history, hit.cell, orig, &pool);
                 state.last_press_cell = None;
-                for c in used {
-                    recent.push(c);
-                }
+                recent.push_all(used);
                 return;
             }
             // First click: remember the seed and its color before the stroke
@@ -1047,9 +1048,7 @@ pub fn tool_input_system(
                 Tool::Brush => {
                     let c = sample_color(cell, &pool);
                     history.record(&mut grid, cell, Some(c));
-                    if !used.contains(&c) {
-                        used.push(c);
-                    }
+                    note_used(&mut used, c);
                 }
                 Tool::Erase => {
                     if grid.get(cell).is_some() {
@@ -1060,9 +1059,7 @@ pub fn tool_input_system(
                     if grid.get(cell).is_some() {
                         let c = sample_color(cell, &pool);
                         history.record(&mut grid, cell, Some(c));
-                        if !used.contains(&c) {
-                            used.push(c);
-                        }
+                        note_used(&mut used, c);
                     }
                 }
                 Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
@@ -1070,9 +1067,7 @@ pub fn tool_input_system(
         }
         history.end();
         state.last_placed = Some(target);
-        for c in used {
-            recent.push(c);
-        }
+        recent.push_all(used);
         return;
     }
 
@@ -1167,9 +1162,7 @@ pub fn tool_input_system(
             Tool::Brush => {
                 let c = sample_color(cell, &pool);
                 history.record(&mut grid, cell, Some(c));
-                if !state.stroke_used.contains(&c) {
-                    state.stroke_used.push(c);
-                }
+                note_used(&mut state.stroke_used, c);
                 state.last_placed = Some(cell);
             }
             Tool::Erase => {
@@ -1182,9 +1175,7 @@ pub fn tool_input_system(
                 if grid.get(cell).is_some() {
                     let c = sample_color(cell, &pool);
                     history.record(&mut grid, cell, Some(c));
-                    if !state.stroke_used.contains(&c) {
-                        state.stroke_used.push(c);
-                    }
+                    note_used(&mut state.stroke_used, c);
                     state.last_placed = Some(cell);
                 }
             }
@@ -1698,6 +1689,22 @@ mod tests {
     fn color_pool_preserves_extras_order() {
         let pool = color_pool(C_R, &[C_B, C_G]);
         assert_eq!(pool, vec![C_R, C_B, C_G]);
+    }
+
+    #[test]
+    fn note_used_keeps_first_use_order_without_duplicates() {
+        let mut used = Vec::new();
+        for c in [C_G, C_R, C_G, C_B, C_R] {
+            note_used(&mut used, c);
+        }
+        assert_eq!(used, vec![C_G, C_R, C_B]);
+    }
+
+    #[test]
+    fn recent_push_all_leaves_last_pushed_first() {
+        let mut recent = RecentColors(vec![C_R]);
+        recent.push_all([C_G, C_B]);
+        assert_eq!(recent.0, vec![C_B, C_G, C_R]);
     }
 
     #[test]

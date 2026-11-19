@@ -1433,14 +1433,13 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
         Action::FillSelection => {
             if edit.selection.aabb.is_some() {
                 let pool = crate::tools::color_pool(edit.color.0, &edit.extras.0);
-                for c in crate::select::recolor_selection(
-                    &mut doc.grid,
-                    &mut doc.history,
-                    &edit.selection,
-                    &pool,
-                ) {
-                    edit.recent_colors.push(c);
-                }
+                edit.recent_colors
+                    .push_all(crate::select::recolor_selection(
+                        &mut doc.grid,
+                        &mut doc.history,
+                        &edit.selection,
+                        &pool,
+                    ));
             }
         }
         Action::DeleteSelectionContents => {
