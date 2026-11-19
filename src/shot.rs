@@ -761,6 +761,7 @@ fn on_shot_captured(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut toasts: ResMut<Toasts>,
+    mut png_writes: ResMut<crate::snapshot::PngWrites>,
 ) {
     let captured = trigger.entity;
     commands.entity(captured).despawn();
@@ -797,10 +798,10 @@ fn on_shot_captured(
     let params = session.params.clone();
     let bg = session.bg_base;
     let hero = session.hero;
-    let out = composite(&a, &b, &params, bg, hero);
 
     match session.target.take() {
-        Some(ShotTarget::Export(path)) => {
+        Some(ShotTarget::Export(path)) => png_writes.spawn(move || {
+            let out = composite(&a, &b, &params, bg, hero);
             match roxel::io::atomic::write_with(&path, |w| out.write_to(w, image::ImageFormat::Png))
             {
                 Ok(()) => {
@@ -808,12 +809,13 @@ fn on_shot_captured(
                         .file_name()
                         .and_then(|s| s.to_str())
                         .unwrap_or("shot.png");
-                    toasts.success(format!("Exported {label}"));
+                    Ok(format!("Exported {label}"))
                 }
-                Err(e) => toasts.error(format!("Shot export failed: {e}")),
+                Err(e) => Err(format!("Shot export failed: {e}")),
             }
-        }
+        }),
         Some(ShotTarget::Preview) => {
+            let out = composite(&a, &b, &params, bg, hero);
             panel.cached_a = Some(a);
             panel.cached_b = Some(b);
             panel.bg_base = bg;

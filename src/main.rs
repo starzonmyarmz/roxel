@@ -65,8 +65,8 @@ use crate::onboarding::{
 use crate::preview::{brush_preview_system, spawn_brush_preview};
 use crate::shape_preview::{shape_preview_system, spawn_shape_preview};
 use crate::snapshot::{
-    CapturedPreview, SavePreviewCapture, SnapshotInProgress, SnapshotRequest, SnapshotSession,
-    start_snapshot_system,
+    CapturedPreview, PngWrites, SavePreviewCapture, SnapshotInProgress, SnapshotRequest,
+    SnapshotSession, poll_png_writes_system, start_snapshot_system,
 };
 use crate::theme::{
     Preferences, PreferencesWindow, Theme, install_fonts, load_preferences, refresh_theme_system,
@@ -173,6 +173,7 @@ fn main() {
         .init_resource::<SnapshotRequest>()
         .init_resource::<SnapshotSession>()
         .init_resource::<SnapshotInProgress>()
+        .init_resource::<PngWrites>()
         .init_resource::<SavePreviewCapture>()
         .init_resource::<CapturedPreview>()
         .init_resource::<SavePreviewState>()
@@ -266,6 +267,7 @@ fn main() {
             crate::shot::shot_system,
             apply_import_system,
             toast_lifetime_system,
+            poll_png_writes_system,
             process_save_preview_system,
         ),
     )
@@ -420,7 +422,12 @@ fn resolve_unsaved_guard_system(
     mut pending: ResMut<PendingDialog>,
     mut new_project: ResMut<NewProject>,
     mut exit: MessageWriter<AppExit>,
+    png_writes: Res<crate::snapshot::PngWrites>,
+    mut quitting: Local<bool>,
 ) {
+    if *quitting && png_writes.is_empty() {
+        exit.write(AppExit::Success);
+    }
     let GuardInputs {
         doc,
         history,
@@ -440,9 +447,7 @@ fn resolve_unsaved_guard_system(
                 pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
             }
         }
-        GuardedAction::Quit => {
-            exit.write(AppExit::Success);
-        }
+        GuardedAction::Quit => *quitting = true,
     }
 }
 
