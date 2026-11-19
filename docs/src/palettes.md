@@ -29,4 +29,4 @@ Saving a `.rox` project also saves the palette you're using, including any unsav
 
 ## Importing & exporting palettes
 
-Roxel reads and writes the **Adobe Swatch Exchange** (`.ase`) format, so you can move palettes between Roxel and other design tools. See [Import & Export](import-export.md).
+Roxel reads and writes the **Adobe Swatch Exchange** (`.ase`) format, so you can move palettes between Roxel and other design tools. Importing a MagicaVoxel `.vox` model also adds the colors it uses as a new user palette. See [Import & Export](import-export.md).
