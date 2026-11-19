@@ -765,11 +765,25 @@ fn on_shot_captured(
     let captured = trigger.entity;
     commands.entity(captured).despawn();
 
-    let decoded = decode_capture(&trigger.image);
-    if Some(captured) == session.screenshot_a {
-        session.captured_a = decoded;
-    } else if Some(captured) == session.screenshot_b {
-        session.captured_b = decoded;
+    let is_a = Some(captured) == session.screenshot_a;
+    if !is_a && Some(captured) != session.screenshot_b {
+        return;
+    }
+    let mut assets = ShotAssets {
+        commands: &mut commands,
+        meshes: &mut meshes,
+        materials: &mut materials,
+        images: &mut images,
+    };
+    let Some(decoded) = decode_capture(&trigger.image) else {
+        toasts.error("Shot capture failed — try again");
+        teardown(&mut session, &mut assets);
+        return;
+    };
+    if is_a {
+        session.captured_a = Some(decoded);
+    } else {
+        session.captured_b = Some(decoded);
     }
 
     if session.captured_a.is_none() || session.captured_b.is_none() {
@@ -809,24 +823,34 @@ fn on_shot_captured(
         None => {}
     }
 
-    // Tear down the throwaway scene + its assets.
+    teardown(&mut session, &mut assets);
+}
+
+struct ShotAssets<'a, 'w, 's> {
+    commands: &'a mut Commands<'w, 's>,
+    meshes: &'a mut Assets<Mesh>,
+    materials: &'a mut Assets<StandardMaterial>,
+    images: &'a mut Assets<Image>,
+}
+
+fn teardown(session: &mut ShotSession, assets: &mut ShotAssets) {
     for e in session.entities.drain(..) {
-        commands.entity(e).despawn();
+        assets.commands.entity(e).despawn();
     }
     for h in session.meshes.drain(..) {
-        meshes.remove(&h);
+        assets.meshes.remove(&h);
     }
     for h in session.materials.drain(..) {
-        materials.remove(&h);
+        assets.materials.remove(&h);
     }
     for h in session.textures.drain(..) {
-        images.remove(&h);
+        assets.images.remove(&h);
     }
-    if let Some(h) = session.image_a.take() {
-        images.remove(&h);
-    }
-    if let Some(h) = session.image_b.take() {
-        images.remove(&h);
+    for h in [session.image_a.take(), session.image_b.take()]
+        .into_iter()
+        .flatten()
+    {
+        assets.images.remove(&h);
     }
     session.reset();
 }

@@ -376,6 +376,16 @@ fn file_label(p: &Path) -> String {
         .to_string()
 }
 
+fn vox_merged_message(label: String, merged: usize) -> String {
+    if merged == 1 {
+        format!("Exported {label}. .vox holds 255 colors, so 1 color was matched to its nearest")
+    } else {
+        format!(
+            "Exported {label}. .vox holds 255 colors, so {merged} colors were matched to their nearest"
+        )
+    }
+}
+
 #[derive(SystemParam)]
 pub struct DialogDoc<'w> {
     grid: ResMut<'w, GridResource>,
@@ -484,7 +494,8 @@ pub fn poll_dialogs_system(
             snapshot.0 = Some(path);
         }
         Some(DialogResult::ExportVox(path)) => match io::vox::export(&path, &grid) {
-            Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
+            Ok(0) => toasts.success(format!("Exported {}", file_label(&path))),
+            Ok(merged) => toasts.info(vox_merged_message(file_label(&path), merged)),
             Err(e) => toasts.error(format!("Export .vox failed: {e}")),
         },
         Some(DialogResult::ExportObj(path)) => match io::obj::export(&path, &grid) {
@@ -696,6 +707,12 @@ pub fn process_save_preview_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vox_merged_message_counts_the_merged_colors() {
+        assert!(vox_merged_message("a.vox".into(), 1).contains("1 color was"));
+        assert!(vox_merged_message("a.vox".into(), 4).contains("4 colors were"));
+    }
 
     #[test]
     fn dialog_result_path_returns_embedded_path() {

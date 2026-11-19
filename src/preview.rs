@@ -48,6 +48,7 @@ pub struct StrokeGates<'w> {
     pub pointer: Res<'w, PointerState>,
     pub shape: Res<'w, crate::tools::ShapeState>,
     pub theme: Res<'w, Theme>,
+    pub snapshot: Res<'w, crate::snapshot::SnapshotInProgress>,
 }
 
 #[derive(SystemParam)]
@@ -138,6 +139,7 @@ pub fn brush_preview_system(
         || input.keys.pressed(KeyCode::Space)
         || input.mouse.pressed(MouseButton::Right)
         || gates.pointer.stroking
+        || gates.snapshot.0
     {
         clear(&mut vis, &mut world.hide);
         return;

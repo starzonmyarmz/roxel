@@ -1,5 +1,5 @@
 use crate::GridResource;
-use crate::picking::{Hit, cursor_ray, pick, pick_with};
+use crate::picking::{Hit, cursor_ray, pick, pick_with, union_bounds};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, fill_region, recolor_selection,
@@ -692,6 +692,24 @@ fn select_commit(state: &mut SelectState, selection: &mut Selection) {
     state.reset();
 }
 
+/// Idle, RMB must not deselect: it's reserved for camera orbit.
+fn cancel_select(
+    state: &mut SelectState,
+    selection: &mut Selection,
+    esc: bool,
+    rmb_just: bool,
+) -> bool {
+    if !esc && !rmb_just {
+        return false;
+    }
+    if state.phase != SelectPhase::Idle {
+        state.reset();
+    } else if esc {
+        selection.clear();
+    }
+    true
+}
+
 #[allow(clippy::too_many_arguments)]
 fn select_input(
     state: &mut SelectState,
@@ -708,17 +726,7 @@ fn select_input(
     let rmb_just = mouse.just_pressed(MouseButton::Right);
     let esc = keys.just_pressed(KeyCode::Escape);
 
-    if esc || rmb_just {
-        if state.phase != SelectPhase::Idle {
-            // Abort in-progress footprint/extrude.
-            state.reset();
-            return;
-        }
-        // Idle: Esc deselects, but RMB is reserved for camera orbit/pan —
-        // don't clear the committed selection when the user rotates the view.
-        if esc {
-            selection.clear();
-        }
+    if cancel_select(state, selection, esc, rmb_just) {
         return;
     }
 
@@ -886,15 +894,12 @@ pub fn tool_input_system(
                 blocked,
             );
         } else {
-            let rmb = mouse.just_pressed(MouseButton::Right);
-            let esc = keys.just_pressed(KeyCode::Escape);
-            if esc || rmb {
-                if select_state.phase != SelectPhase::Idle {
-                    select_state.reset();
-                } else {
-                    selection.aabb = None;
-                }
-            }
+            cancel_select(
+                &mut select_state,
+                &mut selection,
+                keys.just_pressed(KeyCode::Escape),
+                mouse.just_pressed(MouseButton::Right),
+            );
         }
         return;
     }
@@ -989,9 +994,7 @@ pub fn tool_input_system(
     // they never enter drag mode. A plain single click on a voxel falls through
     // to the per-voxel stroke below (freehand recolor).
     if lmb_just && tool.current == Tool::Paint {
-        // Active selection: a click fills the whole selection (per-cell sampled),
-        // one history stroke. Reachable from the keyboard via `F` too.
-        if selection.aabb.is_some() {
+        if hits_selection(&selection, pick(&grid, origin, dir)) {
             let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
             for c in used {
                 recent.push(c);
@@ -1088,14 +1091,10 @@ pub fn tool_input_system(
 
     // Erase on a voxel inside the active selection → clear the whole selection
     // in a single history stroke. Click outside the selection falls through to
-    // normal single-cell stroke behavior. (Recoloring a selection lives on the
-    // Fill tool.)
+    // normal single-cell stroke behavior.
     if lmb_just
         && tool.current == Tool::Erase
-        && selection.aabb.is_some()
-        && let Some(hit) = pick(&grid, origin, dir)
-        && hit.hit_voxel
-        && selection.contains(hit.cell)
+        && hits_selection(&selection, pick(&grid, origin, dir))
     {
         clear_selection(&mut grid, &mut history, &selection);
         return;
@@ -1149,7 +1148,8 @@ pub fn tool_input_system(
                 None => grid_ref.get(p),
             }
         };
-        match (tool.current, pick_with(read, origin, dir)) {
+        let bounds = union_bounds(grid_ref.chunk_bounds(), history_ref.pre_stroke_bounds());
+        match (tool.current, pick_with(read, bounds, origin, dir)) {
             (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,
@@ -1204,6 +1204,10 @@ pub fn tool_input_system(
             Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
         }
     }
+}
+
+fn hits_selection(selection: &Selection, hit: Option<Hit>) -> bool {
+    hit.is_some_and(|h| h.hit_voxel && selection.contains(h.cell))
 }
 
 /// Mouse drag for `Tool::Move`. Press inside a selected voxel anchors a face
@@ -1459,6 +1463,48 @@ mod tests {
             normal,
             hit_voxel: true,
         }
+    }
+
+    #[test]
+    fn select_cancel_keeps_the_selection_on_rmb_and_clears_it_fully_on_esc() {
+        let mut state = SelectState::default();
+        let mut selection = Selection::default();
+        selection.set_cells(HashSet::from([IVec3::ZERO, IVec3::X]));
+        assert!(!cancel_select(&mut state, &mut selection, false, false));
+
+        assert!(cancel_select(&mut state, &mut selection, false, true));
+        assert!(selection.aabb.is_some());
+
+        state.phase = SelectPhase::Footprint;
+        assert!(cancel_select(&mut state, &mut selection, true, false));
+        assert_eq!(state.phase, SelectPhase::Idle);
+        assert!(selection.aabb.is_some());
+
+        assert!(cancel_select(&mut state, &mut selection, true, false));
+        assert!(selection.aabb.is_none());
+        assert!(selection.cells.is_none());
+    }
+
+    #[test]
+    fn only_a_click_on_a_selected_voxel_hits_the_selection() {
+        let mut selection = Selection::default();
+        selection.set_aabb(SelectionAabb::from_corners(IVec3::ZERO, IVec3::splat(2)));
+        let inside = IVec3::ONE;
+        assert!(hits_selection(&selection, Some(hit(inside, IVec3::Y))));
+        assert!(!hits_selection(
+            &selection,
+            Some(hit(IVec3::splat(5), IVec3::Y))
+        ));
+        let floor = Hit {
+            hit_voxel: false,
+            ..hit(inside, IVec3::Y)
+        };
+        assert!(!hits_selection(&selection, Some(floor)));
+        assert!(!hits_selection(&selection, None));
+        assert!(!hits_selection(
+            &Selection::default(),
+            Some(hit(inside, IVec3::Y))
+        ));
     }
 
     #[test]

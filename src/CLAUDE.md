@@ -8,11 +8,11 @@ Core data flow, tools, camera, rendering, app systems. egui surface lives in `sr
 
 Every `set` flips `dirty`, inserts owning chunk into `dirty_chunks`, plus seam-neighbour chunks for boundary cells (face occlusion changes there). `dirty_chunks` drained by `regenerate_mesh_system`.
 
-**Mutations flow through `History::record`, not `grid.set` directly.** Recording wraps each set in a `CellDelta`, dedupes per-stroke via `HashSet<(i32,i32,i32)>`. `History::begin`/`end` bracket a stroke; LMB-release path in `tool_input_system` calls `end`. Undo cap `MAX_UNDO = 200`; new stroke clears redo. Picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow) — voxels placed earlier in the same stroke are invisible to the next pick. This kills runaway stacking and replaces the old full-grid-clone snapshot (unbounded in open world).
+**Mutations flow through `History::record`, not `grid.set` directly.** Recording wraps each set in a `CellDelta`, dedupes per-stroke via `HashSet<(i32,i32,i32)>`. `History::begin`/`end` bracket a stroke; LMB-release path in `tool_input_system` calls `end`. `begin` commits a stroke that's still open instead of dropping it; scene-editing actions (`Action::edits_scene`) and the Move arrow-key nudge are disabled while `History::is_open()`, so a key command can't land mid-drag. Undo cap `MAX_UNDO = 200`; new stroke clears redo. Picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow) — voxels placed earlier in the same stroke are invisible to the next pick. This kills runaway stacking and replaces the old full-grid-clone snapshot (unbounded in open world).
 
 ## Mesher
 
-`regenerate_mesh_system` drains `dirty_chunks` each frame. Chunks with data → spawn/update entity; emptied → despawn. Entities live in `VoxelChunkMeshes`. Mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces in a `[min, max)` chunk-aligned box but queries the **full grid** for cross-bounds occlusion (quads agree at seams). Base colors run through `srgb_to_linear` before upload — Bevy expects linear vertex colors.
+`regenerate_mesh_system` drains `dirty_chunks` each frame. **Every `Update` system that writes the grid is ordered `.before(regenerate_mesh_system)`** (tool input, move drag, arrow nudge, `apply_actions_system`, `poll_dialogs_system`, `apply_new_project_system`) so an edit meshes the same frame; add the constraint to any new writer. Chunks with data → spawn/update entity; emptied → despawn. Entities live in `VoxelChunkMeshes`. Mesher is greedy: `greedy_quads_bounded` merges same-color same-direction faces in a `[min, max)` chunk-aligned box but queries the **full grid** for cross-bounds occlusion (quads agree at seams). Base colors run through `srgb_to_linear` before upload — Bevy expects linear vertex colors.
 
 `PreviewHide` (`mesh.rs`): erase preview hides target cell; paint preview swaps it in place via `PreviewHide.recolor`. Change to either re-triggers chunk rebuild even when `grid.dirty` is false. Driven by `brush_preview_system` (`preview.rs`) and `shape_preview_system` (`shape_preview.rs`), both scheduled `before(regenerate_mesh_system)`.
 
@@ -22,7 +22,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Picking
 
-`picking.rs` — DDA voxel raycaster fed by `cursor_ray`. Caps at `MAX_DDA_STEPS = 1024` (open-air ray terminates in empty world). Falls back to y=0 floor plane (unbounded X/Z) on miss so brushing on empty space works.
+`picking.rs` — DDA voxel raycaster fed by `cursor_ray`. Steps until the ray can no longer reach `bounds` (`step_budget`: L1 distance from the start cell to the far corner of `grid.chunk_bounds()`, unioned with `History::pre_stroke_bounds()` on the stroke path), so it scales with camera distance, an empty world takes zero steps, and `MAX_DDA_STEPS = 65536` bounds a pathological hull. Falls back to y=0 floor plane (unbounded X/Z) on miss so brushing on empty space works.
 
 ## Tools and input
 
@@ -31,7 +31,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 - **`Tool::Paint`** (`P`, bucket icon) — the single recolor tool. Three gestures, all sampling the color pool per cell into one history stroke each:
   - **Drag / single click** — freehand recolor of each occupied voxel touched (per-voxel stroke machinery, the default fall-through path).
   - **Double-click a voxel** — flood-fills its 6-connected region via `select::fill_region` (mirrors the Select tool's double-click-to-pick-region gesture; uses `PointerState.last_press_cell`/`last_press_secs`/`last_press_color` + `DOUBLE_CLICK_SECS`). The first click already recolored the seed, so the flood matches against `last_press_color` — the seed's color *before* that first click — not the seed's current color (which would spread nowhere). `fill_region(start, match_color, pool)` floods cells equal to `match_color` with `start` always included (caller guarantees `start` occupied); it shares `recolor_cells` with `recolor_selection` and walks `connected_region(start, color)`, the explicit-color flood that `connected_same_color` now delegates to.
-  - **Active selection** — a click (anywhere) fills the whole selection via `select::recolor_selection`; `F` does the same from the keyboard (`Action::FillSelection`), also listed as **Edit → Fill Selection**.
+  - **Active selection** — a click on a selected voxel (`hits_selection`, shared with Erase) fills the whole selection; clicks elsewhere fall through to the freehand path via `select::recolor_selection`; `F` does the same from the keyboard (`Action::FillSelection`), also listed as **Edit → Fill Selection**.
 
   The selection-fill and double-click paths are handled ahead of the anchor/stroke machinery in `tool_input_system` and early-return so they never enter drag mode. The old dedicated `Tool::Fill` (bucket, `G`) was folded in here — recoloring now lives on one tool. (Erase still clears selection contents on click-inside; that's a separate path.)
 - **`Tool::Eyedropper`** — single-click, auto-restores `tool.previous` on release unless Alt held (sticky via `alt_eyedropper_system`).
@@ -77,7 +77,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Gizmo overlay
 
-`gizmo.rs` — second `Camera3d` on `RenderLayers::layer(1)`, `clear_color: None`, draws orientation cube into viewport rect from `update_gizmo_viewport` (`after(ui_system)`). `GizmoRect`/`GizmoDrag`/`GizmoHover` read by `tool_input_system` (suppress clicks), preview systems (hide while dragging), `ui_system` (cursor swap).
+`gizmo.rs` — second `Camera3d` on `RenderLayers::layer(1)`, `clear_color: None`, draws orientation cube into viewport rect from `update_gizmo_viewport` (`after(ui_system)`). `GizmoRect`/`GizmoDrag`/`GizmoHover` read by `tool_input_system` (suppress clicks), preview systems (hide while dragging), `ui_system` (cursor swap). Drag orbits; a press-release within `CLICK_SLOP` on a hovered face snaps yaw/pitch to that face (`face_angles`, the view-preset angles plus a bottom view), taking the short way round (`nearest_turn`) and keeping focus/zoom.
 
 ## Canvas chrome
 
@@ -103,7 +103,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 `snapshot.rs` — one-shot offscreen `Camera3d` at main camera's transform/projection, renders into `Image` at physical window res with `ClearColorConfig::Custom(Color::NONE)`, captures via `Screenshot` pipeline. **Forces `Tonemapping::None`** — tonemap fullscreen pass writes `alpha=1` to every pixel, clobbering transparent clear. Voxel materials are `unlit` so colors are unaffected.
 
-`SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
+`SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame; `brush_preview_system` and `shape_preview_system` hide their ghost/outline and clear `PreviewHide` so the chunk meshes rebuild without the preview swap. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
 
 ## Roxel Shot (social export)
 
@@ -168,7 +168,7 @@ Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `o
 
 `updater.rs` — background GitHub Releases check via `ureq`. `REPO = "starzonmyarmz/roxel"`, `RATE_LIMIT_SECS = 24h`, `HTTP_TIMEOUT_SECS = 10`. `UpdateCheck(UpdateState)` resource is the state machine (idle/checking/ready/failed). `start_check(state, manual)` spawns the HTTP task on `AsyncComputeTaskPool`; `poll_update_check_system` drains via `block_on(future::poll_once)`. `startup_check_system` honours `preferences.last_update_check` rate limit; manual check from command palette ignores it.
 
-`parse_tag` accepts `v1.2.3` and `1.2.3`. `is_newer` is plain tuple compare. `parse_release_json` uses `serde_json` to deserialize `tag_name` + `html_url` (extra GitHub fields ignored). Toast on newer version; `open_url` shells out to `open`/`xdg-open`/`start`.
+`parse_tag` accepts `v1.2.3`, `1.2.3` and semver pre-release/build suffixes (`1.0.0-rc.1`, `+meta` dropped) into a `Version` ordered by semver precedence (a pre-release sorts below its release). `is_newer` compares those. `parse_release_json` uses `serde_json` to deserialize `tag_name` + `html_url` (extra GitHub fields ignored). Toast on newer version; after that `Action::CheckForUpdates` reads "Download Roxel vX.Y.Z…" (`ActionState.update_tag`) in every menu and the palette, and opens the release page instead of checking again — the lasting cue on macOS, where there's no pill badge. The native menu syncs `menu_label` each frame for plain items, so state-dependent menu labels work there too. `open_url` shells out to `open`/`xdg-open`/`start`.
 
 ## Actions, menus and shortcuts
 
@@ -176,7 +176,7 @@ Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `o
 
 Every surface pushes `(Action, Origin)` onto `ActionQueue`; `apply_actions_system` → `dispatch` is the only place actions run. Surfaces: the command palette, the macOS menu (`menu/native.rs`), the Win/Linux pill (`ui/floating.rs`), the inspector palette `…` menu and "+" swatch (`ui/inspector.rs`), and `shortcut_system`.
 
-- **Menus**: `menu::menu_bar()` is the shared layout (`MenuEntry::{Item(Action), Separator, Submenu, OpenRecent, System}`), branched per platform (macOS Roxel/Window menus and AppKit `SystemItem`s; Win/Linux folds those into File/Help). The native menu maps each `Chord` to a muda accelerator and syncs enabled/checked for every item from `ActionState` each frame; plain-key items (F, Backspace) are disabled while egui wants the keyboard, since AppKit routes key equivalents before egui sees them.
+- **Menus**: `menu::menu_bar()` is the shared layout (`MenuEntry::{Item(Action), Separator, Submenu, OpenRecent, System}`), branched per platform (macOS Roxel/Window menus and AppKit `SystemItem`s; Win/Linux folds those into File/Help). The native menu maps each `Chord` to a muda accelerator and syncs enabled/checked for every item from `ActionState` each frame; plain-key items (F, Backspace) and the text-editing chords (Cmd+A/Z/X/C/V, Shift+Cmd+Z) are disabled while egui wants the keyboard (`Action::clashes_with_typing`), since AppKit routes key equivalents before egui sees them.
 - **Shortcuts**: `shortcut_system` → pure `shortcut_action(mods, just_pressed, state, ShortcutGate)` picks the first enabled `STATIC` action whose `chords()` match (exact modifiers; numpad/Delete aliases; Ctrl+Y for Redo off macOS). `ShortcutGate` blocks everything while typing or a modal is open, except Cmd+K / Cmd+, closing their own modal. Two actions may share a chord only if their `enabled` never overlap (`SelectTool(Shape)` vs `CycleShape` on S) — `no_two_actions_fire_on_the_same_chord` guards it. On macOS a menu key equivalent consumes its key, so the system only sees chords the menu bar doesn't own or has disabled.
 - **Display**: `Chord::tokens(platform)` / `display(platform)` — ⇧⌘S on macOS, Ctrl+Shift+S elsewhere. Palette chips, pill shortcut text, tool tooltips (`Action::shortcut_text`) all go through it. Contextual keys (Esc, arrows, Alt eyedropper, Z-click, Space pan, backquote) stay in their own systems.
 

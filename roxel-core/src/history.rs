@@ -16,6 +16,7 @@ pub struct Stroke {
     // mid-stroke so freshly placed voxels are invisible to the next pick —
     // prevents runaway stacking. Replaces the old full-grid snapshot.
     pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
+    pub touched_bounds: Option<(IVec3, IVec3)>,
     /// Monotonic id assigned in `end` when the stroke commits. Used by the
     /// document-dirty check: the editor records the id of the top-of-undo
     /// stroke at save time, so undoing back to that exact state reads clean.
@@ -38,7 +39,12 @@ const MAX_UNDO: usize = 200;
 
 impl History {
     pub fn begin(&mut self) {
+        self.end();
         self.current = Some(Stroke::default());
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.current.is_some()
     }
 
     pub fn record(&mut self, grid: &mut VoxelGrid, pos: IVec3, after: Option<Color8>) {
@@ -60,6 +66,10 @@ impl History {
         }
         grid.set(pos, after);
         stroke.touched.insert(key, before);
+        stroke.touched_bounds = Some(match stroke.touched_bounds {
+            Some((lo, hi)) => (lo.min(pos), hi.max(pos)),
+            None => (pos, pos),
+        });
         stroke.deltas.push(CellDelta { pos, before, after });
     }
 
@@ -71,6 +81,10 @@ impl History {
             .touched
             .get(&(p.x, p.y, p.z))
             .copied()
+    }
+
+    pub fn pre_stroke_bounds(&self) -> Option<(IVec3, IVec3)> {
+        self.current.as_ref()?.touched_bounds
     }
 
     /// Roll the current stroke back to its pre-stroke state and discard it.
@@ -152,6 +166,42 @@ mod tests {
         assert_eq!(g.get(p), None);
         h.redo(&mut g);
         assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn pre_stroke_bounds_hull_the_touched_cells() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        assert_eq!(h.pre_stroke_bounds(), None);
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(4, 0, -2), Some([1, 1, 1, 255]));
+        rec(&mut h, &mut g, IVec3::new(-3, 5, 1), Some([1, 1, 1, 255]));
+        assert_eq!(
+            h.pre_stroke_bounds(),
+            Some((IVec3::new(-3, 0, -2), IVec3::new(4, 5, 1)))
+        );
+        h.end();
+        assert_eq!(h.pre_stroke_bounds(), None);
+    }
+
+    #[test]
+    fn begin_commits_an_open_stroke() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let a = IVec3::new(1, 0, 0);
+        let b = IVec3::new(2, 0, 0);
+        h.begin();
+        rec(&mut h, &mut g, a, Some([1, 1, 1, 255]));
+        assert!(h.is_open());
+        h.begin();
+        rec(&mut h, &mut g, b, Some([2, 2, 2, 255]));
+        h.end();
+        assert!(!h.is_open());
+        assert_eq!(h.undo.len(), 2);
+        h.undo(&mut g);
+        h.undo(&mut g);
+        assert_eq!(g.get(a), None);
+        assert_eq!(g.get(b), None);
     }
 
     #[test]

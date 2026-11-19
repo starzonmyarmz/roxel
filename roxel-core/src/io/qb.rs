@@ -13,6 +13,8 @@ use std::path::Path;
 const CODEFLAG: u32 = 2;
 const NEXTSLICE: u32 = 6;
 
+const MAX_CELLS: u64 = 1 << 28;
+
 pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let bytes = std::fs::read(path)?;
     let mut r = LeReader::new(&bytes);
@@ -38,11 +40,29 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
     let py = r.i32()?;
     let pz = r.i32()?;
 
+    if sx == 0 || sy == 0 || sz == 0 {
+        bail!("Import .qb: matrix has a zero-sized axis ({sx}×{sy}×{sz})");
+    }
+    let slice = u64::from(sx) * u64::from(sy);
+    if slice
+        .checked_mul(u64::from(sz))
+        .is_none_or(|v| v > MAX_CELLS)
+    {
+        bail!("Import .qb: matrix {sx}×{sy}×{sz} is too large");
+    }
+    let origin = IVec3::new(px, py, pz);
+    let far = [(px, sx), (py, sy), (pz, sz)];
+    if far
+        .iter()
+        .any(|&(p, s)| p.checked_add_unsigned(s).is_none())
+    {
+        bail!("Import .qb: matrix position is out of range");
+    }
+
     let mut dropped = 0usize;
-    let mut place = |x: i32, y: i32, z: i32, raw: u32, dropped: &mut usize| {
+    let mut place = |x: u32, y: u32, z: u32, raw: u32| {
         let bytes = raw.to_le_bytes();
-        let alpha = bytes[3];
-        if alpha == 0 {
+        if bytes[3] == 0 {
             return;
         }
         let rgb = if color_format == 0 {
@@ -50,9 +70,9 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
         } else {
             [bytes[2], bytes[1], bytes[0], 255]
         };
-        let p = IVec3::new(px + x, py + y, pz + z);
+        let p = origin + IVec3::new(x as i32, y as i32, z as i32);
         if p.y < 0 {
-            *dropped += 1;
+            dropped += 1;
             return;
         }
         grid.set(p, Some(rgb));
@@ -63,33 +83,35 @@ pub fn import(path: &Path, grid: &mut VoxelGrid) -> Result<()> {
             for y in 0..sy {
                 for x in 0..sx {
                     let v = r.u32()?;
-                    place(x as i32, y as i32, z as i32, v, &mut dropped);
+                    place(x, y, z, v);
                 }
             }
         }
     } else {
         for z in 0..sz {
-            let mut i: u32 = 0;
+            let mut i: u64 = 0;
             loop {
                 let data = r.u32()?;
                 if data == NEXTSLICE {
                     break;
                 }
-                if data == CODEFLAG {
-                    let count = r.u32()?;
-                    let color = r.u32()?;
-                    for _ in 0..count {
-                        let x = i % sx;
-                        let y = i / sx;
-                        place(x as i32, y as i32, z as i32, color, &mut dropped);
-                        i += 1;
-                    }
+                let (count, color) = if data == CODEFLAG {
+                    (u64::from(r.u32()?), r.u32()?)
                 } else {
-                    let x = i % sx;
-                    let y = i / sx;
-                    place(x as i32, y as i32, z as i32, data, &mut dropped);
-                    i += 1;
+                    (1, data)
+                };
+                if i + count > slice {
+                    bail!("Import .qb: run overflows slice {z}");
                 }
+                for j in i..i + count {
+                    place(
+                        (j % u64::from(sx)) as u32,
+                        (j / u64::from(sx)) as u32,
+                        z,
+                        color,
+                    );
+                }
+                i += count;
             }
         }
     }
@@ -216,6 +238,55 @@ mod tests {
         import(&path, &mut g).unwrap();
         assert_eq!(g.get(IVec3::new(200, 0, 0)), Some([50, 60, 70, 255]));
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn import_err(name: &str, buf: &[u8]) -> String {
+        let path = tmp_path(name, "qb");
+        std::fs::write(&path, buf).unwrap();
+        let mut g = VoxelGrid::default();
+        let err = import(&path, &mut g).unwrap_err().to_string();
+        let _ = std::fs::remove_file(&path);
+        err
+    }
+
+    #[test]
+    fn import_rejects_a_zero_sized_axis() {
+        let mut buf = Vec::new();
+        header(&mut buf, true, 0, 1);
+        matrix_header(&mut buf, "m", (0, 1, 1), (0, 0, 0));
+        push_u32(&mut buf, rgba(1, 1, 1, 255));
+        push_u32(&mut buf, NEXTSLICE);
+        assert!(import_err("zero-axis", &buf).contains("zero-sized"));
+    }
+
+    #[test]
+    fn import_rejects_a_run_longer_than_its_slice() {
+        let mut buf = Vec::new();
+        header(&mut buf, true, 0, 1);
+        matrix_header(&mut buf, "m", (2, 2, 1), (0, 0, 0));
+        push_u32(&mut buf, CODEFLAG);
+        push_u32(&mut buf, u32::MAX);
+        push_u32(&mut buf, rgba(1, 1, 1, 255));
+        push_u32(&mut buf, NEXTSLICE);
+        assert!(import_err("long-run", &buf).contains("overflows"));
+    }
+
+    #[test]
+    fn import_rejects_an_oversized_matrix() {
+        let mut buf = Vec::new();
+        header(&mut buf, true, 0, 1);
+        matrix_header(&mut buf, "m", (u32::MAX, u32::MAX, 2), (0, 0, 0));
+        assert!(import_err("huge", &buf).contains("too large"));
+    }
+
+    #[test]
+    fn import_rejects_a_position_that_overflows() {
+        let mut buf = Vec::new();
+        header(&mut buf, false, 0, 1);
+        matrix_header(&mut buf, "m", (2, 1, 1), (i32::MAX, 0, 0));
+        push_u32(&mut buf, rgba(1, 1, 1, 255));
+        push_u32(&mut buf, rgba(1, 1, 1, 255));
+        assert!(import_err("overflow", &buf).contains("out of range"));
     }
 
     #[test]

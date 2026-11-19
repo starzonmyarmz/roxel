@@ -211,6 +211,7 @@ pub fn ui_system(
                 shape: shape_options.primitive,
                 has_undo: !history.undo.is_empty(),
                 has_redo: !history.redo.is_empty(),
+                stroke_open: history.is_open(),
                 has_selection: selection.aabb.is_some(),
                 selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
                 has_clipboard: clipboard.has_stamp(),
@@ -218,6 +219,7 @@ pub fn ui_system(
                 dialog_busy: pending.is_active(),
                 flyby_active: flyby.active,
                 checking_updates: updater.is_checking(),
+                update_tag: updater.available().map(|r| r.tag.as_str()),
                 palettes: &palettes.0,
                 palette_choice: palette_choice.0.min(palettes.0.len().saturating_sub(1)),
                 active_colors: palette::display_colors(
@@ -239,7 +241,7 @@ pub fn ui_system(
     if ui_visible.0 && prefs.show_floating_menu_bar && !modal_open {
         let state = action_state!();
         floating::pill_menu(ctx, &theme, |ui| {
-            floating::pill_menu_contents(ui, &theme, &state, updater.available(), &mut actions);
+            floating::pill_menu_contents(ui, &theme, &state, &mut actions);
         });
     }
 

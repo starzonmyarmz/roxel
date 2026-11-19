@@ -322,7 +322,7 @@ fn menu_entries(
     for entry in entries {
         match entry {
             MenuEntry::Item(action) => {
-                menu_item(ui, theme, s, out, *action, action.spec().menu_label);
+                menu_item(ui, theme, s, out, *action, &action.menu_label(s));
             }
             MenuEntry::Separator => {
                 ui.separator();
@@ -359,7 +359,6 @@ pub fn pill_menu_contents(
     ui: &mut egui::Ui,
     theme: &Theme,
     s: &ActionState,
-    update: Option<&crate::updater::Release>,
     out: &mut ActionQueue,
 ) {
     for (label, entries) in menu_bar() {
@@ -387,18 +386,18 @@ pub fn pill_menu_contents(
         }
     }
 
-    if let Some(rel) = update {
+    if let Some(tag) = s.update_tag {
         ui.add_space(space::SM);
         let resp = ui.add(egui::Button::image_and_text(
             egui::Image::new(icons::arrow_up())
                 .fit_to_exact_size(icon::md_square())
                 .tint(theme.accent),
-            egui::RichText::new(format!("Update {} available", rel.tag))
+            egui::RichText::new(format!("Update {tag} available"))
                 .size(font::BODY)
                 .color(theme.accent),
         ));
         if resp.on_hover_text("Open the release page").clicked() {
-            crate::updater::open_url(&rel.html_url);
+            out.push(Action::CheckForUpdates, Origin::Ui);
         }
     }
 }

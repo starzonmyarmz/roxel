@@ -29,6 +29,8 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 - **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
 - Format importers `grid.set` each voxel at the source coord into the scratch grid they're handed (never the live scene). No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
+**`io::vox::import` walks the scene graph** (`place_models` / `collect_instances`): every visible `nSHP` instance is placed through its accumulated `nTRN` frame-0 transform (`Xform`: signed-permutation `_r` + `_t`, rotating about the model center in doubled coordinates), hidden nodes/layers skipped, depth-capped against cycles. `_r` is parsed by `parse_rotation`, not dot_vox's `Frame::orientation` (that one panics on an invalid byte). The whole import is shifted so the lowest model-box corner lands at the origin, which keeps a lone untransformed model at its raw voxel coords. Files without a scene graph place each model untransformed.
+
 **`io::vox::import` also returns a palette** — the distinct colors actually placed (ascending palette-index order, deduped; the full 256-entry MV ramp is *not* returned, unused entries are noise). `poll_dialogs_system`'s `ImportVox` arm pushes them as a new user `Palette` (named after the file stem via `palette::unique_palette_name`), selects it, and calls `io::palettes::save`. Mirrors the `.ase` import path. `.qb`/`.gox` imports remain grid-only.
 
 ## Format notes

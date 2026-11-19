@@ -16,7 +16,6 @@ impl<'a> LeReader<'a> {
         self.pos >= self.b.len()
     }
 
-    #[cfg(test)]
     pub fn remaining(&self) -> usize {
         self.b.len() - self.pos
     }
@@ -51,6 +50,12 @@ impl<'a> LeReader<'a> {
 
     pub fn i32(&mut self) -> Result<i32> {
         Ok(self.u32()? as i32)
+    }
+
+    pub fn len_i32(&mut self) -> Result<usize> {
+        let at = self.pos;
+        let v = self.i32()?;
+        usize::try_from(v).map_err(|_| anyhow::anyhow!("negative length {v} at offset {at}"))
     }
 
     pub fn bytes(&mut self, n: usize) -> Result<&'a [u8]> {
@@ -94,6 +99,14 @@ mod tests {
         let mut r = LeReader::new(&bytes);
         r.u8().unwrap();
         assert!(r.bytes(usize::MAX).is_err());
+    }
+
+    #[test]
+    fn len_i32_rejects_negative_values() {
+        let bytes = [5u8, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF];
+        let mut r = LeReader::new(&bytes);
+        assert_eq!(r.len_i32().unwrap(), 5);
+        assert!(r.len_i32().is_err());
     }
 
     #[test]

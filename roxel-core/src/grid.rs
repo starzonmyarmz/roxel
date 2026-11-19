@@ -134,8 +134,7 @@ impl VoxelGrid {
         chunk.cells[idx] = c;
         let count_now = chunk.count;
 
-        self.dirty = true;
-        self.dirty_chunks.insert(coord);
+        self.mark_cell_dirty(p);
 
         if count_now == 0 {
             self.chunks.remove(&coord);
@@ -150,11 +149,12 @@ impl VoxelGrid {
                 self.total_count = self.total_count.saturating_sub(1);
             }
         }
+    }
 
-        // Boundary cells change face occlusion in the neighbour chunk across
-        // the seam. Those chunks must rebuild too. We mark every seam
-        // unconditionally; the mesher tolerates dirty coords with no loaded
-        // chunk (it just skips them).
+    pub fn mark_cell_dirty(&mut self, p: IVec3) {
+        let coord = chunk_coord(p);
+        self.dirty = true;
+        self.dirty_chunks.insert(coord);
         let lx = p.x.rem_euclid(CHUNK_I);
         let ly = p.y.rem_euclid(CHUNK_I);
         let lz = p.z.rem_euclid(CHUNK_I);
@@ -220,6 +220,13 @@ impl VoxelGrid {
             max = max.max(p);
         }
         Some((min, max))
+    }
+
+    pub fn chunk_bounds(&self) -> Option<(IVec3, IVec3)> {
+        let mut keys = self.chunks.keys();
+        let first = *keys.next()?;
+        let (min, max) = keys.fold((first, first), |(lo, hi), &c| (lo.min(c), hi.max(c)));
+        Some((min * CHUNK_I, (max + IVec3::ONE) * CHUNK_I - IVec3::ONE))
     }
 
     /// Memoized [`bounding_box`](Self::bounding_box) for per-frame callers (the
@@ -343,6 +350,18 @@ mod tests {
     }
 
     #[test]
+    fn chunk_bounds_cover_whole_chunks() {
+        let mut g = VoxelGrid::default();
+        assert_eq!(g.chunk_bounds(), None);
+        g.set(IVec3::new(1, 2, 3), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(-1, 40, 3), Some([1, 1, 1, 255]));
+        assert_eq!(
+            g.chunk_bounds(),
+            Some((IVec3::new(-32, 0, 0), IVec3::new(31, 63, 31)))
+        );
+    }
+
+    #[test]
     fn bounding_box_cached_tracks_occupancy_changes() {
         let mut g = VoxelGrid::default();
         // Empty grid: cached hull is None, matches the pure walk.
@@ -392,6 +411,21 @@ mod tests {
         g.set(p, Some([1, 1, 1, 255]));
         assert!(g.dirty_chunks.contains(&IVec3::ZERO));
         assert!(g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn mark_cell_dirty_flags_the_seam_neighbours_without_writing() {
+        let mut g = VoxelGrid::default();
+        g.dirty_chunks.clear();
+        g.mark_cell_dirty(IVec3::new(CHUNK_I - 1, 0, 0));
+        assert_eq!(g.count(), 0);
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+        assert!(g.dirty_chunks.contains(&IVec3::new(0, -1, 0)));
+        assert!(g.dirty_chunks.contains(&IVec3::new(0, 0, -1)));
+        g.dirty_chunks.clear();
+        g.mark_cell_dirty(IVec3::new(5, 5, 5));
+        assert_eq!(g.dirty_chunks.len(), 1);
     }
 
     #[test]

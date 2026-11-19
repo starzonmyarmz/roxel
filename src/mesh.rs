@@ -286,8 +286,7 @@ pub fn regenerate_mesh_system(
             if let Some(p) = opt
                 && grid.in_bounds(p)
             {
-                let coord = chunk_coord(p);
-                grid.dirty_chunks.insert(coord);
+                grid.mark_cell_dirty(p);
             }
         }
     }

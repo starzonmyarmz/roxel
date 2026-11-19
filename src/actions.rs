@@ -451,6 +451,7 @@ pub struct ActionState<'a> {
     pub shape: ShapePrimitive,
     pub has_undo: bool,
     pub has_redo: bool,
+    pub stroke_open: bool,
     pub has_selection: bool,
     pub selection_idle: bool,
     pub has_clipboard: bool,
@@ -458,6 +459,7 @@ pub struct ActionState<'a> {
     pub dialog_busy: bool,
     pub flyby_active: bool,
     pub checking_updates: bool,
+    pub update_tag: Option<&'a str>,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
     pub active_colors: &'a [Color8],
@@ -495,6 +497,7 @@ impl ActionStateParams<'_> {
             shape: self.shape.primitive,
             has_undo: !self.history.undo.is_empty(),
             has_redo: !self.history.redo.is_empty(),
+            stroke_open: self.history.is_open(),
             has_selection: self.selection.aabb.is_some(),
             selection_idle: self.select_state.phase == crate::select::SelectPhase::Idle,
             has_clipboard: self.clipboard.has_stamp(),
@@ -502,6 +505,7 @@ impl ActionStateParams<'_> {
             dialog_busy: self.pending.is_active(),
             flyby_active: self.flyby.active,
             checking_updates: self.updater.is_checking(),
+            update_tag: self.updater.available().map(|r| r.tag.as_str()),
             palettes: &self.palettes.0,
             palette_choice: choice,
             active_colors: crate::ui::display_colors(&self.palettes, &self.working, choice),
@@ -1029,6 +1033,7 @@ impl Action {
             Action::ToggleFloorGrid if s.prefs.show_floor_grid => "Hide floor grid".into(),
             Action::ToggleOriginAxes if s.prefs.show_origin_axes => "Hide origin axes".into(),
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
+            Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
             _ => self.spec().label.into(),
         }
     }
@@ -1037,6 +1042,7 @@ impl Action {
     pub fn menu_label(self, s: &ActionState) -> Cow<'static, str> {
         match self {
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
+            Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
             _ => self.spec().menu_label.into(),
         }
     }
@@ -1054,6 +1060,9 @@ impl Action {
 
     pub fn enabled(self, s: &ActionState) -> bool {
         let dialog_ok = !s.dialog_busy;
+        if s.stroke_open && self.edits_scene() {
+            return false;
+        }
         match self {
             Action::NewProject
             | Action::ClearRecent
@@ -1108,6 +1117,20 @@ impl Action {
 }
 
 impl Action {
+    fn edits_scene(self) -> bool {
+        matches!(
+            self,
+            Action::Undo
+                | Action::Redo
+                | Action::Cut
+                | Action::Paste
+                | Action::FillSelection
+                | Action::DeleteSelectionContents
+                | Action::DoubleDensity
+                | Action::HalveDensity
+        )
+    }
+
     /// Every chord that triggers this action: its shortcut, plus Ctrl+Y for
     /// Redo off macOS and Cmd+Shift+= (Cmd+Plus) for Zoom In.
     pub fn chords(self) -> impl Iterator<Item = Chord> {
@@ -1123,8 +1146,16 @@ impl Action {
     /// focus: AppKit would otherwise take its key before the field sees it.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn clashes_with_typing(self) -> bool {
-        matches!(self, Action::SelectAll | Action::ClearSelection)
-            || self.shortcut().is_some_and(|c| !c.cmd)
+        matches!(
+            self,
+            Action::SelectAll
+                | Action::ClearSelection
+                | Action::Undo
+                | Action::Redo
+                | Action::Cut
+                | Action::Copy
+                | Action::Paste
+        ) || self.shortcut().is_some_and(|c| !c.cmd)
     }
 
     /// Shown as a check item in menus.
@@ -1153,6 +1184,10 @@ const QUIT_MENU_LABEL: &str = if cfg!(target_os = "macos") {
 } else {
     "Quit"
 };
+
+fn download_label(s: &ActionState) -> Cow<'static, str> {
+    format!("Download Roxel {}…", s.update_tag.unwrap_or_default()).into()
+}
 
 fn file_name(p: &Path) -> &str {
     p.file_name()
@@ -1567,7 +1602,10 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
         }
         Action::ShowOnboarding => app.onboarding.start(),
         Action::Changelog => crate::updater::open_url(CHANGELOG_URL),
-        Action::CheckForUpdates => crate::updater::start_check(&mut app.updater, true),
+        Action::CheckForUpdates => match app.updater.available() {
+            Some(rel) => crate::updater::open_url(&rel.html_url),
+            None => crate::updater::start_check(&mut app.updater, true),
+        },
         Action::About => app.about.0 = true,
     }
 }
@@ -1591,6 +1629,7 @@ mod tests {
             shape: ShapePrimitive::Rectangle,
             has_undo: false,
             has_redo: false,
+            stroke_open: false,
             has_selection: false,
             selection_idle: true,
             has_clipboard: false,
@@ -1598,6 +1637,7 @@ mod tests {
             dialog_busy: false,
             flyby_active: false,
             checking_updates: false,
+            update_tag: None,
             palettes,
             palette_choice: 0,
             active_colors: &[],
@@ -1708,6 +1748,20 @@ mod tests {
     }
 
     #[test]
+    fn check_for_updates_offers_the_download_once_one_is_found() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        assert_eq!(Action::CheckForUpdates.menu_label(&s), "Check for Updates…");
+        s.update_tag = Some("v1.2.0");
+        assert_eq!(Action::CheckForUpdates.label(&s), "Download Roxel v1.2.0…");
+        assert_eq!(
+            Action::CheckForUpdates.menu_label(&s),
+            "Download Roxel v1.2.0…"
+        );
+    }
+
+    #[test]
     fn palette_actions_follow_the_active_palette() {
         let palettes = vec![pal("Built", true), pal("Mine", false)];
         let prefs = Preferences::default();
@@ -1787,6 +1841,29 @@ mod tests {
         assert!(!Action::FillSelection.enabled(&s));
     }
 
+    #[test]
+    fn scene_edits_wait_for_an_open_stroke() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_undo = true;
+        s.has_selection = true;
+        s.has_clipboard = true;
+        s.stroke_open = true;
+        for a in [
+            Action::Undo,
+            Action::Cut,
+            Action::Paste,
+            Action::FillSelection,
+            Action::DeleteSelectionContents,
+        ] {
+            assert!(!a.enabled(&s), "{a:?}");
+        }
+        assert!(Action::Copy.enabled(&s));
+        s.stroke_open = false;
+        assert!(Action::Undo.enabled(&s));
+    }
+
     fn fire(s: &ActionState, mods: Mods, key: KeyCode, gate: ShortcutGate) -> Option<Action> {
         shortcut_action(mods, |k| k == key, s, gate)
     }
@@ -1839,10 +1916,19 @@ mod tests {
     }
 
     #[test]
-    fn plain_keys_and_select_chords_clash_with_typing() {
+    fn plain_keys_and_text_editing_chords_clash_with_typing() {
         assert!(Action::FillSelection.clashes_with_typing());
         assert!(Action::SelectAll.clashes_with_typing());
         assert!(Action::ClearSelection.clashes_with_typing());
+        for a in [
+            Action::Undo,
+            Action::Redo,
+            Action::Cut,
+            Action::Copy,
+            Action::Paste,
+        ] {
+            assert!(a.clashes_with_typing(), "{a:?}");
+        }
         assert!(!Action::SaveProject.clashes_with_typing());
     }
 

@@ -30,6 +30,18 @@ Release notes.
 - Palette actions behave the same in the inspector and the command palette; New and Duplicate open the rename field.
 - macOS: Paste from the Edit menu (or ⌘V) lands under the cursor, like it does on Windows and Linux.
 - Edit → Select All (Cmd/Ctrl+A) is now in the menu.
+- Undo, cut, paste, fill, delete and arrow-key nudges wait until you release the mouse, so a drag can always be undone.
+- macOS: ⌘Z/X/C/V in a text field edit the text instead of the scene.
+- Paint and Erase act on a selection only when you click a selected voxel.
+- `.vox` import brings in every model in a MagicaVoxel scene, placed and rotated as in MagicaVoxel.
+- `.vox` export says when a scene has more than 255 colors and some were merged.
+- Malformed `.qb` and `.gox` files show an error instead of crashing.
+- Clicking a face of the orientation cube turns the view to face it.
+- Clicks reach voxels in large scenes viewed from far away.
+- PNG exports and project thumbnails no longer include the brush or shape preview.
+- A failed Roxel Shot capture no longer blocks Export Shot until restart.
+- Erasing on a chunk edge previews correctly, and edits show up the same frame.
+- Once an update is found, Check for Updates becomes "Download Roxel vX.Y.Z…"; a failed check retries on next launch, and pre-release versions compare correctly.
 
 ## [0.7.1] - 2026-06-03
 

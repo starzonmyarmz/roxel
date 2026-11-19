@@ -15,7 +15,7 @@ use crate::ui::RecentFiles;
 use roxel::io::recent::MAX_RECENT;
 
 enum NativeItem {
-    Plain(MenuItem),
+    Plain { item: MenuItem, label: String },
     Check(CheckMenuItem),
 }
 
@@ -88,10 +88,13 @@ impl Builder {
                     let native = if action.is_check() {
                         NativeItem::Check(CheckMenuItem::new(spec.menu_label, true, false, accel))
                     } else {
-                        NativeItem::Plain(MenuItem::new(spec.menu_label, true, accel))
+                        NativeItem::Plain {
+                            item: MenuItem::new(spec.menu_label, true, accel),
+                            label: spec.menu_label.to_string(),
+                        }
                     };
                     let (id, appended) = match &native {
-                        NativeItem::Plain(item) => (item.id().0.clone(), sub.append(item)),
+                        NativeItem::Plain { item, .. } => (item.id().0.clone(), sub.append(item)),
                         NativeItem::Check(item) => (item.id().0.clone(), sub.append(item)),
                     };
                     appended.expect("append menu item");
@@ -172,11 +175,11 @@ pub fn poll_menu_events_system(
 
 pub fn update_menu_enabled_system(
     _marker: NonSendMarker,
-    store: Option<NonSend<MenuStore>>,
+    store: Option<NonSendMut<MenuStore>>,
     mut contexts: bevy_egui::EguiContexts,
     state: ActionStateParams,
 ) {
-    let Some(store) = store else { return };
+    let Some(mut store) = store else { return };
     // AppKit routes a key equivalent before the key reaches the winit view,
     // blind to egui text focus. A disabled item doesn't fire, so the key
     // still reaches a focused text field.
@@ -185,12 +188,17 @@ pub fn update_menu_enabled_system(
         .map(|c| c.wants_keyboard_input())
         .unwrap_or(false);
     let s = state.get();
-    for (action, item) in &store.items {
+    for (action, item) in &mut store.items {
         let enabled = action.enabled(&s) && !(typing && action.clashes_with_typing());
         match item {
-            NativeItem::Plain(item) => {
+            NativeItem::Plain { item, label } => {
                 if item.is_enabled() != enabled {
                     item.set_enabled(enabled);
+                }
+                let want = action.menu_label(&s);
+                if *label != want {
+                    item.set_text(&want);
+                    *label = want.into_owned();
                 }
             }
             NativeItem::Check(item) => {

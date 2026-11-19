@@ -16,7 +16,7 @@ If your project has unsaved changes, Roxel asks before anything replaces it — 
 | `.qb`  | Qubicle        |
 | `.gox` | Goxel          |
 
-An imported model is added to the current scene at its original coordinates. The whole import is one step you can undo. If a file can't be read, nothing in your scene changes.
+An imported model is added to the current scene at its original coordinates. A MagicaVoxel scene with several models comes in whole, each model placed and rotated as in MagicaVoxel; hidden models and layers are skipped. The whole import is one step you can undo. If a file can't be read, nothing in your scene changes.
 
 ## Exporting models
 
@@ -28,6 +28,8 @@ An imported model is added to the current scene at its original coordinates. The
 | `.glb` | glTF binary — Unity / Godot ready     |
 | `.png` | Transparent raster image             |
 | `.svg` | Vector image                          |
+
+A `.vox` file holds at most 255 colors. If your scene uses more, the most-used colors are kept exactly, the rest are matched to the nearest kept color, and the export notification says how many.
 
 ## Palettes
 
