@@ -18,4 +18,4 @@ A permanent RGB **axis triad** marks the world origin.
 
 ## Focus mode
 
-Press `` ` `` (backtick) to toggle focus mode, which hides the inspector and all floating chrome for a distraction-free canvas. Press again to bring the UI back.
+Press `` ` `` (backtick) to toggle focus mode, which hides the inspector and all floating chrome for a distraction-free canvas. Press again to bring the UI back. It is also under **View → Focus Mode** and in the command palette (`Cmd/Ctrl + K`, "focus mode").

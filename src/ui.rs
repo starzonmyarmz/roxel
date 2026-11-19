@@ -27,7 +27,7 @@ pub use palette::{
     save_as_new,
 };
 pub use toast::{Toasts, toast_lifetime_system};
-pub use visibility::{UiVisible, tab_toggle_system};
+pub use visibility::UiVisible;
 
 use crate::gizmo::{GizmoDrag, GizmoRect};
 use crate::onboarding::OnboardingAnchors;
@@ -220,6 +220,7 @@ pub fn ui_system(
                 has_voxels: grid.count() > 0,
                 dialog_busy: pending.is_active(),
                 flyby_active: flyby.active,
+                focus_mode: !ui_visible.0,
                 checking_updates: updater.is_checking(),
                 update_tag: updater.available().map(|r| r.tag.as_str()),
                 palettes: &palettes.0,

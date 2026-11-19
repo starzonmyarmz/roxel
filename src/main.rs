@@ -80,7 +80,7 @@ use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, DiscardConfirm, DocStatus, GuardedAction,
     PaletteChoice, PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles,
     SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette, poll_dialogs_system,
-    process_save_preview_system, tab_toggle_system, toast_lifetime_system, ui_system,
+    process_save_preview_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -308,7 +308,6 @@ fn main() {
             .after(bevy_egui::EguiPreUpdateSet::InitContexts)
             .before(bevy_egui::EguiPreUpdateSet::BeginPass),
     )
-    .add_systems(Update, tab_toggle_system)
     .add_systems(
         bevy_egui::EguiPrimaryContextPass,
         (

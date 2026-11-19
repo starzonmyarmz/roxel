@@ -115,6 +115,7 @@ fn view_menu() -> Vec<MenuEntry> {
         Separator,
         Item(Action::ToggleFloorGrid),
         Item(Action::ToggleOriginAxes),
+        Item(Action::ToggleFocusMode),
         Separator,
         Submenu(
             "Color Format",

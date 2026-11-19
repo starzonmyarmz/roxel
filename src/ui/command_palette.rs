@@ -576,6 +576,7 @@ mod tests {
             has_voxels: false,
             dialog_busy: false,
             flyby_active: false,
+            focus_mode: false,
             checking_updates: false,
             update_tag: None,
             palettes,
