@@ -13,7 +13,9 @@ const VOX_MAX_EXTENT: i32 = 256;
 // (x, y_roxel, z_roxel) <-> (x_vox, z_vox, y_vox) so foreign .vox files load
 // upright and Roxel-exported files open upright in MagicaVoxel.
 
-pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
+/// Writes `grid` as a single-model `.vox`. Returns how many colors past the
+/// format's 255 were merged into their nearest palette entry.
+pub fn export(path: &Path, grid: &VoxelGrid) -> Result<usize> {
     // Open-world grids can carry negative coords; `.vox` coords are unsigned
     // and start at origin. Shift the whole model by `-min` so its min corner
     // lands at (0, 0, 0) in MagicaVoxel space. The shift is per-axis on the
@@ -37,27 +39,12 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
         );
     }
 
-    let mut palette_map: HashMap<Color8, u8> = HashMap::new();
-    let mut palette: Vec<Color> = Vec::new();
+    let (mut palette, palette_map, merged) = build_palette(grid);
     let mut voxels: Vec<Voxel> = Vec::new();
 
     for (p, c) in grid.iter_occupied() {
         let shifted = p - min;
-        let idx = if let Some(&i) = palette_map.get(&c) {
-            i
-        } else if palette.len() < 255 {
-            let i = palette.len() as u8;
-            palette.push(Color {
-                r: c[0],
-                g: c[1],
-                b: c[2],
-                a: 255,
-            });
-            palette_map.insert(c, i);
-            i
-        } else {
-            nearest(&palette, c)
-        };
+        let idx = palette_map[&c];
         // Y-up → Z-up: emit (x, z_roxel, y_roxel) so columns point along MV's +Z.
         voxels.push(Voxel {
             x: shifted.x as u8,
@@ -93,7 +80,43 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
         layers: vec![],
     };
     super::atomic::write_with(path, |file| data.write_vox(file))?;
-    Ok(())
+    Ok(merged)
+}
+
+/// `.vox` palette slots usable for colors (index 0 is reserved as empty).
+const VOX_MAX_COLORS: usize = 255;
+
+/// The export palette and each scene color's index into it. The most-used
+/// colors (ties broken by value, so output is deterministic) get exact slots;
+/// any past [`VOX_MAX_COLORS`] map to their nearest slot. Also returns how
+/// many colors were merged that way.
+fn build_palette(grid: &VoxelGrid) -> (Vec<Color>, HashMap<Color8, u8>, usize) {
+    let mut counts: HashMap<Color8, usize> = HashMap::new();
+    for (_, c) in grid.iter_occupied() {
+        *counts.entry(c).or_default() += 1;
+    }
+    let mut by_use: Vec<(Color8, usize)> = counts.into_iter().collect();
+    by_use.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+    let exact = by_use.len().min(VOX_MAX_COLORS);
+    let palette: Vec<Color> = by_use[..exact]
+        .iter()
+        .map(|(c, _)| Color {
+            r: c[0],
+            g: c[1],
+            b: c[2],
+            a: 255,
+        })
+        .collect();
+    let mut map: HashMap<Color8, u8> = by_use[..exact]
+        .iter()
+        .enumerate()
+        .map(|(i, (c, _))| (*c, i as u8))
+        .collect();
+    for (c, _) in &by_use[exact..] {
+        map.insert(*c, nearest(&palette, *c));
+    }
+    (palette, map, by_use.len() - exact)
 }
 
 /// Imports a `.vox` model into `grid` and returns the model's palette as the
@@ -734,6 +757,36 @@ mod tests {
         let colors = import(&path, &mut g).expect("import");
         // Ascending index order (0 then 2), deduped, index 1 absent.
         assert_eq!(colors, vec![[10, 10, 10, 255], [30, 30, 30, 255]]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn export_reports_colors_past_255_and_keeps_the_most_used_exact() {
+        let mut g = VoxelGrid::default();
+        for i in 0..300u32 {
+            let c = [(i % 256) as u8, (i / 256) as u8, 7, 255];
+            g.set(IVec3::new((i % 16) as i32, 0, (i / 16) as i32), Some(c));
+        }
+        let popular = [250, 1, 7, 255];
+        g.set(IVec3::new(0, 1, 0), Some(popular));
+        g.set(IVec3::new(1, 1, 0), Some(popular));
+        let (palette, map, merged) = build_palette(&g);
+        assert_eq!(merged, 301 - VOX_MAX_COLORS);
+        assert_eq!(palette.len(), VOX_MAX_COLORS);
+        let p = palette[map[&popular] as usize];
+        assert_eq!([p.r, p.g, p.b], [250, 1, 7]);
+
+        let path = tmp_path("many-colors");
+        assert_eq!(export(&path, &g).unwrap(), merged);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn export_under_the_cap_merges_nothing() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::ZERO, Some([1, 2, 3, 255]));
+        let path = tmp_path("few-colors");
+        assert_eq!(export(&path, &g).unwrap(), 0);
         let _ = std::fs::remove_file(&path);
     }
 

@@ -29,6 +29,8 @@ An imported model is added to the current scene at its original coordinates. A M
 | `.png` | Transparent raster image             |
 | `.svg` | Vector image                          |
 
+A `.vox` file holds at most 255 colors. If your scene uses more, the most-used colors are kept exactly, the rest are matched to the nearest kept color, and the export notification says how many.
+
 ## Palettes
 
 Roxel imports and exports **Adobe Swatch Exchange** (`.ase`) palette files. See [Palettes](palettes.md).
