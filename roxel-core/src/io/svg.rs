@@ -206,16 +206,17 @@ fn write_svg(path: &Path, quads: &[ProjectedQuad]) -> Result<()> {
     }
     close_path(&mut body, &mut in_path);
 
-    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(file, r#"<?xml version="1.0" encoding="UTF-8"?>"#)?;
-    writeln!(
-        file,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{:.3} {:.3} {:.3} {:.3}" width="{:.0}" height="{:.0}" shape-rendering="geometricPrecision">"#,
-        min.x, min.y, size.x, size.y, size.x, size.y,
-    )?;
-    file.write_all(body.as_bytes())?;
-    writeln!(file, "</svg>")?;
-    Ok(())
+    super::atomic::write_with(path, |file| -> Result<()> {
+        writeln!(file, r#"<?xml version="1.0" encoding="UTF-8"?>"#)?;
+        writeln!(
+            file,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{:.3} {:.3} {:.3} {:.3}" width="{:.0}" height="{:.0}" shape-rendering="geometricPrecision">"#,
+            min.x, min.y, size.x, size.y, size.x, size.y,
+        )?;
+        file.write_all(body.as_bytes())?;
+        writeln!(file, "</svg>")?;
+        Ok(())
+    })
 }
 
 #[cfg(test)]

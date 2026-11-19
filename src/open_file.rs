@@ -10,9 +10,9 @@
 //! is why that path always worked.
 //!
 //! The handler pushes paths onto [`OPEN_QUEUE`]; [`poll_open_files_system`]
-//! drains it and routes the load through the same `PendingDialog` path as the
-//! Open menu, so recents, the dirty baseline, and the toast are handled
-//! uniformly.
+//! drains it and requests the open through `UnsavedGuard`, the same path as
+//! the Open menu, so the unsaved-changes prompt, recents, the dirty baseline,
+//! and the toast are handled uniformly.
 
 use bevy::prelude::*;
 use std::path::PathBuf;
@@ -38,17 +38,18 @@ pub fn install() {
     macos::install();
 }
 
-/// Load any file the OS asked us to open. Single-window app, so if several were
-/// dropped at once we open the last. Routes through `PendingDialog` /
-/// `poll_dialogs_system` exactly like the Open menu.
-pub fn poll_open_files_system(mut pending: ResMut<crate::ui::PendingDialog>) {
-    if pending.is_active() {
+/// Open any file the OS asked us to open. Single-window app, so if several were
+/// dropped at once we open the last. Goes through the unsaved-changes guard
+/// like the Open menu, so a modified document prompts first. Paths stay queued
+/// while the guard is busy with another action, so none are dropped.
+pub fn poll_open_files_system(mut guard: ResMut<crate::ui::UnsavedGuard>) {
+    if !guard.is_idle() {
         return;
     }
     let Some(path) = drain(&OPEN_QUEUE).into_iter().next_back() else {
         return;
     };
-    pending.spawn(async move { Some(crate::ui::DialogResult::OpenProject(path)) });
+    guard.request(crate::ui::GuardedAction::Open(Some(path)));
 }
 
 #[cfg(target_os = "macos")]

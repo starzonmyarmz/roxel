@@ -7,7 +7,10 @@ use std::path::Path;
 // Naive face-emit identical to renderer mesher; writes OBJ with per-vertex colors
 // (Blender-style "v x y z r g b" extension).
 pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
-    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+    super::atomic::write_with(path, |file| write_obj(file, grid))
+}
+
+fn write_obj<W: Write>(file: &mut W, grid: &VoxelGrid) -> Result<()> {
     writeln!(file, "# Exported by Roxel")?;
 
     let mut vert_idx: u32 = 1; // OBJ indices are 1-based.

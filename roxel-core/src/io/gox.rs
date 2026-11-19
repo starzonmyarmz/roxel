@@ -88,7 +88,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     layr.extend_from_slice(&0i32.to_le_bytes()); // dict terminator
     write_chunk(&mut buf, b"LAYR", &layr);
 
-    std::fs::write(path, &buf)?;
+    super::atomic::write(path, &buf)?;
     Ok(())
 }
 

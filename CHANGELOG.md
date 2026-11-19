@@ -12,6 +12,13 @@ Release notes.
 
 ## [Unreleased]
 
+- Saves and exports write to a temp file and rename, so a crash mid-save can't truncate the file.
+- An unreadable `palettes.ron` is kept as a backup instead of being overwritten by the next palette change.
+- `.vox`/`.qb`/`.gox` imports can be undone and no longer wipe your undo history; a file that fails to parse leaves the scene untouched.
+- Quitting, Open Recent and opening a file from Finder now ask before discarding unsaved changes.
+- The unsaved-changes prompt offers Save, Don't Save and Cancel; Enter saves instead of discarding.
+- Deleting a palette asks for confirmation.
+
 ## [0.7.1] - 2026-06-03
 
 - fix(ui): use theme color tokens in floating save button tint

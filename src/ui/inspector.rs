@@ -8,7 +8,8 @@ use crate::tools::{
 };
 use crate::ui::dialogs::{self, CurrentProjectPath, DialogResult, DocStatus, PendingDialog};
 use crate::ui::palette::{
-    self, Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes, WorkingPalette,
+    self, DeleteConfirm, Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes,
+    WorkingPalette,
 };
 use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
 use crate::ui::{ZoomReadout, color_picker, icons, widgets};
@@ -58,6 +59,7 @@ pub fn inspector_panel(
     palette_choice: &mut PaletteChoice,
     palette_rename: &mut PaletteRenameState,
     working: &mut WorkingPalette,
+    delete: &mut DeleteConfirm,
     switcher: &mut PaletteSwitcher,
     pending: &mut PendingDialog,
     tool: &ToolState,
@@ -314,14 +316,7 @@ pub fn inspector_panel(
                                                         )
                                                         .clicked()
                                                     {
-                                                        palettes.0.remove(active_idx);
-                                                        if palette_choice.0 >= palettes.0.len() {
-                                                            palette_choice.0 =
-                                                                palettes.0.len().saturating_sub(1);
-                                                        }
-                                                        palette_rename.editing = None;
-                                                        working.clear();
-                                                        io::palettes::save(&palettes.0);
+                                                        delete.request(palettes, active_idx);
                                                     }
                                                 }
                                                 ui.separator();

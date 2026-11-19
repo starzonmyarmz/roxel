@@ -787,7 +787,8 @@ fn on_shot_captured(
 
     match session.target.take() {
         Some(ShotTarget::Export(path)) => {
-            match out.save_with_format(&path, image::ImageFormat::Png) {
+            match roxel::io::atomic::write_with(&path, |w| out.write_to(w, image::ImageFormat::Png))
+            {
                 Ok(()) => {
                     let label = path
                         .file_name()

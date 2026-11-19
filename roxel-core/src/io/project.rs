@@ -22,7 +22,7 @@ pub fn save(path: &Path, grid: &VoxelGrid) -> Result<()> {
         preview: None,
     };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
-    std::fs::write(path, s)?;
+    super::atomic::write(path, s)?;
     Ok(())
 }
 
@@ -37,7 +37,7 @@ pub fn save_with_preview(path: &Path, grid: &VoxelGrid, png_bytes: &[u8]) -> Res
         preview: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes)),
     };
     let s = ron::ser::to_string_pretty(&pf, ron::ser::PrettyConfig::default())?;
-    std::fs::write(path, s)?;
+    super::atomic::write(path, s)?;
     Ok(())
 }
 

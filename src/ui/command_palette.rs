@@ -1,3 +1,4 @@
+use super::dialogs::GuardedAction;
 use super::dialogs::{DialogResult, PendingDialog, spawn_export, spawn_import};
 use crate::GridResource;
 use crate::camera::{
@@ -16,7 +17,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
-use roxel::grid::{Color8, NewProject};
+use roxel::grid::Color8;
 use roxel::history::History;
 use roxel::io;
 use roxel::shapes::ShapePrimitive;
@@ -1174,7 +1175,7 @@ pub struct DispatchParams<'w> {
     pending: ResMut<'w, PendingDialog>,
     history: ResMut<'w, History>,
     grid: ResMut<'w, GridResource>,
-    new_project: ResMut<'w, NewProject>,
+    guard: ResMut<'w, super::dialogs::UnsavedGuard>,
     prefs_window: ResMut<'w, PreferencesWindow>,
     tool: ResMut<'w, ToolState>,
     shape: ResMut<'w, ShapeOptions>,
@@ -1183,10 +1184,10 @@ pub struct DispatchParams<'w> {
     palettes: ResMut<'w, Palettes>,
     working: ResMut<'w, WorkingPalette>,
     discard: ResMut<'w, DiscardConfirm>,
+    delete: ResMut<'w, super::palette::DeleteConfirm>,
     color: ResMut<'w, CurrentColor>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
-    open_request: ResMut<'w, super::dialogs::OpenRequest>,
     flyby: ResMut<'w, crate::camera::FlybyState>,
     toasts: ResMut<'w, super::Toasts>,
     view_preset: ResMut<'w, PendingViewPreset>,
@@ -1202,10 +1203,8 @@ pub fn dispatch_command_palette_system(
         return;
     };
     match action {
-        CommandAction::NewProject => {
-            p.new_project.dialog_open = true;
-        }
-        CommandAction::OpenProject => p.open_request.requested = true,
+        CommandAction::NewProject => p.guard.request(GuardedAction::New),
+        CommandAction::OpenProject => p.guard.request(GuardedAction::Open(None)),
         CommandAction::SaveProject => {
             super::dialogs::spawn_save(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
         }
@@ -1422,16 +1421,7 @@ pub fn dispatch_command_palette_system(
             save_as_new(&mut p.palettes, &mut p.palette_choice, &mut p.working);
             io::palettes::save(&p.palettes.0);
         }
-        CommandAction::DeletePalette => {
-            let i = p.palette_choice.0;
-            if i < p.palettes.0.len() && !p.palettes.0[i].builtin {
-                p.palettes.0.remove(i);
-                if p.palette_choice.0 >= p.palettes.0.len() {
-                    p.palette_choice.0 = p.palettes.0.len().saturating_sub(1);
-                }
-                io::palettes::save(&p.palettes.0);
-            }
-        }
+        CommandAction::DeletePalette => p.delete.request(&p.palettes, p.palette_choice.0),
         CommandAction::ImportAse => {
             if !p.pending.is_active() {
                 let start_dir = p.prefs.last_dir.clone();

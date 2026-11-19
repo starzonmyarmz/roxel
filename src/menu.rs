@@ -11,11 +11,10 @@ use crate::camera::{CameraPreset, PendingViewPreset};
 use crate::theme::{Preferences, PreferencesWindow, save_preferences};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, color_pool};
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DialogResult, PendingDialog, RecentFiles, spawn_export,
-    spawn_import, spawn_save, spawn_save_as,
+    CommandPalette, CurrentProjectPath, DialogResult, GuardedAction, PendingDialog, RecentFiles,
+    UnsavedGuard, spawn_export, spawn_import, spawn_save, spawn_save_as,
 };
 use roxel::color_space::ColorSpace;
-use roxel::grid::NewProject;
 use roxel::history::History;
 use roxel::io::recent::MAX_RECENT;
 
@@ -52,6 +51,7 @@ pub enum MenuAction {
     ShowOnboarding,
     CheckForUpdates,
     ShowCommandPalette,
+    Quit,
     ViewPreset(CameraPreset),
     FrameView,
     SetColorSpace(ColorSpace),
@@ -115,6 +115,14 @@ fn build_menu() -> MenuStore {
         cmd_palette_item.id().0.clone(),
         MenuAction::ShowCommandPalette,
     );
+    // Not PredefinedMenuItem::quit: that calls -[NSApp terminate:] directly,
+    // which skips the unsaved-changes guard.
+    let quit_item = MenuItem::new(
+        "Quit Roxel",
+        true,
+        Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyQ)),
+    );
+    actions.insert(quit_item.id().0.clone(), MenuAction::Quit);
     let check_updates_item = MenuItem::new("Check for Updates…", true, None);
     actions.insert(
         check_updates_item.id().0.clone(),
@@ -142,7 +150,7 @@ fn build_menu() -> MenuStore {
             &PredefinedMenuItem::hide_others(None),
             &PredefinedMenuItem::show_all(None),
             &PredefinedMenuItem::separator(),
-            &PredefinedMenuItem::quit(None),
+            &quit_item,
         ])
         .expect("append app menu");
     menu.append(&app_menu).expect("append app submenu");
@@ -623,11 +631,10 @@ pub struct MenuActionParams<'w> {
     pub pending: ResMut<'w, PendingDialog>,
     pub history: ResMut<'w, History>,
     pub grid: ResMut<'w, GridResource>,
-    pub new_project: ResMut<'w, NewProject>,
+    pub guard: ResMut<'w, UnsavedGuard>,
     pub prefs_window: ResMut<'w, PreferencesWindow>,
     pub cmd_palette: ResMut<'w, CommandPalette>,
     pub current_path: Res<'w, CurrentProjectPath>,
-    pub open_request: ResMut<'w, crate::ui::OpenRequest>,
     pub recent: ResMut<'w, RecentFiles>,
     pub view_preset: ResMut<'w, PendingViewPreset>,
     pub frame_view: ResMut<'w, crate::camera::PendingFrameView>,
@@ -650,15 +657,14 @@ pub fn apply_menu_actions_system(mut p: MenuActionParams) {
     let actions = std::mem::take(&mut p.queue.0);
     for action in actions {
         match action {
-            MenuAction::NewProject => {
-                p.new_project.dialog_open = true;
-            }
-            MenuAction::OpenProject => p.open_request.requested = true,
+            MenuAction::NewProject => p.guard.request(GuardedAction::New),
+            MenuAction::OpenProject => p.guard.request(GuardedAction::Open(None)),
             MenuAction::OpenRecent(i) => {
                 if let Some(path) = p.recent.0.get(i).cloned() {
-                    spawn_open_path(&mut p.pending, path);
+                    p.guard.request(GuardedAction::Open(Some(path)));
                 }
             }
+            MenuAction::Quit => p.guard.request(GuardedAction::Quit),
             MenuAction::ClearRecent => {
                 p.recent.clear();
             }
@@ -795,13 +801,6 @@ fn open_changelog() {
     let _ = std::process::Command::new("open")
         .arg(CHANGELOG_URL)
         .spawn();
-}
-
-fn spawn_open_path(pending: &mut PendingDialog, path: PathBuf) {
-    if pending.is_active() {
-        return;
-    }
-    pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
 }
 
 // Per-format menu items delegate to the shared `spawn_export`/`spawn_import`

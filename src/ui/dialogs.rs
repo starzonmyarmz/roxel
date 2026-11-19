@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
+use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
 use roxel::io;
 use std::path::{Path, PathBuf};
@@ -74,25 +75,20 @@ pub struct CurrentProjectPath(pub Option<PathBuf>);
 
 /// Tracks whether the open document has unsaved changes. `saved_state_id` is
 /// the `History::state_id()` captured at the last save / open / new; the doc is
-/// modified when the live state id differs. `forced_dirty` covers content that
-/// has no clean baseline in the history stack — e.g. a `.vox`/`.qb`/`.gox`
-/// import, which replaces the grid but leaves the undo stack empty (state id
-/// `0`), so without this flag it would read as a clean, empty document.
+/// modified when the live state id differs.
 #[derive(Resource, Default)]
 pub struct DocStatus {
     pub saved_state_id: u64,
-    pub forced_dirty: bool,
 }
 
 impl DocStatus {
-    /// Mark the current grid state as the saved baseline (clears `forced_dirty`).
+    /// Mark the current grid state as the saved baseline.
     pub fn mark_saved(&mut self, state_id: u64) {
         self.saved_state_id = state_id;
-        self.forced_dirty = false;
     }
 
     pub fn is_modified(&self, history: &History) -> bool {
-        self.forced_dirty || history.state_id() != self.saved_state_id
+        history.state_id() != self.saved_state_id
     }
 }
 
@@ -104,14 +100,101 @@ pub struct SavePreviewState {
     pub path: Option<PathBuf>,
 }
 
-/// A pending "Open project…" request, mirroring `NewProject`'s confirm flow.
-/// Any Open trigger sets `requested`; `resolve_open_request_system` either
-/// spawns the file dialog immediately (clean document) or raises `confirming`
-/// so the discard-confirm modal can guard against losing unsaved work.
+/// Something that would throw away the open document.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GuardedAction {
+    New,
+    /// `None` shows the Open dialog; `Some` opens that file (Open Recent, Finder).
+    Open(Option<PathBuf>),
+    Quit,
+}
+
+/// What the user picked in the unsaved-changes confirm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConfirmChoice {
+    Save,
+    Discard,
+    Cancel,
+}
+
+/// Routes every New / Open / Quit through one unsaved-changes check. Triggers
+/// call [`UnsavedGuard::request`]; `resolve_unsaved_guard_system` runs the
+/// action at once on a clean document, or raises `confirming` for the modal.
+/// Choosing Save parks the action in `after_save` until the save finishes.
 #[derive(Resource, Default)]
-pub struct OpenRequest {
-    pub requested: bool,
-    pub confirming: bool,
+pub struct UnsavedGuard {
+    requested: Option<GuardedAction>,
+    pub confirming: Option<GuardedAction>,
+    approved: Option<GuardedAction>,
+    after_save: Option<GuardedAction>,
+}
+
+impl UnsavedGuard {
+    /// Whether [`request`](Self::request) would accept a new action.
+    pub fn is_idle(&self) -> bool {
+        self.requested.is_none()
+            && self.confirming.is_none()
+            && self.approved.is_none()
+            && self.after_save.is_none()
+    }
+
+    /// Ask to run `action`. Ignored while another guarded action is pending.
+    pub fn request(&mut self, action: GuardedAction) {
+        if self.is_idle() {
+            self.requested = Some(action);
+        }
+    }
+
+    /// Apply the user's answer to the confirm modal. Returns `true` when the
+    /// caller should start a save.
+    pub fn resolve_confirm(&mut self, choice: ConfirmChoice) -> bool {
+        let Some(action) = self.confirming.take() else {
+            return false;
+        };
+        match choice {
+            ConfirmChoice::Save => {
+                self.after_save = Some(action);
+                true
+            }
+            ConfirmChoice::Discard => {
+                self.approved = Some(action);
+                false
+            }
+            ConfirmChoice::Cancel => false,
+        }
+    }
+
+    /// Advance the guard one frame. `modified` is the document's dirty state,
+    /// `dialog_busy` whether a file dialog or load is in flight, and `saving`
+    /// whether a save is still running. Returns an action that may run now.
+    pub fn step(
+        &mut self,
+        modified: bool,
+        dialog_busy: bool,
+        saving: bool,
+    ) -> Option<GuardedAction> {
+        if let Some(action) = self.approved.take() {
+            return Some(action);
+        }
+        if self.after_save.is_some() {
+            if saving {
+                return None;
+            }
+            // Save finished. Still modified means it was cancelled or failed.
+            let action = self.after_save.take();
+            return if modified { None } else { action };
+        }
+        if dialog_busy {
+            return None;
+        }
+        let action = self.requested.take()?;
+        if modified {
+            self.confirming = Some(action);
+            None
+        } else {
+            Some(action)
+        }
+    }
 }
 
 /// Spawn the async "Open project…" file dialog rooted at `start_dir`. No-op
@@ -404,55 +487,22 @@ pub fn poll_dialogs_system(
             Ok(()) => toasts.success(format!("Exported {}", file_label(&path))),
             Err(e) => toasts.error(format!("Export .gox failed: {e}")),
         },
-        Some(DialogResult::ImportGox(path)) => match io::gox::import(&path, &mut grid) {
-            Ok(()) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
+        Some(
+            r @ (DialogResult::ImportVox(_)
+            | DialogResult::ImportQb(_)
+            | DialogResult::ImportGox(_)),
+        ) => {
+            if finish_import(
+                &r,
+                &mut grid,
+                &mut history,
+                &mut palettes,
+                &mut palette_choice,
+                &mut toasts,
+            ) {
                 pending_import.0 = true;
-                toasts.success(format!("Imported {}", file_label(&path)));
             }
-            Err(e) => toasts.error(format!("Import .gox failed: {e}")),
-        },
-        Some(DialogResult::ImportVox(path)) => match io::vox::import(&path, &mut grid) {
-            Ok(colors) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
-                pending_import.0 = true;
-                // Carry the model's used colors in as a new swatch palette so the
-                // user can keep painting with them. Mirrors the .ase import path.
-                if !colors.is_empty() {
-                    let stem = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Imported");
-                    let name = crate::ui::palette::unique_palette_name(&palettes.0, stem);
-                    palettes.0.push(Palette {
-                        name,
-                        colors,
-                        builtin: false,
-                    });
-                    palette_choice.0 = palettes.0.len() - 1;
-                    io::palettes::save(&palettes.0);
-                }
-                toasts.success(format!("Imported {}", file_label(&path)));
-            }
-            Err(e) => toasts.error(format!("Import .vox failed: {e}")),
-        },
-        Some(DialogResult::ImportQb(path)) => match io::qb::import(&path, &mut grid) {
-            Ok(()) => {
-                history.undo.clear();
-                history.redo.clear();
-                doc.forced_dirty = true;
-                current_path.0 = None;
-                pending_import.0 = true;
-                toasts.success(format!("Imported {}", file_label(&path)));
-            }
-            Err(e) => toasts.error(format!("Import .qb failed: {e}")),
-        },
+        }
         Some(DialogResult::ImportAse(path)) => match io::ase::import(&path) {
             Ok((name, colors)) => {
                 if colors.is_empty() {
@@ -478,6 +528,82 @@ pub fn poll_dialogs_system(
         }
         None => {}
     }
+}
+
+/// A parsed model and, for `.vox`, the colors it uses.
+type ImportedModel = (VoxelGrid, Vec<Color8>);
+
+/// Parse a `.vox`/`.qb`/`.gox` import into a fresh grid, so a file that fails
+/// halfway never touches the scene. Returns the format's extension and, for
+/// `.vox`, the colors the model uses. `None` for any other result.
+fn read_import(result: &DialogResult) -> Option<(&'static str, anyhow::Result<ImportedModel>)> {
+    let mut scratch = VoxelGrid::default();
+    let (ext, read) = match result {
+        DialogResult::ImportVox(p) => ("vox", io::vox::import(p, &mut scratch)),
+        DialogResult::ImportQb(p) => ("qb", io::qb::import(p, &mut scratch).map(|()| Vec::new())),
+        DialogResult::ImportGox(p) => {
+            ("gox", io::gox::import(p, &mut scratch).map(|()| Vec::new()))
+        }
+        _ => return None,
+    };
+    Some((ext, read.map(|colors| (scratch, colors))))
+}
+
+/// Merge `imported` into the scene as one undoable stroke. Returns how many
+/// cells changed.
+fn merge_import(grid: &mut VoxelGrid, history: &mut History, imported: &VoxelGrid) -> usize {
+    history.begin();
+    for (p, c) in imported.iter_occupied() {
+        history.record(grid, p, Some(c));
+    }
+    let changed = history.current.as_ref().map_or(0, |s| s.deltas.len());
+    history.end();
+    changed
+}
+
+/// Finish a model import: merge it into the scene through `History` (so it can
+/// be undone and marks the document modified), add a `.vox` file's colors as a
+/// new palette, and toast. Returns whether anything was imported; a model that
+/// changes no cells adds no palette and says so.
+fn finish_import(
+    result: &DialogResult,
+    grid: &mut VoxelGrid,
+    history: &mut History,
+    palettes: &mut Palettes,
+    palette_choice: &mut PaletteChoice,
+    toasts: &mut Toasts,
+) -> bool {
+    let Some((ext, read)) = read_import(result) else {
+        return false;
+    };
+    let path = result.path();
+    let (imported, colors) = match read {
+        Ok(r) => r,
+        Err(e) => {
+            toasts.error(format!("Import .{ext} failed: {e}"));
+            return false;
+        }
+    };
+    if merge_import(grid, history, &imported) == 0 {
+        toasts.info(format!("Nothing to import from {}", file_label(path)));
+        return false;
+    }
+    if !colors.is_empty() {
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Imported");
+        let name = crate::ui::palette::unique_palette_name(&palettes.0, stem);
+        palettes.0.push(Palette {
+            name,
+            colors,
+            builtin: false,
+        });
+        palette_choice.0 = palettes.0.len() - 1;
+        io::palettes::save(&palettes.0);
+    }
+    toasts.success(format!("Imported {}", file_label(path)));
+    true
 }
 
 /// Completes a deferred save-with-preview. Runs every frame and returns
@@ -553,6 +679,92 @@ mod tests {
         assert_eq!(r.path().parent(), Some(std::path::Path::new("/tmp/scenes")));
     }
 
+    fn quit() -> GuardedAction {
+        GuardedAction::Quit
+    }
+
+    #[test]
+    fn guard_runs_immediately_when_clean() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::New);
+        assert_eq!(g.step(false, false, false), Some(GuardedAction::New));
+        assert_eq!(g.step(false, false, false), None);
+    }
+
+    #[test]
+    fn guard_confirms_when_modified_and_cancel_drops_it() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.confirming, Some(quit()));
+        assert!(!g.resolve_confirm(ConfirmChoice::Cancel));
+        assert_eq!(g.confirming, None);
+        assert_eq!(g.step(true, false, false), None);
+    }
+
+    #[test]
+    fn guard_discard_runs_the_action() {
+        let mut g = UnsavedGuard::default();
+        let open = GuardedAction::Open(Some(PathBuf::from("/a.rox")));
+        g.request(open.clone());
+        g.step(true, false, false);
+        assert!(!g.resolve_confirm(ConfirmChoice::Discard));
+        assert_eq!(g.step(true, false, false), Some(open));
+    }
+
+    #[test]
+    fn guard_save_waits_for_the_save_then_runs() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        g.step(true, false, false);
+        assert!(g.resolve_confirm(ConfirmChoice::Save));
+        assert_eq!(g.step(true, true, true), None, "save still running");
+        assert_eq!(g.step(false, false, false), Some(quit()));
+    }
+
+    #[test]
+    fn guard_save_cancelled_or_failed_drops_the_action() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        g.step(true, false, false);
+        g.resolve_confirm(ConfirmChoice::Save);
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.step(false, false, false), None, "not run later either");
+    }
+
+    #[test]
+    fn guard_waits_for_a_busy_dialog_before_handling_a_request() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::Open(None));
+        assert_eq!(g.step(false, true, true), None);
+        assert_eq!(g.step(false, false, false), Some(GuardedAction::Open(None)));
+    }
+
+    #[test]
+    fn guard_is_busy_until_the_action_runs_or_is_cancelled() {
+        let mut g = UnsavedGuard::default();
+        assert!(g.is_idle());
+        g.request(quit());
+        assert!(!g.is_idle());
+        g.step(true, false, false);
+        assert!(!g.is_idle(), "confirming");
+        g.resolve_confirm(ConfirmChoice::Save);
+        assert!(!g.is_idle(), "waiting on save");
+        g.step(false, false, false);
+        assert!(g.is_idle());
+    }
+
+    #[test]
+    fn guard_ignores_new_requests_while_one_is_pending() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::New);
+        g.step(true, false, false);
+        g.request(quit());
+        assert!(!g.resolve_confirm(ConfirmChoice::Cancel));
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.confirming, None);
+    }
+
     #[test]
     fn doc_status_default_is_clean() {
         let doc = DocStatus::default();
@@ -586,15 +798,90 @@ mod tests {
     }
 
     #[test]
-    fn doc_status_forced_dirty_overrides_clean_state() {
-        let history = History::default();
-        // e.g. after a .vox import (empty undo stack but unsaved content).
-        let mut doc = DocStatus {
-            forced_dirty: true,
-            ..Default::default()
-        };
+    fn merge_import_is_one_undoable_stroke_that_keeps_existing_work() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        let doc = DocStatus::default();
+
+        history.begin();
+        history.record(&mut grid, IVec3::new(9, 0, 9), Some([1, 1, 1, 255]));
+        history.end();
+        let undo_before = history.undo.len();
+
+        let mut imported = VoxelGrid::default();
+        imported.set(IVec3::new(0, 0, 0), Some([2, 2, 2, 255]));
+        imported.set(IVec3::new(1, 0, 0), Some([3, 3, 3, 255]));
+        assert_eq!(merge_import(&mut grid, &mut history, &imported), 2);
+
+        assert_eq!(history.undo.len(), undo_before + 1);
         assert!(doc.is_modified(&history));
-        doc.mark_saved(history.state_id());
-        assert!(!doc.is_modified(&history));
+        assert_eq!(grid.get(IVec3::new(9, 0, 9)), Some([1, 1, 1, 255]));
+        assert_eq!(grid.count(), 3);
+
+        history.undo(&mut grid);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), None);
+    }
+
+    #[test]
+    fn import_that_changes_nothing_says_so_and_adds_no_palette() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::ZERO, Some([10, 20, 30, 255]));
+        let path = std::env::temp_dir().join(format!("roxel-test-{}-same.vox", std::process::id()));
+        io::vox::export(&path, &grid).unwrap();
+
+        let mut history = History::default();
+        let mut palettes = Palettes::default();
+        let palettes_before = palettes.0.len();
+        let mut choice = PaletteChoice::default();
+        let mut toasts = Toasts::default();
+        let ok = finish_import(
+            &DialogResult::ImportVox(path.clone()),
+            &mut grid,
+            &mut history,
+            &mut palettes,
+            &mut choice,
+            &mut toasts,
+        );
+        let _ = std::fs::remove_file(&path);
+
+        assert!(!ok);
+        assert!(history.undo.is_empty());
+        assert_eq!(palettes.0.len(), palettes_before);
+        assert_eq!(toasts.0.len(), 1);
+        assert!(toasts.0[0].message.starts_with("Nothing to import"));
+    }
+
+    #[test]
+    fn failed_import_leaves_scene_and_history_untouched() {
+        use bevy::math::IVec3;
+        let mut grid = VoxelGrid::default();
+        let mut history = History::default();
+        history.begin();
+        history.record(&mut grid, IVec3::new(0, 0, 0), Some([1, 1, 1, 255]));
+        history.end();
+
+        let path =
+            std::env::temp_dir().join(format!("roxel-test-{}-truncated.qb", std::process::id()));
+        std::fs::write(&path, [1u8, 0, 0, 0, 0, 0]).unwrap();
+        let mut palettes = Palettes::default();
+        let mut choice = PaletteChoice::default();
+        let mut toasts = Toasts::default();
+        let ok = finish_import(
+            &DialogResult::ImportQb(path.clone()),
+            &mut grid,
+            &mut history,
+            &mut palettes,
+            &mut choice,
+            &mut toasts,
+        );
+        let _ = std::fs::remove_file(&path);
+
+        assert!(!ok);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(history.undo.len(), 1);
+        assert_eq!(toasts.0.len(), 1);
     }
 }

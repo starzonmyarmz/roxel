@@ -20,9 +20,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
     let bin = pack_bin(&mesh);
     let json = build_json(&mesh, bin.len() as u32);
 
-    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
-    write_glb(&mut file, &json, &bin)?;
-    Ok(())
+    super::atomic::write_with(path, |file| write_glb(file, &json, &bin))
 }
 
 struct MeshData {

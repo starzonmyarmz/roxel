@@ -8,10 +8,13 @@ pub struct Palettes(pub Vec<Palette>);
 
 impl Palettes {
     /// Built-ins followed by user palettes loaded from disk.
-    pub fn with_user_loaded() -> Self {
+    /// Built-ins plus the user's saved palettes, and a message to toast when
+    /// the saved file couldn't be read.
+    pub fn with_user_loaded() -> (Self, Option<String>) {
         let mut me = Self::default();
-        me.0.extend(io::palettes::load());
-        me
+        let loaded = io::palettes::load();
+        me.0.extend(loaded.palettes);
+        (me, loaded.issue.map(|i| i.message()))
     }
 }
 
@@ -219,6 +222,45 @@ pub fn save_as_new(
     new_idx
 }
 
+/// A user palette waiting on the delete confirm. Every Delete trigger stages
+/// the index here instead of deleting outright.
+#[derive(Resource, Default)]
+pub struct DeleteConfirm {
+    pub pending: Option<usize>,
+}
+
+impl DeleteConfirm {
+    /// Stage `idx` for deletion. Ignored for built-ins and out-of-range indices.
+    pub fn request(&mut self, palettes: &Palettes, idx: usize) {
+        if palettes.0.get(idx).is_some_and(|p| !p.builtin) {
+            self.pending = Some(idx);
+        }
+    }
+}
+
+/// Remove user palette `idx`, keep the selection on the same palette (or the
+/// nearest one), and drop rename/scratch state. Returns `false` for a built-in
+/// or out-of-range index. Caller persists via `io::palettes::save`.
+pub fn delete_palette(
+    palettes: &mut Palettes,
+    choice: &mut PaletteChoice,
+    working: &mut WorkingPalette,
+    rename: &mut PaletteRenameState,
+    idx: usize,
+) -> bool {
+    if palettes.0.get(idx).is_none_or(|p| p.builtin) {
+        return false;
+    }
+    palettes.0.remove(idx);
+    if choice.0 > idx {
+        choice.0 -= 1;
+    }
+    choice.0 = choice.0.min(palettes.0.len().saturating_sub(1));
+    rename.editing = None;
+    working.clear();
+    true
+}
+
 /// Transient UI state for inline rename of the active palette.
 #[derive(Default)]
 pub struct PaletteRenameState {
@@ -233,6 +275,7 @@ pub struct PaletteParams<'w, 's> {
     pub rename: Local<'s, PaletteRenameState>,
     pub working: ResMut<'w, WorkingPalette>,
     pub discard: ResMut<'w, DiscardConfirm>,
+    pub delete: ResMut<'w, DeleteConfirm>,
     pub switcher: ResMut<'w, PaletteSwitcher>,
 }
 
@@ -274,6 +317,80 @@ pub fn sanitize_filename(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn user(name: &str) -> Palette {
+        Palette {
+            name: name.into(),
+            colors: vec![],
+            builtin: false,
+        }
+    }
+
+    #[test]
+    fn delete_request_ignores_builtins_and_bad_indices() {
+        let palettes = Palettes::default();
+        let mut confirm = DeleteConfirm::default();
+        confirm.request(&palettes, 0);
+        assert_eq!(confirm.pending, None);
+        confirm.request(&palettes, palettes.0.len());
+        assert_eq!(confirm.pending, None);
+
+        let mut palettes = Palettes::default();
+        palettes.0.push(user("Mine"));
+        confirm.request(&palettes, palettes.0.len() - 1);
+        assert_eq!(confirm.pending, Some(palettes.0.len() - 1));
+    }
+
+    #[test]
+    fn delete_palette_removes_user_palette_and_keeps_selection_valid() {
+        let mut palettes = Palettes::default();
+        let builtins = palettes.0.len();
+        palettes.0.push(user("A"));
+        palettes.0.push(user("B"));
+        let mut choice = PaletteChoice(builtins + 1);
+        let mut working = WorkingPalette::default();
+        let mut rename = PaletteRenameState {
+            editing: Some(builtins + 1),
+            buf: "B".into(),
+        };
+
+        assert!(delete_palette(
+            &mut palettes,
+            &mut choice,
+            &mut working,
+            &mut rename,
+            builtins + 1
+        ));
+        assert_eq!(palettes.0.len(), builtins + 1);
+        assert_eq!(choice.0, builtins);
+        assert_eq!(rename.editing, None);
+
+        assert!(!delete_palette(
+            &mut palettes,
+            &mut choice,
+            &mut working,
+            &mut rename,
+            0
+        ));
+        assert_eq!(palettes.0.len(), builtins + 1);
+    }
+
+    #[test]
+    fn delete_palette_before_selection_keeps_the_same_palette_selected() {
+        let mut palettes = Palettes::default();
+        let builtins = palettes.0.len();
+        palettes.0.push(user("A"));
+        palettes.0.push(user("B"));
+        let mut choice = PaletteChoice(builtins + 1);
+        delete_palette(
+            &mut palettes,
+            &mut choice,
+            &mut WorkingPalette::default(),
+            &mut PaletteRenameState::default(),
+            builtins,
+        );
+        assert_eq!(palettes.0[choice.0].name, "B");
+    }
 
     fn p(name: &str) -> Palette {
         Palette {

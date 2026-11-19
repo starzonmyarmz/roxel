@@ -196,9 +196,8 @@ pub mod width {
     /// the label column and modal margins).
     #[allow(dead_code)] // reserved — last caller (prefs color format) moved to the View menu
     pub const PREFS_DROPDOWN: f32 = 200.0;
-    pub const MODAL_NEW: f32 = 240.0;
-    /// Discard-edits confirm modal — wider than `MODAL_NEW` so its three
-    /// action buttons (Cancel / Discard / Save as new) fit on one row.
+    /// Three-button confirm modals (unsaved changes, discard palette edits),
+    /// wide enough for all three actions on one row.
     pub const MODAL_DISCARD: f32 = 304.0;
     /// Export-Shot tweak panel — the preview sits left, the knob column right,
     /// so the modal stays short enough to fit the app window.
@@ -359,7 +358,6 @@ mod tests {
             width::SIDE_PANEL_MAX,
             width::MODAL_PREFS,
             width::PREFS_DROPDOWN,
-            width::MODAL_NEW,
             width::MODAL_DISCARD,
             width::MODAL_SHOT,
             width::SHOT_PREVIEW,

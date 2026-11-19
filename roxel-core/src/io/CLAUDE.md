@@ -12,13 +12,14 @@ Sync `rfd::FileDialog` **blocks winit's event loop on macOS** (beachball). All s
 
 Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::FileDialog::*` in egui draw code.**
 
-`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`; `.vox`/`.qb`/`.gox` imports set `doc.forced_dirty` and clear `CurrentProjectPath` (imported-but-unsaved content). The "Open project…" dialog is spawned by `dialogs::spawn_open`, gated by `OpenRequest` so an unsaved document confirms first.
+`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`. `.vox`/`.qb`/`.gox` imports go through `dialogs::finish_import`: the file is parsed into a scratch grid (a failed parse never touches the scene), then merged into the scene as one `History` stroke — undoable, and it dirties the document like any edit. The current project path is kept, since the import becomes part of the open document. The "Open project…" dialog (`dialogs::spawn_open`), Open Recent and Finder opens all go through `UnsavedGuard` so an unsaved document confirms first.
 
 ## Shared helpers — use them, don't reroll
 
 - `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.
 - `grid::bounding_box()` — `Option<(min, max)>` inclusive.
 - `mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by gltf/svg/obj.
+- `io::atomic::write` / `write_with` — temp file + fsync + rename. **Every file the app writes goes through it** (projects, exporters, palettes, recents, preferences, PNGs); never `fs::write`/`File::create` a user-visible file directly.
 - `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import.
 - `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper. Don't add `tempfile`.
 
@@ -26,7 +27,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 - **Axis remap**: `.vox` and `.gox` are Z-up → swap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` on import + export. `.qb` is Y-up natively. `.gox` BL16 written as raw 16³ RGBA; PNG-encoded BL16 rejected with clear error.
 - **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
-- Imports `grid.set` each voxel at the source coord. No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
+- Format importers `grid.set` each voxel at the source coord into the scratch grid they're handed (never the live scene). No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
 **`io::vox::import` also returns a palette** — the distinct colors actually placed (ascending palette-index order, deduped; the full 256-entry MV ramp is *not* returned, unused entries are noise). `poll_dialogs_system`'s `ImportVox` arm pushes them as a new user `Palette` (named after the file stem via `palette::unique_palette_name`), selects it, and calls `io::palettes::save`. Mirrors the `.ase` import path. `.qb`/`.gox` imports remain grid-only.
 
@@ -39,7 +40,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 ## Persisted resources
 
-`io::palettes` persists user palettes (built-ins filtered out) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave.
+`io::palettes` persists user palettes (built-ins filtered out) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave. **A file that won't parse is never overwritten:** `load` renames it to `palettes.ron.corrupt-<unix secs>` (`LoadIssue::MovedAside`); if it can't be read or renamed, `save` is turned off for the session (`LoadIssue::SaveDisabled`). `main` toasts `LoadIssue::message()` at startup.
 
 `io::recent` persists recent `.rox` paths (cap `MAX_RECENT = 10`) to `{config_dir}/roxel/recent.ron`. `RecentFiles` resource (`ui/dialogs.rs`) is hydrated on startup; `poll_dialogs_system` pushes after successful open/save. Drives in-app Open Recent submenu (`ui.rs`) and macOS native File menu (`menu.rs`).
 

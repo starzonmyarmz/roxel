@@ -1,5 +1,5 @@
-//! The three confirm/settings modals drawn at the tail of `ui_system`:
-//! Preferences, the new-project sheet, and the discard-edits confirm. Pulled
+//! The confirm/settings modals drawn at the tail of `ui_system`: Preferences,
+//! the unsaved-changes confirm, and the discard-edits confirm. Pulled
 //! out of `ui.rs` so the inspector module stays focused on panel layout. Each
 //! is a free function over the resources it touches; `ui_system` calls them
 //! when the corresponding modal is open.
@@ -10,14 +10,13 @@ use crate::theme::{
     save_preferences,
 };
 use crate::ui::color_picker;
-use crate::ui::dialogs::{self, DialogResult, PendingDialog};
+use crate::ui::dialogs::{self, ConfirmChoice, DialogResult, GuardedAction, PendingDialog};
 use crate::ui::palette::{
     self, DiscardConfirm, PaletteChoice, PaletteRenameState, Palettes, WorkingPalette,
 };
 use crate::ui::tokens::{font, radius, size, space, swatch, width};
 use crate::ui::widgets;
 use bevy_egui::egui;
-use roxel::grid::NewProject;
 use roxel::io;
 use std::path::PathBuf;
 
@@ -98,88 +97,74 @@ pub fn draw_preferences(
     }
 }
 
-/// New-project confirm sheet. Open-world has no grid size to pick — this is
-/// just "do you want to throw away unsaved work?". Built with an anchored
-/// `Area` instead of `egui::Window` so the modal sizes tight to its content
-/// (egui::Window kept ballooning vertically here).
-pub fn draw_new_project(ctx: &egui::Context, theme: &Theme, new_project: &mut NewProject) {
-    let mut create_clicked = false;
-    let mut cancel_clicked = false;
-    egui::Area::new("new_project_modal".into())
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .show(ctx, |ui| {
-            widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
-                ui.set_width(width::MODAL_NEW);
-                ui.vertical(|ui| {
-                    ui.label(widgets::modal_heading(theme, "New project"));
-                    ui.add_space(space::XS);
-                    widgets::hint_label(ui, theme, "Discard unsaved work and start over?");
-                    ui.add_space(space::SM);
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.spacing_mut().item_spacing.x = space::SX;
-                            if widgets::dialog_button(ui, theme, "Create", true).clicked() {
-                                create_clicked = true;
-                            }
-                            if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
-                                cancel_clicked = true;
-                            }
-                        });
-                    });
-                });
-            });
-        });
-    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
-    if create_clicked || enter {
-        new_project.apply = true;
-        new_project.dialog_open = false;
-    } else if cancel_clicked || esc {
-        new_project.dialog_open = false;
+/// Heading and prompt for the unsaved-changes confirm.
+fn unsaved_copy(action: &GuardedAction, doc_name: &str) -> (&'static str, String) {
+    match action {
+        GuardedAction::New => (
+            "New project",
+            format!("Save changes to “{doc_name}” before starting a new project?"),
+        ),
+        GuardedAction::Open(_) => (
+            "Open project",
+            format!("Save changes to “{doc_name}” before opening another project?"),
+        ),
+        GuardedAction::Quit => (
+            "Quit Roxel",
+            format!("Save changes to “{doc_name}” before quitting?"),
+        ),
     }
 }
 
-/// Open-project guard. Shown when the user triggers "Open…" with unsaved
-/// changes in the current document. Returns `Some(true)` to proceed (discard +
-/// open the file dialog), `Some(false)` to cancel, `None` while still open.
-pub fn draw_open_confirm(ctx: &egui::Context, theme: &Theme) -> Option<bool> {
-    let mut open_clicked = false;
-    let mut cancel_clicked = false;
-    egui::Area::new("open_confirm_modal".into())
+/// Unsaved-changes confirm for New / Open / Quit. Enter picks Save, never the
+/// destructive choice; Esc cancels. Returns `None` while still open. Built with
+/// an anchored `Area` instead of `egui::Window` so the modal sizes tight to its
+/// content (egui::Window kept ballooning vertically here).
+pub fn draw_unsaved_confirm(
+    ctx: &egui::Context,
+    theme: &Theme,
+    action: &GuardedAction,
+    doc_name: &str,
+) -> Option<ConfirmChoice> {
+    let (heading, prompt) = unsaved_copy(action, doc_name);
+    let mut clicked = None;
+    egui::Area::new("unsaved_confirm_modal".into())
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
             widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
-                ui.set_width(width::MODAL_NEW);
+                ui.set_width(width::MODAL_DISCARD);
                 ui.vertical(|ui| {
-                    ui.label(widgets::modal_heading(theme, "Open project"));
+                    ui.label(widgets::modal_heading(theme, heading));
                     ui.add_space(space::XS);
-                    widgets::hint_label(ui, theme, "Discard unsaved changes and open another?");
+                    widgets::hint_label(ui, theme, &prompt);
                     ui.add_space(space::SM);
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = space::SX;
-                            if widgets::dialog_button(ui, theme, "Open", true).clicked() {
-                                open_clicked = true;
+                            if widgets::dialog_button(ui, theme, "Save", true).clicked() {
+                                clicked = Some(ConfirmChoice::Save);
                             }
                             if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
-                                cancel_clicked = true;
+                                clicked = Some(ConfirmChoice::Cancel);
+                            }
+                            if widgets::dialog_button(ui, theme, "Don’t Save", false).clicked() {
+                                clicked = Some(ConfirmChoice::Discard);
                             }
                         });
                     });
                 });
             });
         });
-    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
-    if open_clicked || enter {
-        Some(true)
-    } else if cancel_clicked || esc {
-        Some(false)
-    } else {
-        None
+    if clicked.is_some() {
+        return clicked;
     }
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        return Some(ConfirmChoice::Cancel);
+    }
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        return Some(ConfirmChoice::Save);
+    }
+    None
 }
 
 /// Discard-edits confirm: switching away from a dirty built-in palette stages a
@@ -242,6 +227,43 @@ pub fn draw_discard(
         // Esc cancels — keeps the scratch edits and the current palette.
         discard.pending = None;
     }
+}
+
+/// Confirm before deleting a user palette. Cancel is the default (Enter or
+/// Esc); only a click on Delete deletes. Returns `Some(true)` to delete,
+/// `Some(false)` to cancel, `None` while still open.
+pub fn draw_delete_palette(ctx: &egui::Context, theme: &Theme, name: &str) -> Option<bool> {
+    let mut open = true;
+    let mut clicked = None;
+    widgets::modal_window(theme, "Delete palette?", &mut open).show(ctx, |ui| {
+        ui.set_width(width::MODAL_DISCARD);
+        widgets::hint_label(
+            ui,
+            theme,
+            &format!("Delete “{name}”? This can’t be undone."),
+        );
+        ui.add_space(space::SM);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = space::SX;
+                if widgets::dialog_button(ui, theme, "Cancel", true).clicked() {
+                    clicked = Some(false);
+                }
+                if widgets::dialog_button(ui, theme, "Delete", false).clicked() {
+                    clicked = Some(true);
+                }
+            });
+        });
+    });
+    if clicked.is_some() {
+        return clicked;
+    }
+    let dismiss =
+        ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
+    if dismiss || !open {
+        return Some(false);
+    }
+    None
 }
 
 /// A `prefs_row`-style label + content row whose content **wraps** — chips that
@@ -533,5 +555,22 @@ pub fn draw_shot_panel(
         panel.open = false;
     } else if !open_flag || esc {
         panel.open = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsaved_copy_names_the_action_and_document() {
+        let (h, p) = unsaved_copy(&GuardedAction::Quit, "castle.rox");
+        assert_eq!(h, "Quit Roxel");
+        assert_eq!(p, "Save changes to “castle.rox” before quitting?");
+        let (h, _) = unsaved_copy(&GuardedAction::Open(Some("/x.rox".into())), "Untitled");
+        assert_eq!(h, "Open project");
+        let (h, p) = unsaved_copy(&GuardedAction::New, "Untitled");
+        assert_eq!(h, "New project");
+        assert!(p.contains("“Untitled”"));
     }
 }

@@ -17,14 +17,17 @@ pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
 pub use dialogs::{
-    CurrentProjectPath, DialogResult, DocStatus, OpenRequest, PendingDialog, PendingImport,
-    RecentFiles, SavePreviewState, poll_dialogs_system, process_save_preview_system, spawn_open,
+    CurrentProjectPath, DialogResult, DocStatus, GuardedAction, PendingDialog, PendingImport,
+    RecentFiles, SavePreviewState, UnsavedGuard, poll_dialogs_system, process_save_preview_system,
+    spawn_open,
 };
 // Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
 // reaches these through the `dialogs` module path directly.
 #[cfg(target_os = "macos")]
 pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
-pub use palette::{DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette};
+pub use palette::{
+    DeleteConfirm, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
+};
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
@@ -38,7 +41,6 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use bevy_panorbit_camera::PanOrbitCamera;
 use palette::PaletteParams;
-use roxel::grid::NewProject;
 use roxel::history::History;
 
 /// `true` on any frame a modal/palette is open. Set by `ui_system`, read by
@@ -79,14 +81,13 @@ pub struct UiInput<'w> {
 
 #[derive(SystemParam)]
 pub struct UiState<'w> {
-    pub new_project: ResMut<'w, NewProject>,
+    pub guard: ResMut<'w, UnsavedGuard>,
     pub selection: ResMut<'w, crate::select::Selection>,
     pub select_state: Res<'w, crate::select::SelectState>,
     pub shape_state: Res<'w, ShapeState>,
     pub toasts: Res<'w, Toasts>,
     pub current_path: Res<'w, CurrentProjectPath>,
     pub doc: Res<'w, DocStatus>,
-    pub open_request: ResMut<'w, OpenRequest>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub color_edit: ResMut<'w, roxel::color_space::ColorEditBuffer>,
     pub updater: ResMut<'w, crate::updater::UpdateCheck>,
@@ -150,14 +151,13 @@ pub fn ui_system(
     let UiInput { keys, mouse } = input;
     #[cfg_attr(target_os = "macos", allow(unused_variables, unused_mut))]
     let UiState {
-        mut new_project,
+        mut guard,
         selection,
         select_state,
         shape_state,
         toasts,
         current_path,
         doc,
-        mut open_request,
         flyby,
         mut color_edit,
         mut updater,
@@ -178,6 +178,7 @@ pub fn ui_system(
         rename: mut palette_rename,
         mut working,
         mut discard,
+        mut delete,
         mut switcher,
     } = palette_params;
     let PrefsParams {
@@ -191,10 +192,10 @@ pub fn ui_system(
     // dimmed, since they render above the Middle scrim and can't be covered by
     // it.
     let modal_open = prefs_window.open
-        || new_project.dialog_open
-        || open_request.confirming
+        || guard.confirming.is_some()
         || switcher.open
         || discard.pending.is_some()
+        || delete.pending.is_some()
         || shot_panel.open
         || cmd_palette.open;
     modal_active.0 = modal_open;
@@ -208,9 +209,8 @@ pub fn ui_system(
             floating::pill_menu_contents(
                 ui,
                 &theme,
-                &mut new_project,
+                &mut guard,
                 &mut pending,
-                &mut open_request,
                 &current_path,
                 &mut prefs,
                 &mut history,
@@ -250,6 +250,7 @@ pub fn ui_system(
         &mut palette_choice,
         &mut palette_rename,
         &mut working,
+        &mut delete,
         &mut switcher,
         &mut pending,
         &tool,
@@ -324,28 +325,47 @@ pub fn ui_system(
         modals::draw_preferences(ctx, &theme, &mut prefs, &mut prefs_window);
     }
 
-    // Only a modified document earns the discard confirm; a clean New applies
-    // silently via `auto_apply_clean_new_project_system`. Gating the draw here
-    // too means no one-frame confirm flash whatever the system order.
-    if new_project.dialog_open && doc.is_modified(&history) {
-        modals::draw_new_project(ctx, &theme, &mut new_project);
-    }
-
-    // Open-project guard: confirm before an unsaved document is replaced.
-    if open_request.confirming {
-        match modals::draw_open_confirm(ctx, &theme) {
-            Some(true) => {
-                open_request.confirming = false;
-                dialogs::spawn_open(&mut pending, prefs.last_dir.clone());
-            }
-            Some(false) => open_request.confirming = false,
-            None => {}
+    if let Some(action) = guard.confirming.clone() {
+        let doc_name = current_path
+            .0
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("Untitled");
+        if let Some(choice) = modals::draw_unsaved_confirm(ctx, &theme, &action, doc_name)
+            && guard.resolve_confirm(choice)
+        {
+            dialogs::spawn_save(&mut pending, &current_path, prefs.last_dir.clone());
         }
     }
 
     // Command-palette-style palette switcher (opened from the … menu).
     if let Some(target) = palette_switcher::draw(ctx, &theme, &mut switcher, &palettes.0) {
         palette::request_select(target, &mut palette_choice, &mut working, &mut discard);
+    }
+
+    if let Some(idx) = delete.pending {
+        let name = palettes
+            .0
+            .get(idx)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        match modals::draw_delete_palette(ctx, &theme, &name) {
+            Some(true) => {
+                delete.pending = None;
+                if palette::delete_palette(
+                    &mut palettes,
+                    &mut palette_choice,
+                    &mut working,
+                    &mut palette_rename,
+                    idx,
+                ) {
+                    roxel::io::palettes::save(&palettes.0);
+                }
+            }
+            Some(false) => delete.pending = None,
+            None => {}
+        }
     }
 
     // Discard-edits confirm: switching away from a dirty built-in stages a

@@ -76,11 +76,11 @@ use crate::tools::{
     undo_redo_system,
 };
 use crate::ui::{
-    CommandPalette, CurrentProjectPath, DiscardConfirm, DocStatus, OpenRequest, PaletteChoice,
-    PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles, SavePreviewState, Toasts,
-    UiVisible, WorkingPalette, command_palette_shortcut_system, dispatch_command_palette_system,
-    poll_dialogs_system, process_save_preview_system, tab_toggle_system, toast_lifetime_system,
-    ui_system,
+    CommandPalette, CurrentProjectPath, DialogResult, DiscardConfirm, DocStatus, GuardedAction,
+    PaletteChoice, PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles,
+    SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
+    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
+    process_save_preview_system, tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -98,6 +98,11 @@ fn main() {
         let [r, g, b] = resolve_canvas_color(&prefs, &theme);
         Color::srgb_u8(r, g, b)
     };
+    let (palettes, palette_load_issue) = Palettes::with_user_loaded();
+    let mut toasts = Toasts::default();
+    if let Some(msg) = palette_load_issue {
+        toasts.error(msg);
+    }
     let mut app = App::new();
     app.insert_resource(prefs)
         .insert_resource(theme)
@@ -114,6 +119,7 @@ fn main() {
                 fullsize_content_view: true,
                 ..default()
             }),
+            close_when_requested: false,
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
@@ -151,13 +157,14 @@ fn main() {
         .init_resource::<PendingDialog>()
         .init_resource::<CurrentProjectPath>()
         .init_resource::<DocStatus>()
-        .init_resource::<OpenRequest>()
+        .init_resource::<UnsavedGuard>()
         .insert_resource(RecentFiles::loaded())
         .init_resource::<PaletteChoice>()
         .init_resource::<WorkingPalette>()
         .init_resource::<DiscardConfirm>()
+        .init_resource::<crate::ui::DeleteConfirm>()
         .init_resource::<PaletteSwitcher>()
-        .insert_resource(Palettes::with_user_loaded())
+        .insert_resource(palettes)
         .init_resource::<crate::shot::ShotRequest>()
         .init_resource::<crate::shot::ShotSession>()
         .init_resource::<crate::shot::ShotPanel>()
@@ -179,7 +186,7 @@ fn main() {
         })
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
-        .init_resource::<Toasts>()
+        .insert_resource(toasts)
         .init_resource::<crate::updater::UpdateCheck>()
         .init_resource::<CommandPalette>()
         .init_resource::<Onboarding>()
@@ -250,9 +257,9 @@ fn main() {
             crate::select::selection_key_action_system,
             crate::select::move_selection_keys_system,
             crate::clipboard::clipboard_key_system,
-            auto_apply_clean_new_project_system.before(apply_new_project_system),
+            request_quit_on_close_system.before(resolve_unsaved_guard_system),
+            resolve_unsaved_guard_system.before(apply_new_project_system),
             apply_new_project_system.before(regenerate_mesh_system),
-            resolve_open_request_system,
             window_title_system,
         ),
     )
@@ -370,39 +377,59 @@ fn apply_new_project_system(
     reset.recenter.base_focus = Some(Vec3::ZERO);
 }
 
-/// The New-project modal only earns a "discard unsaved work?" prompt when the
-/// document is actually modified. When it's clean, a New request applies
-/// immediately with no confirm flash.
-fn auto_apply_clean_new_project_system(
-    mut new_project: ResMut<NewProject>,
-    doc: Res<DocStatus>,
-    history: Res<History>,
+/// The window close button (and Alt+F4, and Close Window on macOS) asks to
+/// quit instead of closing outright, so unsaved work gets a prompt.
+/// `WindowPlugin::close_when_requested` is off for this. A close while a file
+/// dialog is open is ignored, as a native modal would, rather than queued to
+/// quit once the dialog is dismissed.
+fn request_quit_on_close_system(
+    mut closes: MessageReader<bevy::window::WindowCloseRequested>,
+    mut guard: ResMut<UnsavedGuard>,
+    pending: Res<PendingDialog>,
 ) {
-    if new_project.dialog_open && !doc.is_modified(&history) {
-        new_project.dialog_open = false;
-        new_project.apply = true;
+    if closes.read().count() > 0 && !pending.is_active() {
+        guard.request(GuardedAction::Quit);
     }
 }
 
-/// Resolve a pending "Open project…" request: spawn the file dialog right away
-/// when the document is clean, or raise the discard-confirm modal first when
-/// there are unsaved changes. The modal (in `ui_system`) clears `confirming`
-/// and spawns the dialog itself on confirm.
-fn resolve_open_request_system(
-    mut req: ResMut<OpenRequest>,
-    doc: Res<DocStatus>,
-    history: Res<History>,
+#[derive(SystemParam)]
+struct GuardInputs<'w> {
+    doc: Res<'w, DocStatus>,
+    history: Res<'w, History>,
+    save_preview: Res<'w, SavePreviewState>,
+    prefs: Res<'w, Preferences>,
+}
+
+/// Run New / Open / Quit requests through the unsaved-changes guard.
+fn resolve_unsaved_guard_system(
+    mut guard: ResMut<UnsavedGuard>,
+    inputs: GuardInputs,
     mut pending: ResMut<PendingDialog>,
-    prefs: Res<Preferences>,
+    mut new_project: ResMut<NewProject>,
+    mut exit: MessageWriter<AppExit>,
 ) {
-    if !req.requested {
+    let GuardInputs {
+        doc,
+        history,
+        save_preview,
+        prefs,
+    } = inputs;
+    let busy = pending.is_active();
+    let saving = busy || save_preview.path.is_some();
+    let Some(action) = guard.step(doc.is_modified(&history), busy, saving) else {
         return;
-    }
-    req.requested = false;
-    if doc.is_modified(&history) {
-        req.confirming = true;
-    } else {
-        crate::ui::spawn_open(&mut pending, prefs.last_dir.clone());
+    };
+    match action {
+        GuardedAction::New => new_project.apply = true,
+        GuardedAction::Open(None) => crate::ui::spawn_open(&mut pending, prefs.last_dir.clone()),
+        GuardedAction::Open(Some(path)) => {
+            if !pending.is_active() {
+                pending.spawn(async move { Some(DialogResult::OpenProject(path)) });
+            }
+        }
+        GuardedAction::Quit => {
+            exit.write(AppExit::Success);
+        }
     }
 }
 

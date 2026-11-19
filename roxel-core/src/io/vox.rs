@@ -92,8 +92,7 @@ pub fn export(path: &Path, grid: &VoxelGrid) -> Result<()> {
         scenes: vec![],
         layers: vec![],
     };
-    let mut file = std::fs::File::create(path)?;
-    data.write_vox(&mut file)?;
+    super::atomic::write_with(path, |file| data.write_vox(file))?;
     Ok(())
 }
 

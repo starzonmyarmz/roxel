@@ -59,12 +59,11 @@ fn local_idx(p: IVec3) -> usize {
     lx * CHUNK * CHUNK + ly * CHUNK + lz
 }
 
-/// State for the New-project confirm modal. There is no longer a size to
-/// pick — the open-world grid has no fixed extent — so this collapses to a
-/// dialog-open flag plus an `apply` flag the application reads next frame.
+/// Set `apply` to clear the scene and start an untitled project; the
+/// application consumes it next frame. Requests go through the app's
+/// unsaved-changes guard, which sets this once the user has confirmed.
 #[derive(Default)]
 pub struct NewProject {
-    pub dialog_open: bool,
     pub apply: bool,
 }
 

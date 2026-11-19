@@ -18,7 +18,7 @@ You can manage your own palettes from the inspector:
 - **Add** a color to the current palette
 - Create a **new** palette
 - **Duplicate** an existing one as a starting point
-- **Rename** and **delete**
+- **Rename** and **delete** (Roxel asks you to confirm before deleting a palette)
 - **Drag to reorder** swatches
 
 User palettes persist between sessions.

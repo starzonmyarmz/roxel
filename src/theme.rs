@@ -614,7 +614,7 @@ pub fn save_preferences(prefs: &Preferences) {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Ok(text) = ron::ser::to_string_pretty(prefs, ron::ser::PrettyConfig::default()) {
-        let _ = std::fs::write(&path, text);
+        let _ = roxel::io::atomic::write(&path, text);
     }
 }
 
