@@ -100,14 +100,101 @@ pub struct SavePreviewState {
     pub path: Option<PathBuf>,
 }
 
-/// A pending "Open project…" request, mirroring `NewProject`'s confirm flow.
-/// Any Open trigger sets `requested`; `resolve_open_request_system` either
-/// spawns the file dialog immediately (clean document) or raises `confirming`
-/// so the discard-confirm modal can guard against losing unsaved work.
+/// Something that would throw away the open document.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GuardedAction {
+    New,
+    /// `None` shows the Open dialog; `Some` opens that file (Open Recent, Finder).
+    Open(Option<PathBuf>),
+    Quit,
+}
+
+/// What the user picked in the unsaved-changes confirm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConfirmChoice {
+    Save,
+    Discard,
+    Cancel,
+}
+
+/// Routes every New / Open / Quit through one unsaved-changes check. Triggers
+/// call [`UnsavedGuard::request`]; `resolve_unsaved_guard_system` runs the
+/// action at once on a clean document, or raises `confirming` for the modal.
+/// Choosing Save parks the action in `after_save` until the save finishes.
 #[derive(Resource, Default)]
-pub struct OpenRequest {
-    pub requested: bool,
-    pub confirming: bool,
+pub struct UnsavedGuard {
+    requested: Option<GuardedAction>,
+    pub confirming: Option<GuardedAction>,
+    approved: Option<GuardedAction>,
+    after_save: Option<GuardedAction>,
+}
+
+impl UnsavedGuard {
+    /// Whether [`request`](Self::request) would accept a new action.
+    pub fn is_idle(&self) -> bool {
+        self.requested.is_none()
+            && self.confirming.is_none()
+            && self.approved.is_none()
+            && self.after_save.is_none()
+    }
+
+    /// Ask to run `action`. Ignored while another guarded action is pending.
+    pub fn request(&mut self, action: GuardedAction) {
+        if self.is_idle() {
+            self.requested = Some(action);
+        }
+    }
+
+    /// Apply the user's answer to the confirm modal. Returns `true` when the
+    /// caller should start a save.
+    pub fn resolve_confirm(&mut self, choice: ConfirmChoice) -> bool {
+        let Some(action) = self.confirming.take() else {
+            return false;
+        };
+        match choice {
+            ConfirmChoice::Save => {
+                self.after_save = Some(action);
+                true
+            }
+            ConfirmChoice::Discard => {
+                self.approved = Some(action);
+                false
+            }
+            ConfirmChoice::Cancel => false,
+        }
+    }
+
+    /// Advance the guard one frame. `modified` is the document's dirty state,
+    /// `dialog_busy` whether a file dialog or load is in flight, and `saving`
+    /// whether a save is still running. Returns an action that may run now.
+    pub fn step(
+        &mut self,
+        modified: bool,
+        dialog_busy: bool,
+        saving: bool,
+    ) -> Option<GuardedAction> {
+        if let Some(action) = self.approved.take() {
+            return Some(action);
+        }
+        if self.after_save.is_some() {
+            if saving {
+                return None;
+            }
+            // Save finished. Still modified means it was cancelled or failed.
+            let action = self.after_save.take();
+            return if modified { None } else { action };
+        }
+        if dialog_busy {
+            return None;
+        }
+        let action = self.requested.take()?;
+        if modified {
+            self.confirming = Some(action);
+            None
+        } else {
+            Some(action)
+        }
+    }
 }
 
 /// Spawn the async "Open project…" file dialog rooted at `start_dir`. No-op
@@ -590,6 +677,92 @@ mod tests {
         // poll_dialogs_system records this parent as Preferences.last_dir.
         let r = DialogResult::SaveProject(PathBuf::from("/tmp/scenes/a.rox"));
         assert_eq!(r.path().parent(), Some(std::path::Path::new("/tmp/scenes")));
+    }
+
+    fn quit() -> GuardedAction {
+        GuardedAction::Quit
+    }
+
+    #[test]
+    fn guard_runs_immediately_when_clean() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::New);
+        assert_eq!(g.step(false, false, false), Some(GuardedAction::New));
+        assert_eq!(g.step(false, false, false), None);
+    }
+
+    #[test]
+    fn guard_confirms_when_modified_and_cancel_drops_it() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.confirming, Some(quit()));
+        assert!(!g.resolve_confirm(ConfirmChoice::Cancel));
+        assert_eq!(g.confirming, None);
+        assert_eq!(g.step(true, false, false), None);
+    }
+
+    #[test]
+    fn guard_discard_runs_the_action() {
+        let mut g = UnsavedGuard::default();
+        let open = GuardedAction::Open(Some(PathBuf::from("/a.rox")));
+        g.request(open.clone());
+        g.step(true, false, false);
+        assert!(!g.resolve_confirm(ConfirmChoice::Discard));
+        assert_eq!(g.step(true, false, false), Some(open));
+    }
+
+    #[test]
+    fn guard_save_waits_for_the_save_then_runs() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        g.step(true, false, false);
+        assert!(g.resolve_confirm(ConfirmChoice::Save));
+        assert_eq!(g.step(true, true, true), None, "save still running");
+        assert_eq!(g.step(false, false, false), Some(quit()));
+    }
+
+    #[test]
+    fn guard_save_cancelled_or_failed_drops_the_action() {
+        let mut g = UnsavedGuard::default();
+        g.request(quit());
+        g.step(true, false, false);
+        g.resolve_confirm(ConfirmChoice::Save);
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.step(false, false, false), None, "not run later either");
+    }
+
+    #[test]
+    fn guard_waits_for_a_busy_dialog_before_handling_a_request() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::Open(None));
+        assert_eq!(g.step(false, true, true), None);
+        assert_eq!(g.step(false, false, false), Some(GuardedAction::Open(None)));
+    }
+
+    #[test]
+    fn guard_is_busy_until_the_action_runs_or_is_cancelled() {
+        let mut g = UnsavedGuard::default();
+        assert!(g.is_idle());
+        g.request(quit());
+        assert!(!g.is_idle());
+        g.step(true, false, false);
+        assert!(!g.is_idle(), "confirming");
+        g.resolve_confirm(ConfirmChoice::Save);
+        assert!(!g.is_idle(), "waiting on save");
+        g.step(false, false, false);
+        assert!(g.is_idle());
+    }
+
+    #[test]
+    fn guard_ignores_new_requests_while_one_is_pending() {
+        let mut g = UnsavedGuard::default();
+        g.request(GuardedAction::New);
+        g.step(true, false, false);
+        g.request(quit());
+        assert!(!g.resolve_confirm(ConfirmChoice::Cancel));
+        assert_eq!(g.step(true, false, false), None);
+        assert_eq!(g.confirming, None);
     }
 
     #[test]

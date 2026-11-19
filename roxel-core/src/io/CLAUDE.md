@@ -12,7 +12,7 @@ Sync `rfd::FileDialog` **blocks winit's event loop on macOS** (beachball). All s
 
 Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::FileDialog::*` in egui draw code.**
 
-`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`. `.vox`/`.qb`/`.gox` imports go through `dialogs::finish_import`: the file is parsed into a scratch grid (a failed parse never touches the scene), then merged into the scene as one `History` stroke — undoable, and it dirties the document like any edit. The current project path is kept, since the import becomes part of the open document. The "Open project…" dialog is spawned by `dialogs::spawn_open`, gated by `OpenRequest` so an unsaved document confirms first.
+`poll_dialogs_system` also maintains the document-dirty baseline (`DocStatus`, see `src/CLAUDE.md`): Save/Open call `doc.mark_saved(history.state_id())`. `.vox`/`.qb`/`.gox` imports go through `dialogs::finish_import`: the file is parsed into a scratch grid (a failed parse never touches the scene), then merged into the scene as one `History` stroke — undoable, and it dirties the document like any edit. The current project path is kept, since the import becomes part of the open document. The "Open project…" dialog (`dialogs::spawn_open`), Open Recent and Finder opens all go through `UnsavedGuard` so an unsaved document confirms first.
 
 ## Shared helpers — use them, don't reroll
 

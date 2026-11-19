@@ -18,13 +18,15 @@ use crate::onboarding::Onboarding;
 #[cfg(not(target_os = "macos"))]
 use crate::theme::PreferencesWindow;
 #[cfg(not(target_os = "macos"))]
-use crate::ui::dialogs::{self, CurrentProjectPath, DialogResult, OpenRequest, PendingDialog};
+use crate::ui::dialogs::{
+    self, CurrentProjectPath, DialogResult, GuardedAction, PendingDialog, UnsavedGuard,
+};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::{font, icon, width};
 #[cfg(not(target_os = "macos"))]
 use roxel::color_space::ColorSpace;
 #[cfg(not(target_os = "macos"))]
-use roxel::grid::{NewProject, VoxelGrid};
+use roxel::grid::VoxelGrid;
 #[cfg(not(target_os = "macos"))]
 use roxel::history::History;
 
@@ -300,9 +302,8 @@ pub fn tool_island_contents(
 pub fn pill_menu_contents(
     ui: &mut egui::Ui,
     theme: &Theme,
-    new_project: &mut NewProject,
+    guard: &mut UnsavedGuard,
     pending: &mut PendingDialog,
-    open_request: &mut OpenRequest,
     current_path: &CurrentProjectPath,
     prefs: &mut Preferences,
     history: &mut History,
@@ -317,7 +318,7 @@ pub fn pill_menu_contents(
             .on_hover_text("Start a new project")
             .clicked()
         {
-            new_project.dialog_open = true;
+            guard.request(GuardedAction::New);
         }
         let dialog_busy = pending.is_active();
         if ui
@@ -336,9 +337,7 @@ pub fn pill_menu_contents(
             )
             .clicked()
         {
-            // Route through the guard so an unsaved document prompts
-            // before the open dialog replaces it.
-            open_request.requested = true;
+            guard.request(GuardedAction::Open(None));
         }
         let save_resp = ui.add_enabled(
             !dialog_busy,

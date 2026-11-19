@@ -17,10 +17,9 @@ use bevy_egui::{EguiContexts, egui};
 use crate::camera::ViewportRect;
 use crate::gizmo::GizmoRect;
 use crate::theme::{Preferences, PreferencesWindow, Theme, save_preferences};
-use crate::ui::CommandPalette;
 use crate::ui::icons;
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, width};
-use roxel::grid::NewProject;
+use crate::ui::{CommandPalette, UnsavedGuard};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum AnchorId {
@@ -177,10 +176,10 @@ fn card_position(
 /// pause without losing state.
 fn modal_blocks_tour(
     prefs_window: &PreferencesWindow,
-    new_project: &NewProject,
+    guard: &UnsavedGuard,
     cmd_palette: &CommandPalette,
 ) -> bool {
-    prefs_window.open || new_project.dialog_open || cmd_palette.open
+    prefs_window.open || guard.confirming.is_some() || cmd_palette.open
 }
 
 fn hero_icon(anchor: AnchorId) -> egui::ImageSource<'static> {
@@ -202,7 +201,7 @@ pub struct TourAnchors<'w> {
 #[derive(SystemParam)]
 pub struct TourModals<'w> {
     prefs_window: Res<'w, PreferencesWindow>,
-    new_project: Res<'w, NewProject>,
+    guard: Res<'w, UnsavedGuard>,
     cmd_palette: Res<'w, CommandPalette>,
 }
 
@@ -228,11 +227,7 @@ pub fn onboarding_overlay_system(
     if !onboarding.active {
         return;
     }
-    if modal_blocks_tour(
-        &modals.prefs_window,
-        &modals.new_project,
-        &modals.cmd_palette,
-    ) {
+    if modal_blocks_tour(&modals.prefs_window, &modals.guard, &modals.cmd_palette) {
         return;
     }
 
@@ -423,7 +418,7 @@ pub fn onboarding_autostart_system(
     mut onboarding: ResMut<Onboarding>,
     prefs: Res<Preferences>,
     prefs_window: Res<PreferencesWindow>,
-    new_project: Res<NewProject>,
+    guard: Res<UnsavedGuard>,
 ) {
     if onboarding.autostart_fired {
         return;
@@ -435,7 +430,7 @@ pub fn onboarding_autostart_system(
     if prefs.onboarding_seen {
         return;
     }
-    if prefs_window.open || new_project.dialog_open {
+    if prefs_window.open || guard.confirming.is_some() {
         return;
     }
     onboarding.start();
