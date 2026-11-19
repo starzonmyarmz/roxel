@@ -597,6 +597,30 @@ mod tests {
     }
 
     #[test]
+    fn catalog_lists_app_level_commands() {
+        let palettes = vec![pal("Built", true), pal("Mine", false)];
+        let prefs = Preferences::default();
+        let recent = vec![std::path::PathBuf::from("/tmp/castle.rox")];
+        let mut s = state(&palettes, &prefs);
+        s.recent = &recent;
+        s.palette_choice = 1;
+        let catalog = build_catalog(&s);
+        let listed = |a: Action| catalog.iter().any(|e| e.action == a && e.enabled);
+        for action in [
+            Action::CheckForUpdates,
+            Action::ShowOnboarding,
+            Action::SetColorSpace(roxel::color_space::ColorSpace::Oklch),
+            Action::OpenRecent(0),
+            Action::RenamePalette,
+            Action::ToggleFocusMode,
+            Action::ShowShortcuts,
+        ] {
+            assert!(listed(action), "{action:?} missing or disabled");
+        }
+        assert!(catalog.iter().any(|e| e.label == "Open recent: castle.rox"));
+    }
+
+    #[test]
     fn fuzzy_subsequence_basic() {
         assert!(fuzzy_match("Export glTF (.glb)", "exg").is_some());
         assert!(fuzzy_match("Save project", "xyz").is_none());
