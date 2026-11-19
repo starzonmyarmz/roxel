@@ -134,8 +134,7 @@ impl VoxelGrid {
         chunk.cells[idx] = c;
         let count_now = chunk.count;
 
-        self.dirty = true;
-        self.dirty_chunks.insert(coord);
+        self.mark_cell_dirty(p);
 
         if count_now == 0 {
             self.chunks.remove(&coord);
@@ -150,11 +149,16 @@ impl VoxelGrid {
                 self.total_count = self.total_count.saturating_sub(1);
             }
         }
+    }
 
-        // Boundary cells change face occlusion in the neighbour chunk across
-        // the seam. Those chunks must rebuild too. We mark every seam
-        // unconditionally; the mesher tolerates dirty coords with no loaded
-        // chunk (it just skips them).
+    /// Queues a rebuild of the chunk holding `p`, plus the neighbour chunk
+    /// across any seam `p` touches: a boundary cell changes face occlusion
+    /// there. Seams are marked unconditionally; the mesher skips dirty coords
+    /// with no loaded chunk.
+    pub fn mark_cell_dirty(&mut self, p: IVec3) {
+        let coord = chunk_coord(p);
+        self.dirty = true;
+        self.dirty_chunks.insert(coord);
         let lx = p.x.rem_euclid(CHUNK_I);
         let ly = p.y.rem_euclid(CHUNK_I);
         let lz = p.z.rem_euclid(CHUNK_I);
@@ -413,6 +417,21 @@ mod tests {
         g.set(p, Some([1, 1, 1, 255]));
         assert!(g.dirty_chunks.contains(&IVec3::ZERO));
         assert!(g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn mark_cell_dirty_flags_the_seam_neighbours_without_writing() {
+        let mut g = VoxelGrid::default();
+        g.dirty_chunks.clear();
+        g.mark_cell_dirty(IVec3::new(CHUNK_I - 1, 0, 0));
+        assert_eq!(g.count(), 0);
+        assert!(g.dirty_chunks.contains(&IVec3::ZERO));
+        assert!(g.dirty_chunks.contains(&IVec3::new(1, 0, 0)));
+        assert!(g.dirty_chunks.contains(&IVec3::new(0, -1, 0)));
+        assert!(g.dirty_chunks.contains(&IVec3::new(0, 0, -1)));
+        g.dirty_chunks.clear();
+        g.mark_cell_dirty(IVec3::new(5, 5, 5));
+        assert_eq!(g.dirty_chunks.len(), 1);
     }
 
     #[test]

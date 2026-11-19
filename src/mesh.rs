@@ -281,13 +281,14 @@ pub fn regenerate_mesh_system(
     let hide_changed = hide.cell != hide.last_cell;
     let recolor_changed = hide.recolor != hide.last_recolor;
 
+    // Hiding a cell exposes the neighbours' faces toward it, which can sit
+    // in the next chunk over; a recolor only changes the cell's own faces.
     if hide_changed {
         for opt in [hide.cell, hide.last_cell] {
             if let Some(p) = opt
                 && grid.in_bounds(p)
             {
-                let coord = chunk_coord(p);
-                grid.dirty_chunks.insert(coord);
+                grid.mark_cell_dirty(p);
             }
         }
     }
