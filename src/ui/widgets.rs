@@ -1,7 +1,7 @@
 use super::icons;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke};
+use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke, width};
 use bevy_egui::egui;
 use roxel::color_space::ColorSpace;
 
@@ -599,6 +599,56 @@ pub fn modal_window<'a>(theme: &Theme, title: &str, open: &'a mut bool) -> egui:
     .frame(modal_frame(theme, pad::MODAL))
 }
 
+/// Centred confirm sheet: heading, prompt, and a right-aligned button row.
+/// `buttons` are in reading order, left to right; the one whose value is
+/// `enter` is the accent button and answers Enter, and Esc answers `cancel`.
+/// Returns the chosen value, or `None` while still open. An anchored `Area`
+/// rather than `egui::Window` so the sheet sizes tight to its content.
+pub fn confirm_dialog<T: Copy + PartialEq>(
+    ctx: &egui::Context,
+    theme: &Theme,
+    heading: &str,
+    prompt: &str,
+    buttons: &[(&str, T)],
+    enter: T,
+    cancel: T,
+) -> Option<T> {
+    let mut clicked = None;
+    egui::Area::new(egui::Id::new("confirm_dialog").with(heading))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            modal_frame(theme, pad::MODAL).show(ui, |ui| {
+                ui.set_width(width::MODAL_CONFIRM);
+                ui.vertical(|ui| {
+                    ui.label(modal_heading(theme, heading));
+                    ui.add_space(space::XS);
+                    hint_label(ui, theme, prompt);
+                    ui.add_space(space::SM);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = space::SX;
+                        for &(label, value) in buttons.iter().rev() {
+                            if dialog_button(ui, theme, label, value == enter).clicked() {
+                                clicked = Some(value);
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    clicked.or_else(|| {
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Escape) {
+                Some(cancel)
+            } else if i.key_pressed(egui::Key::Enter) {
+                Some(enter)
+            } else {
+                None
+            }
+        })
+    })
+}
+
 /// SemiBold heading text in `theme.text` at [`font::HEADING`]. Used by the
 /// `Area`-based confirm sheets that build their own heading row (the
 /// `egui::Window` modals get theirs from [`modal_window`]).
@@ -832,6 +882,50 @@ fn select_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_confirm(events: Vec<egui::Event>) -> Option<u8> {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let _ = ctx.run(egui::RawInput::default(), |_| {});
+        let mut out = None;
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            out = confirm_dialog(
+                ctx,
+                &Theme::dark(),
+                "Heading",
+                "Prompt",
+                &[("Discard", 0), ("Cancel", 1), ("Save", 2)],
+                2,
+                1,
+            );
+        });
+        out
+    }
+
+    fn key(key: egui::Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn confirm_dialog_answers_enter_and_esc() {
+        assert_eq!(run_confirm(vec![]), None);
+        assert_eq!(run_confirm(vec![key(egui::Key::Enter)]), Some(2));
+        assert_eq!(run_confirm(vec![key(egui::Key::Escape)]), Some(1));
+        assert_eq!(
+            run_confirm(vec![key(egui::Key::Escape), key(egui::Key::Enter)]),
+            Some(1)
+        );
+    }
 
     #[test]
     fn hline_at_snaps_to_a_pixel_center_across_the_clip_rect() {

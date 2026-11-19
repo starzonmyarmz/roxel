@@ -198,7 +198,7 @@ pub mod width {
     pub const PREFS_DROPDOWN: f32 = 200.0;
     /// Three-button confirm modals (unsaved changes, discard palette edits),
     /// wide enough for all three actions on one row.
-    pub const MODAL_DISCARD: f32 = 304.0;
+    pub const MODAL_CONFIRM: f32 = 304.0;
     pub const MODAL_ABOUT: f32 = 280.0;
     pub const MODAL_SHORTCUTS: f32 = 400.0;
     /// Export-Shot tweak panel — the preview sits left, the knob column right,
@@ -362,7 +362,7 @@ mod tests {
             width::SIDE_PANEL_MAX,
             width::MODAL_PREFS,
             width::PREFS_DROPDOWN,
-            width::MODAL_DISCARD,
+            width::MODAL_CONFIRM,
             width::MODAL_ABOUT,
             width::MODAL_SHOT,
             width::SHOT_PREVIEW,

@@ -135,9 +135,7 @@ fn unsaved_copy(action: &GuardedAction, doc_name: &str) -> (&'static str, String
 }
 
 /// Unsaved-changes confirm for New / Open / Quit. Enter picks Save, never the
-/// destructive choice; Esc cancels. Returns `None` while still open. Built with
-/// an anchored `Area` instead of `egui::Window` so the modal sizes tight to its
-/// content (egui::Window kept ballooning vertically here).
+/// destructive choice; Esc cancels. Returns `None` while still open.
 pub fn draw_unsaved_confirm(
     ctx: &egui::Context,
     theme: &Theme,
@@ -145,50 +143,33 @@ pub fn draw_unsaved_confirm(
     doc_name: &str,
 ) -> Option<ConfirmChoice> {
     let (heading, prompt) = unsaved_copy(action, doc_name);
-    let mut clicked = None;
-    egui::Area::new("unsaved_confirm_modal".into())
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .show(ctx, |ui| {
-            widgets::modal_frame(theme, crate::ui::tokens::pad::MODAL).show(ui, |ui| {
-                ui.set_width(width::MODAL_DISCARD);
-                ui.vertical(|ui| {
-                    ui.label(widgets::modal_heading(theme, heading));
-                    ui.add_space(space::XS);
-                    widgets::hint_label(ui, theme, &prompt);
-                    ui.add_space(space::SM);
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.spacing_mut().item_spacing.x = space::SX;
-                            if widgets::dialog_button(ui, theme, "Save", true).clicked() {
-                                clicked = Some(ConfirmChoice::Save);
-                            }
-                            if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
-                                clicked = Some(ConfirmChoice::Cancel);
-                            }
-                            if widgets::dialog_button(ui, theme, "Don’t Save", false).clicked() {
-                                clicked = Some(ConfirmChoice::Discard);
-                            }
-                        });
-                    });
-                });
-            });
-        });
-    if clicked.is_some() {
-        return clicked;
-    }
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        return Some(ConfirmChoice::Cancel);
-    }
-    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-        return Some(ConfirmChoice::Save);
-    }
-    None
+    widgets::confirm_dialog(
+        ctx,
+        theme,
+        heading,
+        &prompt,
+        &[
+            ("Don’t Save", ConfirmChoice::Discard),
+            ("Cancel", ConfirmChoice::Cancel),
+            ("Save", ConfirmChoice::Save),
+        ],
+        ConfirmChoice::Save,
+        ConfirmChoice::Cancel,
+    )
+}
+
+/// What the discard-edits confirm asked for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DiscardChoice {
+    SaveAsNew,
+    Discard,
+    Cancel,
 }
 
 /// Discard-edits confirm: switching away from a dirty built-in palette stages a
 /// `target` index so the user can keep their scratch edits first. `target` is
-/// the palette index they were switching to.
+/// the palette index they were switching to. Enter saves them as a new
+/// palette; Esc keeps them and stays put.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_discard(
     ctx: &egui::Context,
@@ -203,48 +184,34 @@ pub fn draw_discard(
     let name = palettes.0[palette_choice.0.min(palettes.0.len().saturating_sub(1))]
         .name
         .clone();
-    let mut open = true;
-    let mut save_clicked = false;
-    let mut discard_clicked = false;
-    let mut cancel_clicked = false;
-    widgets::modal_window(theme, "Discard edits?", &mut open).show(ctx, |ui| {
-        ui.set_width(width::MODAL_DISCARD);
-        widgets::hint_label(
-            ui,
-            theme,
-            &format!("“{name}” has unsaved swatches. Save them as a new palette, or discard?"),
-        );
-        ui.add_space(space::SM);
-        ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = space::SX;
-                if widgets::dialog_button(ui, theme, "Save as new", true).clicked() {
-                    save_clicked = true;
-                }
-                if widgets::dialog_button(ui, theme, "Discard", false).clicked() {
-                    discard_clicked = true;
-                }
-                if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
-                    cancel_clicked = true;
-                }
-            });
-        });
-    });
-    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
-    if save_clicked || enter {
-        let i = palette::save_as_new(palettes, palette_choice, working);
-        palette_rename.editing = Some(i);
-        palette_rename.buf = palettes.0[i].name.clone();
-        io::palettes::save(&palettes.0);
-        discard.pending = None;
-    } else if discard_clicked {
-        working.clear();
-        palette_choice.0 = target.min(palettes.0.len().saturating_sub(1));
-        discard.pending = None;
-    } else if cancel_clicked || esc || !open {
-        // Esc cancels — keeps the scratch edits and the current palette.
-        discard.pending = None;
+    let choice = widgets::confirm_dialog(
+        ctx,
+        theme,
+        "Discard edits?",
+        &format!("“{name}” has unsaved swatches. Save them as a new palette, or discard?"),
+        &[
+            ("Cancel", DiscardChoice::Cancel),
+            ("Discard", DiscardChoice::Discard),
+            ("Save as new", DiscardChoice::SaveAsNew),
+        ],
+        DiscardChoice::SaveAsNew,
+        DiscardChoice::Cancel,
+    );
+    match choice {
+        Some(DiscardChoice::SaveAsNew) => {
+            let i = palette::save_as_new(palettes, palette_choice, working);
+            palette_rename.editing = Some(i);
+            palette_rename.buf = palettes.0[i].name.clone();
+            io::palettes::save(&palettes.0);
+            discard.pending = None;
+        }
+        Some(DiscardChoice::Discard) => {
+            working.clear();
+            palette_choice.0 = target.min(palettes.0.len().saturating_sub(1));
+            discard.pending = None;
+        }
+        Some(DiscardChoice::Cancel) => discard.pending = None,
+        None => {}
     }
 }
 
@@ -252,37 +219,15 @@ pub fn draw_discard(
 /// Esc); only a click on Delete deletes. Returns `Some(true)` to delete,
 /// `Some(false)` to cancel, `None` while still open.
 pub fn draw_delete_palette(ctx: &egui::Context, theme: &Theme, name: &str) -> Option<bool> {
-    let mut open = true;
-    let mut clicked = None;
-    widgets::modal_window(theme, "Delete palette?", &mut open).show(ctx, |ui| {
-        ui.set_width(width::MODAL_DISCARD);
-        widgets::hint_label(
-            ui,
-            theme,
-            &format!("Delete “{name}”? This can’t be undone."),
-        );
-        ui.add_space(space::SM);
-        ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = space::SX;
-                if widgets::dialog_button(ui, theme, "Cancel", true).clicked() {
-                    clicked = Some(false);
-                }
-                if widgets::dialog_button(ui, theme, "Delete", false).clicked() {
-                    clicked = Some(true);
-                }
-            });
-        });
-    });
-    if clicked.is_some() {
-        return clicked;
-    }
-    let dismiss =
-        ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
-    if dismiss || !open {
-        return Some(false);
-    }
-    None
+    widgets::confirm_dialog(
+        ctx,
+        theme,
+        "Delete palette?",
+        &format!("Delete “{name}”? This can’t be undone."),
+        &[("Delete", true), ("Cancel", false)],
+        false,
+        false,
+    )
 }
 
 /// About Roxel: version and copyright, with a Changelog link. Returns `true`
