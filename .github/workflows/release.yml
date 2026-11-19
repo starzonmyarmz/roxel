@@ -149,9 +149,11 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist
       - name: Install butler
+        env:
+          BUTLER_VERSION: 15.32.0
         run: |
-          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
-          unzip butler.zip
+          curl -fsSL -o butler.zip "https://broth.itch.zone/butler/linux-amd64/${BUTLER_VERSION}/archive/default"
+          unzip -q butler.zip
           chmod +x butler
           ./butler -V
       - name: Push to itch.io
