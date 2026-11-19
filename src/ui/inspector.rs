@@ -477,7 +477,7 @@ pub fn inspector_panel(
                                         let rect = cell_at_f(ui.ctx().animate_value_with_time(
                                             anim_id,
                                             target,
-                                            motion::SWATCH_REFLOW,
+                                            prefs.motion_secs(motion::SWATCH_REFLOW),
                                         ));
                                         match slot {
                                             Slot::Gap => {}

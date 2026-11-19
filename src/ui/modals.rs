@@ -54,6 +54,9 @@ pub fn draw_preferences(
                     }
                 });
             });
+            widgets::prefs_row(ui, theme, "Motion", |ui| {
+                ui.checkbox(&mut prefs.reduce_motion, "Reduce motion");
+            });
         });
 
         let color_space = prefs.color_space;

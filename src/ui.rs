@@ -192,6 +192,7 @@ pub fn ui_system(
         mut prefs,
         window: mut prefs_window,
     } = prefs_params;
+    crate::theme::apply_motion_style(ctx, &prefs);
 
     // True whenever a modal/palette is open. The scrim dims the canvas +
     // inspector behind the modal; the floating tool island, menu pill, and the

@@ -507,6 +507,36 @@ mod tests {
     }
 
     #[test]
+    fn reduce_motion_defaults_off_and_zeroes_durations() {
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(!p.reduce_motion);
+        assert_eq!(p.motion_secs(0.12), 0.12);
+        let reduced = Preferences {
+            reduce_motion: true,
+            ..Default::default()
+        };
+        assert_eq!(reduced.motion_secs(0.12), 0.0);
+    }
+
+    #[test]
+    fn apply_motion_style_zeroes_egui_animation_time() {
+        let ctx = egui::Context::default();
+        let mut prefs = Preferences {
+            reduce_motion: true,
+            ..Default::default()
+        };
+        apply_motion_style(&ctx, &prefs);
+        assert_eq!(ctx.style().animation_time, 0.0);
+        prefs.reduce_motion = false;
+        apply_motion_style(&ctx, &prefs);
+        assert_eq!(
+            ctx.style().animation_time,
+            egui::Style::default().animation_time
+        );
+    }
+
+    #[test]
     fn ui_zoom_clamps_to_the_offered_range() {
         let at = |ui_scale| {
             Preferences {
@@ -588,6 +618,10 @@ pub struct Preferences {
     /// context's scale factor; the 3D canvas is unaffected.
     #[serde(default = "default_ui_scale")]
     pub ui_scale: u16,
+    /// Snap instead of animate: egui transitions, palette swatch reflow and
+    /// camera easing (presets, Frame View, zoom).
+    #[serde(default)]
+    pub reduce_motion: bool,
 }
 
 /// UI scale choices offered in Preferences, in percent.
@@ -605,6 +639,20 @@ impl Preferences {
         let lo = UI_SCALES[0];
         let hi = UI_SCALES[UI_SCALES.len() - 1];
         f32::from(self.ui_scale.clamp(lo, hi)) / 100.0
+    }
+
+    /// `secs`, or zero when [`Preferences::reduce_motion`] is on.
+    pub fn motion_secs(&self, secs: f32) -> f32 {
+        if self.reduce_motion { 0.0 } else { secs }
+    }
+}
+
+/// egui's widget transition time (collapsing, fades, toggles), zeroed by
+/// reduced motion.
+pub fn apply_motion_style(ctx: &egui::Context, prefs: &Preferences) {
+    let secs = prefs.motion_secs(egui::Style::default().animation_time);
+    if ctx.style().animation_time != secs {
+        ctx.style_mut(|s| s.animation_time = secs);
     }
 }
 
@@ -658,6 +706,7 @@ impl Default for Preferences {
             last_dir: None,
             last_shape: ShapePrimitive::default(),
             ui_scale: default_ui_scale(),
+            reduce_motion: false,
         }
     }
 }

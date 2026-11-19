@@ -10,6 +10,10 @@ Choose **Light**, **Dark**, or **System** (follows your OS setting).
 
 **Preferences → Appearance → UI scale** sizes the interface from 80% to 150%: panels, menus, dialogs and text. The 3D canvas isn't scaled.
 
+## Reduce motion
+
+**Preferences → Appearance → Motion → Reduce motion** turns off interface animations: the camera jumps straight to a view preset, Frame View or zoom step instead of easing there, and palette swatches snap into place when you reorder them. The flyby camera still moves when you start it.
+
 ## Canvas appearance
 
 Independent of the UI theme, you can set:
