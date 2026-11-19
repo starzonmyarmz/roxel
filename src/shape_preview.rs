@@ -105,16 +105,16 @@ pub fn shape_preview_system(
     if inputs.flyby.active
         || inputs.snapshot.0
         || inputs.tool.current != Tool::Shape
-        || inputs.state.phase.is_none()
+        || inputs.state.drag.is_idle()
     {
         *vis = Visibility::Hidden;
         return;
     }
 
     let (Some(anchor), Some(c1), Some(c2)) = (
-        inputs.state.anchor,
-        inputs.state.corner1,
-        inputs.state.corner2,
+        inputs.state.drag.anchor,
+        inputs.state.drag.corner1,
+        inputs.state.drag.corner2,
     ) else {
         *vis = Visibility::Hidden;
         return;
@@ -126,8 +126,8 @@ pub fn shape_preview_system(
         c1,
         c2,
         axis: anchor.axis,
-        thickness: inputs.state.thickness,
-        normal_sign: inputs.state.normal_sign,
+        thickness: inputs.state.drag.thickness,
+        normal_sign: inputs.state.drag.normal_sign,
         pool,
     };
     if cache.key.as_ref() != Some(&key) {

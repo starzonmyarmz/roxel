@@ -1,5 +1,5 @@
 use crate::GridResource;
-use crate::actions::{ActionQueue, ActionState, Origin};
+use crate::actions::{ActionQueue, ActionState, Mods, Origin};
 mod color_picker;
 mod command_palette;
 mod dialogs;
@@ -49,6 +49,18 @@ use roxel::history::History;
 /// camera composites after egui, so the modal scrim can't cover it otherwise.
 #[derive(Resource, Default)]
 pub struct ModalActive(pub bool);
+
+/// The pointer belongs to egui: over a panel, or mid-drag on a widget.
+pub fn egui_wants_pointer(contexts: &mut EguiContexts) -> bool {
+    contexts
+        .ctx_mut()
+        .is_ok_and(|c| c.is_pointer_over_area() || c.is_using_pointer())
+}
+
+/// A text field has keyboard focus.
+pub fn egui_wants_keyboard(contexts: &mut EguiContexts) -> bool {
+    contexts.ctx_mut().is_ok_and(|c| c.wants_keyboard_input())
+}
 
 #[derive(SystemParam)]
 pub struct ZoomReadout<'w, 's> {
@@ -222,7 +234,7 @@ pub fn ui_system(
                 has_redo: !history.redo.is_empty(),
                 stroke_open: history.is_open(),
                 has_selection: selection.aabb.is_some(),
-                selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
+                selection_idle: select_state.drag.is_idle(),
                 has_clipboard: clipboard.has_stamp(),
                 has_voxels: grid.count() > 0,
                 dialog_busy: pending.is_active(),
@@ -315,7 +327,7 @@ pub fn ui_system(
 
     // Reflect tool in cursor when pointer is over the viewport.
     if !ctx.is_pointer_over_area() {
-        let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+        let alt = Mods::from_keys(&keys).alt;
         let z = keys.pressed(KeyCode::KeyZ);
         let over_gizmo = gizmo_view.drag.active
             || gizmo_view

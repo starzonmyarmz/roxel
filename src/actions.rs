@@ -505,7 +505,7 @@ impl ActionStateParams<'_> {
             has_redo: !self.history.redo.is_empty(),
             stroke_open: self.history.is_open(),
             has_selection: self.selection.aabb.is_some(),
-            selection_idle: self.select_state.phase == crate::select::SelectPhase::Idle,
+            selection_idle: self.select_state.drag.is_idle(),
             has_clipboard: self.clipboard.has_stamp(),
             has_voxels: self.grid.count() > 0,
             dialog_busy: self.pending.is_active(),
@@ -1280,11 +1280,7 @@ pub fn shortcut_system(
         return;
     }
     let gate = ShortcutGate {
-        typing: input
-            .contexts
-            .ctx_mut()
-            .map(|c| c.wants_keyboard_input())
-            .unwrap_or(false),
+        typing: crate::ui::egui_wants_keyboard(&mut input.contexts),
         modal: input.modal.0,
         palette_open: input.cmd_palette.open,
         prefs_open: input.prefs_window.open,
@@ -1437,14 +1433,13 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
         Action::FillSelection => {
             if edit.selection.aabb.is_some() {
                 let pool = crate::tools::color_pool(edit.color.0, &edit.extras.0);
-                for c in crate::select::recolor_selection(
-                    &mut doc.grid,
-                    &mut doc.history,
-                    &edit.selection,
-                    &pool,
-                ) {
-                    edit.recent_colors.push(c);
-                }
+                edit.recent_colors
+                    .push_all(crate::select::recolor_selection(
+                        &mut doc.grid,
+                        &mut doc.history,
+                        &edit.selection,
+                        &pool,
+                    ));
             }
         }
         Action::DeleteSelectionContents => {

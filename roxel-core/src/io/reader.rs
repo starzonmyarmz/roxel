@@ -1,13 +1,16 @@
 use anyhow::{Result, bail};
 
-/// Bounds-checked little-endian byte reader. Shared by every binary importer
-/// (`qb`, `gox`). Borrows the source slice so it is zero-copy.
-pub struct LeReader<'a> {
+/// Bounds-checked byte reader, little-endian (`qb`, `gox`, `.rox`) or
+/// big-endian (`ase`). Borrows the source slice so it is zero-copy.
+pub struct Reader<'a, const BE: bool> {
     b: &'a [u8],
     pos: usize,
 }
 
-impl<'a> LeReader<'a> {
+pub type LeReader<'a> = Reader<'a, false>;
+pub type BeReader<'a> = Reader<'a, true>;
+
+impl<'a, const BE: bool> Reader<'a, BE> {
     pub fn new(b: &'a [u8]) -> Self {
         Self { b, pos: 0 }
     }
@@ -34,18 +37,30 @@ impl<'a> LeReader<'a> {
         Ok(v)
     }
 
+    fn array<const N: usize>(&mut self) -> Result<[u8; N]> {
+        Ok(self.bytes(N)?.try_into().unwrap())
+    }
+
     pub fn u16(&mut self) -> Result<u16> {
-        self.need(2)?;
-        let v = u16::from_le_bytes(self.b[self.pos..self.pos + 2].try_into().unwrap());
-        self.pos += 2;
-        Ok(v)
+        let a = self.array()?;
+        Ok(if BE {
+            u16::from_be_bytes(a)
+        } else {
+            u16::from_le_bytes(a)
+        })
     }
 
     pub fn u32(&mut self) -> Result<u32> {
-        self.need(4)?;
-        let v = u32::from_le_bytes(self.b[self.pos..self.pos + 4].try_into().unwrap());
-        self.pos += 4;
-        Ok(v)
+        let a = self.array()?;
+        Ok(if BE {
+            u32::from_be_bytes(a)
+        } else {
+            u32::from_le_bytes(a)
+        })
+    }
+
+    pub fn f32(&mut self) -> Result<f32> {
+        Ok(f32::from_bits(self.u32()?))
     }
 
     pub fn i32(&mut self) -> Result<i32> {
@@ -83,6 +98,17 @@ mod tests {
         assert_eq!(r.u16().unwrap(), 0x1234);
         assert_eq!(r.u32().unwrap(), 1);
         assert_eq!(r.i32().unwrap(), -1);
+        assert!(r.eof());
+    }
+
+    #[test]
+    fn reads_be_integers_and_floats_in_sequence() {
+        let mut bytes = vec![0x12, 0x34, 0x00, 0x00, 0x00, 0x01];
+        bytes.extend_from_slice(&0.5f32.to_be_bytes());
+        let mut r = BeReader::new(&bytes);
+        assert_eq!(r.u16().unwrap(), 0x1234);
+        assert_eq!(r.u32().unwrap(), 1);
+        assert_eq!(r.f32().unwrap(), 0.5);
         assert!(r.eof());
     }
 

@@ -124,11 +124,6 @@ pub fn brush_preview_system(
         return;
     };
 
-    let egui_wants_pointer = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_area() || c.is_using_pointer())
-        .unwrap_or(false);
-
     let clear = |vis: &mut Visibility, hide: &mut PreviewHide| {
         *vis = Visibility::Hidden;
         hide.set(None);
@@ -136,19 +131,13 @@ pub fn brush_preview_system(
     };
 
     if world.flyby.active
-        || egui_wants_pointer
+        || crate::ui::egui_wants_pointer(&mut contexts)
         || world.gizmo_view.drag.active
+        || world.gizmo_view.rect.contains_cursor(&input.windows)
         || input.keys.pressed(KeyCode::Space)
         || input.mouse.pressed(MouseButton::Right)
         || gates.pointer.stroking
         || gates.snapshot.0
-    {
-        clear(&mut vis, &mut world.hide);
-        return;
-    }
-    if let (Some(rect), Ok(window)) = (world.gizmo_view.rect.0, input.windows.single())
-        && let Some(c) = window.cursor_position()
-        && rect.contains(c)
     {
         clear(&mut vis, &mut world.hide);
         return;
@@ -165,7 +154,7 @@ pub fn brush_preview_system(
 
     let show_brush_ghost = match world.tool.current {
         Tool::Brush => true,
-        Tool::Shape => gates.shape.phase.is_none(),
+        Tool::Shape => gates.shape.drag.is_idle(),
         _ => false,
     };
     if show_brush_ghost {

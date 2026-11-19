@@ -1,5 +1,6 @@
 use crate::GridResource;
-use crate::tools::{StrokeAnchor, Tool, ToolState};
+use crate::actions::Mods;
+use crate::tools::{FacePlaneDrag, Tool, ToolState, note_used};
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
@@ -59,7 +60,7 @@ impl SelectionAabb {
         (e.x as usize) * (e.y as usize) * (e.z as usize)
     }
 
-    pub fn iter_cells(&self) -> impl Iterator<Item = IVec3> + '_ {
+    pub fn iter_cells(self) -> impl Iterator<Item = IVec3> {
         let (mn, mx) = (self.min, self.max);
         (mn.z..=mx.z).flat_map(move |z| {
             (mn.y..=mx.y).flat_map(move |y| (mn.x..=mx.x).map(move |x| IVec3::new(x, y, z)))
@@ -105,6 +106,29 @@ impl Selection {
         self.aabb.is_some_and(|a| a.contains(p))
     }
 
+    /// Every selected cell: the mask when present, else the whole AABB hull.
+    pub fn iter_cells(&self) -> impl Iterator<Item = IVec3> + '_ {
+        let hull = if self.cells.is_none() {
+            self.aabb
+        } else {
+            None
+        };
+        self.cells
+            .iter()
+            .flatten()
+            .copied()
+            .chain(hull.into_iter().flat_map(SelectionAabb::iter_cells))
+    }
+
+    /// Selected cells that hold a voxel, with their colors.
+    pub fn occupied<'a>(
+        &'a self,
+        grid: &'a VoxelGrid,
+    ) -> impl Iterator<Item = (IVec3, Color8)> + 'a {
+        self.iter_cells()
+            .filter_map(|p| grid.get(p).map(|c| (p, c)))
+    }
+
     /// Occupied-voxel count inside the active selection. Respects the cell
     /// mask when present so the inspector reports the actual cells the user
     /// double-clicked, not the AABB hull.
@@ -133,45 +157,25 @@ fn aabb_of_cells_iter(mut iter: impl Iterator<Item = IVec3>) -> Option<Selection
     Some(SelectionAabb { min, max })
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SelectPhase {
-    #[default]
-    Idle,
-    Footprint,
-    Extrude,
-}
-
 #[derive(Resource, Default)]
 pub struct SelectState {
-    pub phase: SelectPhase,
-    pub anchor: Option<StrokeAnchor>,
-    pub corner1: Option<IVec3>,
-    pub corner2: Option<IVec3>,
-    pub normal_sign: i32,
-    pub thickness: i32,
+    pub drag: FacePlaneDrag,
     /// Wall-clock seconds at the previous LMB-press while the Select tool
     /// was active. Used together with `last_press_cell` to detect a
-    /// double-click. Not cleared by `reset()` — `reset()` runs between the
+    /// double-click. Not cleared by `drag.reset()`, which runs between the
     /// first and second click of a double-click sequence.
     pub last_press_secs: f64,
     pub last_press_cell: Option<IVec3>,
 }
 
-impl SelectState {
-    pub fn reset(&mut self) {
-        self.phase = SelectPhase::Idle;
-        self.anchor = None;
-        self.corner1 = None;
-        self.corner2 = None;
-        self.normal_sign = 0;
-        self.thickness = 1;
+/// Clear every non-empty cell in the active selection. When the selection has
+/// a cell mask only those cells clear; otherwise it falls back to the AABB.
+pub fn clear_selection(grid: &mut VoxelGrid, history: &mut History, selection: &Selection) {
+    if selection.aabb.is_none() {
+        return;
     }
-}
-
-/// Clear every non-empty cell inside the AABB. One history stroke.
-fn clear_aabb(grid: &mut VoxelGrid, history: &mut History, aabb: &SelectionAabb) {
     history.begin();
-    for cell in aabb.iter_cells() {
+    for cell in selection.iter_cells() {
         if grid.in_bounds(cell) && grid.get(cell).is_some() {
             history.record(grid, cell, None);
         }
@@ -179,76 +183,29 @@ fn clear_aabb(grid: &mut VoxelGrid, history: &mut History, aabb: &SelectionAabb)
     history.end();
 }
 
-/// Clear every non-empty cell in the active selection. When the selection has
-/// a cell mask only those cells clear; otherwise it falls back to the AABB.
-pub fn clear_selection(grid: &mut VoxelGrid, history: &mut History, selection: &Selection) {
-    if let Some(cells) = &selection.cells {
-        history.begin();
-        for cell in cells {
-            if grid.in_bounds(*cell) && grid.get(*cell).is_some() {
-                history.record(grid, *cell, None);
-            }
-        }
-        history.end();
-        return;
-    }
-    if let Some(aabb) = selection.aabb {
-        clear_aabb(grid, history, &aabb);
-    }
-}
-
-/// Recolor every non-empty cell inside the AABB by sampling from `pool`
-/// per cell. Empty cells stay empty — Paint must not materialize new voxels.
-/// One history stroke. Returns the distinct colors actually used.
-fn recolor_aabb(
-    grid: &mut VoxelGrid,
-    history: &mut History,
-    aabb: &SelectionAabb,
-    pool: &[Color8],
-) -> Vec<Color8> {
-    history.begin();
-    let mut used: Vec<Color8> = Vec::new();
-    for cell in aabb.iter_cells() {
-        if grid.in_bounds(cell) && grid.get(cell).is_some() {
-            let c = crate::tools::sample_color(cell, pool);
-            history.record(grid, cell, Some(c));
-            if !used.contains(&c) {
-                used.push(c);
-            }
-        }
-    }
-    history.end();
-    used
-}
-
 /// Recolor every non-empty cell in the active selection by sampling from
-/// `pool` per cell. Respects the cell mask when present. Returns the distinct
-/// colors actually used.
+/// `pool` per cell. Empty cells stay empty — Paint must not materialize new
+/// voxels. One history stroke. Returns the distinct colors actually used.
 pub fn recolor_selection(
     grid: &mut VoxelGrid,
     history: &mut History,
     selection: &Selection,
     pool: &[Color8],
 ) -> Vec<Color8> {
-    if let Some(cells) = &selection.cells {
-        history.begin();
-        let mut used: Vec<Color8> = Vec::new();
-        for cell in cells {
-            if grid.in_bounds(*cell) && grid.get(*cell).is_some() {
-                let c = crate::tools::sample_color(*cell, pool);
-                history.record(grid, *cell, Some(c));
-                if !used.contains(&c) {
-                    used.push(c);
-                }
-            }
+    if selection.aabb.is_none() {
+        return Vec::new();
+    }
+    history.begin();
+    let mut used: Vec<Color8> = Vec::new();
+    for cell in selection.iter_cells() {
+        if grid.in_bounds(cell) && grid.get(cell).is_some() {
+            let c = crate::tools::sample_color(cell, pool);
+            history.record(grid, cell, Some(c));
+            note_used(&mut used, c);
         }
-        history.end();
-        return used;
     }
-    if let Some(aabb) = selection.aabb {
-        return recolor_aabb(grid, history, &aabb, pool);
-    }
-    Vec::new()
+    history.end();
+    used
 }
 
 /// Translate every non-empty voxel inside the selection AABB by `delta`,
@@ -279,16 +236,7 @@ pub fn move_selection(
     // Snapshot occupied cells before any mutation so source-clears and
     // destination-writes overlap cleanly inside one stroke. Respect the
     // selection's per-cell mask when present — only voxels in the mask move.
-    let occupied: Vec<(IVec3, Color8)> = match &selection.cells {
-        Some(cells) => cells
-            .iter()
-            .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
-            .collect(),
-        None => aabb
-            .iter_cells()
-            .filter_map(|p| grid.get(p).map(|c| (p, c)))
-            .collect(),
-    };
+    let occupied: Vec<(IVec3, Color8)> = selection.occupied(grid).collect();
 
     if occupied.is_empty() {
         selection.aabb = Some(SelectionAabb {
@@ -380,9 +328,7 @@ fn recolor_cells(
             continue;
         }
         history.record(grid, cell, Some(c));
-        if !used.contains(&c) {
-            used.push(c);
-        }
+        note_used(&mut used, c);
     }
     history.end();
     used
@@ -434,8 +380,8 @@ pub fn aabb_of_cells(cells: &[IVec3]) -> Option<SelectionAabb> {
 
 pub fn displayed_aabb(selection: &Selection, state: &SelectState) -> Option<SelectionAabb> {
     selection.aabb.or_else(|| {
-        if state.phase != SelectPhase::Idle {
-            in_progress_aabb(state)
+        if !state.drag.is_idle() {
+            in_progress_aabb(&state.drag)
         } else {
             None
         }
@@ -471,18 +417,18 @@ pub fn selection_voxel_count_system(
     count.0 = displayed_voxel_count(&selection, &state, &grid);
 }
 
-/// Build an in-progress AABB from the current `SelectState` corners + signed
-/// extrude offset along the anchor axis. Returns None during `Idle`.
+/// Build an in-progress AABB from the drag's corners + signed extrude offset
+/// along the anchor axis. Returns None during `Idle`.
 ///
-/// `state.thickness` here is the signed cell offset from `target_layer` in the
+/// `drag.thickness` here is the signed cell offset from `target_layer` in the
 /// normal direction: `0` is a single-cell-deep AABB on the anchor plane, `+N`
 /// extends `N` cells in the face-normal direction, `-N` extends `N` cells back
 /// into the surface.
-pub fn in_progress_aabb(state: &SelectState) -> Option<SelectionAabb> {
-    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
+pub fn in_progress_aabb(drag: &FacePlaneDrag) -> Option<SelectionAabb> {
+    let (Some(anchor), Some(c1), Some(c2)) = (drag.anchor, drag.corner1, drag.corner2) else {
         return None;
     };
-    let depth_end = anchor.target_layer + state.thickness * state.normal_sign;
+    let depth_end = anchor.target_layer + drag.thickness * drag.normal_sign;
     let mut a = c1.to_array();
     let mut b = c2.to_array();
     a[anchor.axis] = anchor.target_layer;
@@ -609,8 +555,8 @@ pub fn selection_render_system(
     }
     // In-progress drag takes priority over a committed selection so the user
     // sees the new region they're drawing.
-    let active_aabb = if state.phase != SelectPhase::Idle {
-        in_progress_aabb(&state).or(selection.aabb)
+    let active_aabb = if !state.drag.is_idle() {
+        in_progress_aabb(&state.drag).or(selection.aabb)
     } else {
         selection.aabb
     };
@@ -622,7 +568,7 @@ pub fn selection_render_system(
 
     // Per-cell mask wins: trace the silhouette of the masked region so the
     // marching ants follow one merged shape instead of every voxel's cube.
-    if state.phase == SelectPhase::Idle && selection.cells.is_some() {
+    if state.drag.is_idle() && selection.cells.is_some() {
         for &(axis, anchor) in silhouette.iter() {
             let a = Vec3::new(anchor.x as f32, anchor.y as f32, anchor.z as f32);
             let mut b = a;
@@ -690,11 +636,7 @@ pub fn selection_escape_system(
     if !keys.just_pressed(KeyCode::Escape) || tool.current == Tool::Select {
         return;
     }
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if !egui_wants && selection.aabb.is_some() {
+    if !crate::ui::egui_wants_keyboard(&mut contexts) && selection.aabb.is_some() {
         selection.clear();
     }
 }
@@ -713,14 +655,10 @@ pub fn move_selection_keys_system(
     if tool.current != Tool::Move || selection.aabb.is_none() || history.is_open() {
         return;
     }
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if egui_wants {
+    if crate::ui::egui_wants_keyboard(&mut contexts) {
         return;
     }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let shift = Mods::from_keys(&keys).shift;
     let mut delta = IVec3::ZERO;
     if keys.just_pressed(KeyCode::ArrowLeft) {
         delta.x -= 1;
@@ -752,11 +690,52 @@ pub fn move_selection_keys_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::{DragPhase, StrokeAnchor};
 
     fn fill_grid(grid: &mut VoxelGrid, color: Color8, points: &[IVec3]) {
         for p in points {
             grid.set(*p, Some(color));
         }
+    }
+
+    fn aabb_selection(aabb: SelectionAabb) -> Selection {
+        let mut s = Selection::default();
+        s.set_aabb(aabb);
+        s
+    }
+
+    #[test]
+    fn selection_iter_cells_walks_hull_without_mask() {
+        let aabb = SelectionAabb::from_corners(IVec3::ZERO, IVec3::new(1, 1, 1));
+        let s = aabb_selection(aabb);
+        let cells: HashSet<IVec3> = s.iter_cells().collect();
+        assert_eq!(cells, aabb.iter_cells().collect());
+    }
+
+    #[test]
+    fn selection_iter_cells_walks_only_mask() {
+        let mask: HashSet<IVec3> = [IVec3::ZERO, IVec3::new(3, 0, 0)].into();
+        let mut s = Selection::default();
+        s.set_cells(mask.clone());
+        assert_eq!(s.iter_cells().collect::<HashSet<_>>(), mask);
+    }
+
+    #[test]
+    fn selection_iter_cells_empty_when_cleared() {
+        assert_eq!(Selection::default().iter_cells().count(), 0);
+    }
+
+    #[test]
+    fn selection_occupied_skips_empty_cells() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(1, 0, 0), IVec3::new(9, 0, 0)]);
+        let s = aabb_selection(SelectionAabb::from_corners(
+            IVec3::ZERO,
+            IVec3::new(2, 2, 2),
+        ));
+        let occupied: Vec<_> = s.occupied(&grid).collect();
+        assert_eq!(occupied, vec![(IVec3::new(1, 0, 0), red)]);
     }
 
     #[test]
@@ -840,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_aabb_clears_only_inside_cells() {
+    fn clear_selection_aabb_clears_only_inside_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         fill_grid(
@@ -854,27 +833,27 @@ mod tests {
         );
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
         assert!(grid.get(IVec3::new(2, 1, 1)).is_none());
         assert_eq!(grid.get(IVec3::new(5, 5, 5)), Some(red));
     }
 
     #[test]
-    fn clear_aabb_leaves_empty_cells_empty() {
+    fn clear_selection_aabb_leaves_empty_cells_empty() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         grid.set(IVec3::new(2, 2, 2), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         for cell in s.iter_cells() {
             assert!(grid.get(cell).is_none(), "cell {cell:?} should be empty");
         }
     }
 
     #[test]
-    fn clear_aabb_undoable_as_single_stroke() {
+    fn clear_selection_aabb_undoable_as_single_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let touched = [
@@ -886,7 +865,7 @@ mod tests {
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
         let before_strokes = history.undo.len();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         assert_eq!(history.undo.len(), before_strokes + 1);
         history.undo(&mut grid);
         for cell in &touched {
@@ -895,27 +874,27 @@ mod tests {
     }
 
     #[test]
-    fn recolor_aabb_overwrites_non_empty_cells() {
+    fn recolor_selection_aabb_overwrites_non_empty_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 2, 2)]);
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(blue));
         assert_eq!(grid.get(IVec3::new(2, 2, 2)), Some(blue));
     }
 
     #[test]
-    fn recolor_aabb_skips_empty_cells() {
+    fn recolor_selection_aabb_skips_empty_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         grid.set(IVec3::new(1, 1, 1), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(blue));
         // Every other cell in the AABB stays empty.
         for cell in s.iter_cells() {
@@ -930,19 +909,19 @@ mod tests {
     }
 
     #[test]
-    fn recolor_aabb_skips_outside_cells() {
+    fn recolor_selection_aabb_skips_outside_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         grid.set(IVec3::new(5, 5, 5), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(5, 5, 5)), Some(red));
     }
 
     #[test]
-    fn recolor_aabb_undoable_as_single_stroke() {
+    fn recolor_selection_aabb_undoable_as_single_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
@@ -955,7 +934,7 @@ mod tests {
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
         let before_strokes = history.undo.len();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(history.undo.len(), before_strokes + 1);
         history.undo(&mut grid);
         for cell in &touched {
@@ -1232,16 +1211,18 @@ mod tests {
             g.set(IVec3::new(x, 5, 0), Some([1, 1, 1, 255]));
         }
         let state = SelectState {
-            phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor {
-                axis: 1,
-                plane_world: 5.0,
-                target_layer: 5,
-            }),
-            corner1: Some(IVec3::new(0, 5, 0)),
-            corner2: Some(IVec3::new(2, 5, 0)),
-            normal_sign: 1,
-            thickness: 0,
+            drag: FacePlaneDrag {
+                phase: DragPhase::Extrude,
+                anchor: Some(StrokeAnchor {
+                    axis: 1,
+                    plane_world: 5.0,
+                    target_layer: 5,
+                }),
+                corner1: Some(IVec3::new(0, 5, 0)),
+                corner2: Some(IVec3::new(2, 5, 0)),
+                normal_sign: 1,
+                thickness: 0,
+            },
             ..Default::default()
         };
         let mut sel = Selection::default();
@@ -1255,8 +1236,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_extrudes_positive_offset_in_normal_direction() {
         // Face-up pick: normal_sign = +1, target_layer = 5.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1266,9 +1247,8 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 3,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 5);
         assert_eq!(aabb.max.y, 8);
     }
@@ -1276,8 +1256,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_extrudes_negative_offset_into_surface() {
         // Same pick but user drags the opposite direction.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1287,17 +1267,16 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: -3,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 2);
         assert_eq!(aabb.max.y, 5);
     }
 
     #[test]
     fn in_progress_aabb_zero_offset_is_single_cell_thick() {
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1307,9 +1286,8 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 0,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 5);
         assert_eq!(aabb.max.y, 5);
     }
@@ -1356,8 +1334,8 @@ mod tests {
         // After select_input's Idle branch on a top-face pick of voxel (3,4,5):
         // target_layer == picked cell.y, corner1 == corner2 == picked cell,
         // thickness=0. AABB must equal the picked voxel exactly.
-        let state = SelectState {
-            phase: SelectPhase::Footprint,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Footprint,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1367,9 +1345,8 @@ mod tests {
             corner2: Some(IVec3::new(3, 4, 5)),
             normal_sign: 1,
             thickness: 0,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min, IVec3::new(3, 4, 5));
         assert_eq!(aabb.max, IVec3::new(3, 4, 5));
     }
@@ -1548,8 +1525,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_respects_negative_normal_sign() {
         // Pick on bottom face: normal_sign = -1, target_layer below the cube.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1559,10 +1536,9 @@ mod tests {
             corner2: Some(IVec3::new(2, 4, 2)),
             normal_sign: -1,
             thickness: 3,
-            ..Default::default()
         };
         // Drag in normal direction (downward) extends min below target_layer.
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 1);
         assert_eq!(aabb.max.y, 4);
     }

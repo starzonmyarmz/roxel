@@ -1,7 +1,8 @@
 use crate::GridResource;
+use crate::actions::Mods;
 use crate::picking::{Hit, cursor_ray, pick, pick_with, union_bounds};
 use crate::select::{
-    DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
+    DOUBLE_CLICK_SECS, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, fill_region, recolor_selection,
 };
 use bevy::ecs::system::SystemParam;
@@ -133,6 +134,19 @@ impl RecentColors {
         self.0.insert(0, c);
         self.0.truncate(8);
     }
+
+    pub fn push_all(&mut self, colors: impl IntoIterator<Item = Color8>) {
+        for c in colors {
+            self.push(c);
+        }
+    }
+}
+
+/// Record `c` among a stroke's distinct colors, keeping first-use order.
+pub fn note_used(used: &mut Vec<Color8>, c: Color8) {
+    if !used.contains(&c) {
+        used.push(c);
+    }
 }
 
 /// Additional swatches shift-clicked alongside `CurrentColor`. Together with
@@ -167,10 +181,8 @@ impl ExtraColors {
 pub fn color_pool(primary: Color8, extras: &[Color8]) -> Vec<Color8> {
     let mut out = Vec::with_capacity(1 + extras.len());
     out.push(primary);
-    for c in extras {
-        if !out.contains(c) {
-            out.push(*c);
-        }
+    for &c in extras {
+        note_used(&mut out, c);
     }
     out
 }
@@ -289,15 +301,20 @@ pub struct ShapeOptions {
     pub primitive: ShapePrimitive,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ShapePhase {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DragPhase {
+    #[default]
+    Idle,
     Footprint,
     Extrude,
 }
 
-#[derive(Resource, Default)]
-pub struct ShapeState {
-    pub phase: Option<ShapePhase>,
+/// The two-phase face-plane drag shared by Shape and Select: a press on a
+/// face anchors the footprint, release starts extruding along the face
+/// normal, and the next press commits.
+#[derive(Default)]
+pub struct FacePlaneDrag {
+    pub phase: DragPhase,
     pub anchor: Option<StrokeAnchor>,
     pub normal_sign: i32,
     pub corner1: Option<IVec3>,
@@ -305,15 +322,89 @@ pub struct ShapeState {
     pub thickness: i32,
 }
 
-impl ShapeState {
+impl FacePlaneDrag {
     pub fn reset(&mut self) {
-        self.phase = None;
-        self.anchor = None;
-        self.normal_sign = 0;
-        self.corner1 = None;
-        self.corner2 = None;
-        self.thickness = 1;
+        *self = Self {
+            thickness: 1,
+            ..default()
+        };
     }
+
+    pub fn is_idle(&self) -> bool {
+        self.phase == DragPhase::Idle
+    }
+
+    /// Advance one frame. `constrain(axis, corner1, target)` adjusts the
+    /// footprint's moving corner. Returns true on the press that commits.
+    #[allow(clippy::too_many_arguments)]
+    fn update(
+        &mut self,
+        grid: &VoxelGrid,
+        mouse: &ButtonInput<MouseButton>,
+        origin: Vec3,
+        dir: Vec3,
+        blocked: bool,
+        target: AnchorTarget,
+        constrain: impl Fn(usize, IVec3, IVec3) -> IVec3,
+    ) -> bool {
+        let lmb_just = mouse.just_pressed(MouseButton::Left);
+        match self.phase {
+            DragPhase::Idle => {
+                if !lmb_just || blocked {
+                    return false;
+                }
+                let Some(hit) = pick(grid, origin, dir) else {
+                    return false;
+                };
+                let fallback = match target {
+                    AnchorTarget::Picked => hit.cell,
+                    AnchorTarget::Adjacent => hit.cell + hit.normal,
+                };
+                let (anchor, sign) = stroke_anchor_from_hit(&hit, target);
+                let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(fallback);
+                *self = Self {
+                    phase: DragPhase::Footprint,
+                    anchor: Some(anchor),
+                    normal_sign: sign,
+                    corner1: Some(start_cell),
+                    corner2: Some(start_cell),
+                    thickness: 0,
+                };
+                false
+            }
+            DragPhase::Footprint => {
+                let Some(anchor) = self.anchor else {
+                    return false;
+                };
+                if let Some(target) = anchor_target(&anchor, origin, dir) {
+                    self.corner2 = Some(match self.corner1 {
+                        Some(c1) => constrain(anchor.axis, c1, target),
+                        None => target,
+                    });
+                }
+                if mouse.just_released(MouseButton::Left) {
+                    self.phase = DragPhase::Extrude;
+                    self.thickness = 0;
+                }
+                false
+            }
+            DragPhase::Extrude => {
+                let (Some(anchor), Some(c1), Some(c2)) = (self.anchor, self.corner1, self.corner2)
+                else {
+                    return false;
+                };
+                let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
+                self.thickness =
+                    signed_offset_from_ray(&anchor, self.normal_sign, center, origin, dir);
+                lmb_just && !blocked
+            }
+        }
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct ShapeState {
+    pub drag: FacePlaneDrag,
 }
 
 fn line3d(a: IVec3, b: IVec3) -> Vec<IVec3> {
@@ -392,6 +483,7 @@ fn axis_of_normal(n: IVec3) -> usize {
 /// Which integer layer along the face-normal axis a stroke anchors on. `Picked`
 /// is the layer of the hit voxel itself (Select, Erase, Move); `Adjacent` is
 /// the layer one step along the face normal (Brush, Shape).
+#[derive(Clone, Copy)]
 enum AnchorTarget {
     Picked,
     Adjacent,
@@ -590,12 +682,13 @@ fn shape_commit(
     pool: &[Color8],
     recent: &mut RecentColors,
 ) {
-    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
-        state.reset();
+    let drag = &mut state.drag;
+    let (Some(anchor), Some(c1), Some(c2)) = (drag.anchor, drag.corner1, drag.corner2) else {
+        drag.reset();
         return;
     };
     let cells = if options.primitive == ShapePrimitive::Sphere {
-        ellipsoid_cells(c1, c2, anchor.axis, state.thickness, state.normal_sign)
+        ellipsoid_cells(c1, c2, anchor.axis, drag.thickness, drag.normal_sign)
     } else {
         let base = match options.primitive {
             ShapePrimitive::Rectangle => rect_cells(c1, c2, anchor.axis, true),
@@ -603,7 +696,7 @@ fn shape_commit(
             ShapePrimitive::Line => line2d_cells(c1, c2, anchor.axis),
             ShapePrimitive::Sphere => unreachable!(),
         };
-        let (count, dir_sign) = extrude_args_from_signed_offset(state.thickness, state.normal_sign);
+        let (count, dir_sign) = extrude_args_from_signed_offset(drag.thickness, drag.normal_sign);
         extrude(&base, anchor.axis, count, dir_sign)
     };
     history.begin();
@@ -612,16 +705,12 @@ fn shape_commit(
         if grid.in_bounds(cell) {
             let c = sample_color(cell, pool);
             history.record(grid, cell, Some(c));
-            if !used.contains(&c) {
-                used.push(c);
-            }
+            note_used(&mut used, c);
         }
     }
     history.end();
-    for c in used {
-        recent.push(c);
-    }
-    state.reset();
+    recent.push_all(used);
+    drag.reset();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -638,73 +727,36 @@ fn shape_input(
     dir: Vec3,
     blocked: bool,
 ) {
-    let lmb_just = mouse.just_pressed(MouseButton::Left);
-    let lmb_released = mouse.just_released(MouseButton::Left);
-    let rmb_just = mouse.just_pressed(MouseButton::Right);
-    let esc = keys.just_pressed(KeyCode::Escape);
-
-    if esc || rmb_just {
-        state.reset();
+    if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
+        state.drag.reset();
         return;
     }
-
-    match state.phase {
-        None => {
-            if !lmb_just || blocked {
-                return;
+    let shift = Mods::from_keys(keys).shift;
+    let commit = state.drag.update(
+        grid,
+        mouse,
+        origin,
+        dir,
+        blocked,
+        AnchorTarget::Adjacent,
+        |axis, c1, target| {
+            if shift {
+                constrain_shape_corner2(options.primitive, axis, c1, target)
+            } else {
+                target
             }
-            let Some(hit) = pick(grid, origin, dir) else {
-                return;
-            };
-            let (anchor, sign) = stroke_anchor_from_hit(&hit, AnchorTarget::Adjacent);
-            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell + hit.normal);
-            state.phase = Some(ShapePhase::Footprint);
-            state.anchor = Some(anchor);
-            state.normal_sign = sign;
-            state.corner1 = Some(start_cell);
-            state.corner2 = Some(start_cell);
-            state.thickness = 0;
-        }
-        Some(ShapePhase::Footprint) => {
-            let Some(anchor) = state.anchor else {
-                return;
-            };
-            if let Some(target) = anchor_target(&anchor, origin, dir) {
-                let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-                let c2 = if shift && let Some(c1) = state.corner1 {
-                    constrain_shape_corner2(options.primitive, anchor.axis, c1, target)
-                } else {
-                    target
-                };
-                state.corner2 = Some(c2);
-            }
-            if lmb_released {
-                state.phase = Some(ShapePhase::Extrude);
-                state.thickness = 0;
-            }
-        }
-        Some(ShapePhase::Extrude) => {
-            let Some(anchor) = state.anchor else {
-                return;
-            };
-            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else {
-                return;
-            };
-            let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
-            state.thickness =
-                signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
-            if lmb_just && !blocked {
-                shape_commit(options, state, grid, history, pool, recent);
-            }
-        }
+        },
+    );
+    if commit {
+        shape_commit(options, state, grid, history, pool, recent);
     }
 }
 
 fn select_commit(state: &mut SelectState, selection: &mut Selection) {
-    if let Some(aabb) = crate::select::in_progress_aabb(state) {
+    if let Some(aabb) = crate::select::in_progress_aabb(&state.drag) {
         selection.set_aabb(aabb);
     }
-    state.reset();
+    state.drag.reset();
 }
 
 /// Idle, RMB must not deselect: it's reserved for camera orbit.
@@ -717,8 +769,8 @@ fn cancel_select(
     if !esc && !rmb_just {
         return false;
     }
-    if state.phase != SelectPhase::Idle {
-        state.reset();
+    if !state.drag.is_idle() {
+        state.drag.reset();
     } else if esc {
         selection.clear();
     }
@@ -736,61 +788,36 @@ fn select_input(
     dir: Vec3,
     blocked: bool,
 ) {
-    let lmb_just = mouse.just_pressed(MouseButton::Left);
-    let lmb_released = mouse.just_released(MouseButton::Left);
-    let rmb_just = mouse.just_pressed(MouseButton::Right);
     let esc = keys.just_pressed(KeyCode::Escape);
-
+    let rmb_just = mouse.just_pressed(MouseButton::Right);
     if cancel_select(state, selection, esc, rmb_just) {
         return;
     }
-
-    match state.phase {
-        SelectPhase::Idle => {
-            if !lmb_just || blocked {
-                return;
-            }
-            let Some(hit) = pick(grid, origin, dir) else {
-                return;
-            };
-            // Select targets the picked voxel itself, not the adjacent empty
-            // cell — clicking a voxel should select that voxel.
-            let (anchor, sign) = stroke_anchor_from_hit(&hit, AnchorTarget::Picked);
-            let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
-            state.phase = SelectPhase::Footprint;
-            state.anchor = Some(anchor);
-            state.normal_sign = sign;
-            state.corner1 = Some(start_cell);
-            state.corner2 = Some(start_cell);
-            state.thickness = 0;
-        }
-        SelectPhase::Footprint => {
-            let Some(anchor) = state.anchor else {
-                return;
-            };
-            if let Some(target) = anchor_target(&anchor, origin, dir) {
-                state.corner2 = Some(target);
-            }
-            if lmb_released {
-                state.phase = SelectPhase::Extrude;
-                state.thickness = 0;
-            }
-        }
-        SelectPhase::Extrude => {
-            let Some(anchor) = state.anchor else {
-                return;
-            };
-            let (Some(c1), Some(c2)) = (state.corner1, state.corner2) else {
-                return;
-            };
-            let center = footprint_center_world(c1, c2, anchor.axis, anchor.plane_world);
-            state.thickness =
-                signed_offset_from_ray(&anchor, state.normal_sign, center, origin, dir);
-            if lmb_just && !blocked {
-                select_commit(state, selection);
-            }
-        }
+    let commit = state.drag.update(
+        grid,
+        mouse,
+        origin,
+        dir,
+        blocked,
+        AnchorTarget::Picked,
+        |_, _, target| target,
+    );
+    if commit {
+        select_commit(state, selection);
     }
+}
+
+fn canvas_input_blocked(
+    contexts: &mut EguiContexts,
+    gizmo_drag: &crate::gizmo::GizmoDrag,
+    gizmo_rect: &crate::gizmo::GizmoRect,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    keys: &ButtonInput<KeyCode>,
+) -> bool {
+    crate::ui::egui_wants_pointer(contexts)
+        || gizmo_drag.active
+        || gizmo_rect.contains_cursor(windows)
+        || keys.any_pressed([KeyCode::Space, KeyCode::KeyZ])
 }
 
 pub fn tool_input_system(
@@ -836,10 +863,7 @@ pub fn tool_input_system(
         state: mut select_state,
         mut selection,
     } = select_params;
-    let egui_wants_pointer = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
-        .unwrap_or(false);
+    let blocked = canvas_input_blocked(&mut contexts, &gizmo_drag, &gizmo_rect, &windows, &keys);
 
     let lmb_pressed = mouse.pressed(MouseButton::Left);
     let lmb_just = mouse.just_pressed(MouseButton::Left);
@@ -852,29 +876,17 @@ pub fn tool_input_system(
         state.stroking = false;
         state.anchor = None;
         state.stroke_origin = None;
-        for c in state.stroke_used.drain(..) {
-            recent.push(c);
-        }
+        recent.push_all(state.stroke_used.drain(..));
     }
 
-    if tool.current != Tool::Shape && shape_state.phase.is_some() {
-        shape_state.reset();
+    if tool.current != Tool::Shape && !shape_state.drag.is_idle() {
+        shape_state.drag.reset();
     }
-    if tool.current != Tool::Select && select_state.phase != SelectPhase::Idle {
-        select_state.reset();
+    if tool.current != Tool::Select && !select_state.drag.is_idle() {
+        select_state.drag.reset();
     }
 
     if tool.current == Tool::Select {
-        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-            && let Some(c) = window.cursor_position()
-        {
-            rect.contains(c)
-        } else {
-            false
-        };
-        let space = keys.pressed(KeyCode::Space);
-        let z = keys.pressed(KeyCode::KeyZ);
-        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
         if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
             // Double-click on a voxel selects every 6-connected same-color
             // voxel touching it. Detect before delegating to `select_input`
@@ -893,7 +905,7 @@ pub fn tool_input_system(
                     let cells = connected_same_color(&grid, c);
                     if !cells.is_empty() {
                         selection.set_cells(cells.into_iter().collect());
-                        select_state.reset();
+                        select_state.drag.reset();
                         return;
                     }
                 }
@@ -926,16 +938,6 @@ pub fn tool_input_system(
     }
 
     if tool.current == Tool::Shape {
-        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-            && let Some(c) = window.cursor_position()
-        {
-            rect.contains(c)
-        } else {
-            false
-        };
-        let space = keys.pressed(KeyCode::Space);
-        let z = keys.pressed(KeyCode::KeyZ);
-        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
         if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
             shape_input(
                 &shape_options,
@@ -953,33 +955,14 @@ pub fn tool_input_system(
         } else {
             let rmb = mouse.just_pressed(MouseButton::Right);
             let esc = keys.just_pressed(KeyCode::Escape);
-            if (esc || rmb) && shape_state.phase.is_some() {
-                shape_state.reset();
+            if (esc || rmb) && !shape_state.drag.is_idle() {
+                shape_state.drag.reset();
             }
         }
         return;
     }
 
-    if egui_wants_pointer || gizmo_drag.active {
-        return;
-    }
-
-    // Space held = pan modifier for the camera; suppress tool input so a pan
-    // drag doesn't also paint.
-    if keys.pressed(KeyCode::Space) {
-        return;
-    }
-
-    // Z held = zoom modifier (handled by zoom_click_system); suppress tools.
-    if keys.pressed(KeyCode::KeyZ) {
-        return;
-    }
-
-    // Suppress tool clicks that land on the gizmo viewport rect.
-    if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-        && let Some(c) = window.cursor_position()
-        && rect.contains(c)
-    {
+    if blocked {
         return;
     }
 
@@ -987,7 +970,7 @@ pub fn tool_input_system(
         return;
     };
 
-    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let alt = Mods::from_keys(&keys).alt;
 
     // Single-click tools (eyedropper).
     if lmb_just && tool.current == Tool::Eyedropper {
@@ -1011,9 +994,7 @@ pub fn tool_input_system(
     if lmb_just && tool.current == Tool::Paint {
         if hits_selection(&selection, pick(&grid, origin, dir)) {
             let used = recolor_selection(&mut grid, &mut history, &selection, &pool);
-            for c in used {
-                recent.push(c);
-            }
+            recent.push_all(used);
             return;
         }
         // Double-click a voxel → flood-fill its 6-connected same-color region
@@ -1033,9 +1014,7 @@ pub fn tool_input_system(
                 // nowhere.
                 let used = fill_region(&mut grid, &mut history, hit.cell, orig, &pool);
                 state.last_press_cell = None;
-                for c in used {
-                    recent.push(c);
-                }
+                recent.push_all(used);
                 return;
             }
             // First click: remember the seed and its color before the stroke
@@ -1046,7 +1025,7 @@ pub fn tool_input_system(
         }
     }
 
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let shift = Mods::from_keys(&keys).shift;
 
     // Shift + click: draw a 3D line from the last placed voxel to the new target.
     // Performs a single-frame stroke; does not enter drag mode.
@@ -1075,9 +1054,7 @@ pub fn tool_input_system(
                 Tool::Brush => {
                     let c = sample_color(cell, &pool);
                     history.record(&mut grid, cell, Some(c));
-                    if !used.contains(&c) {
-                        used.push(c);
-                    }
+                    note_used(&mut used, c);
                 }
                 Tool::Erase => {
                     if grid.get(cell).is_some() {
@@ -1088,9 +1065,7 @@ pub fn tool_input_system(
                     if grid.get(cell).is_some() {
                         let c = sample_color(cell, &pool);
                         history.record(&mut grid, cell, Some(c));
-                        if !used.contains(&c) {
-                            used.push(c);
-                        }
+                        note_used(&mut used, c);
                     }
                 }
                 Tool::Eyedropper | Tool::Shape | Tool::Select | Tool::Move => {}
@@ -1098,9 +1073,7 @@ pub fn tool_input_system(
         }
         history.end();
         state.last_placed = Some(target);
-        for c in used {
-            recent.push(c);
-        }
+        recent.push_all(used);
         return;
     }
 
@@ -1195,9 +1168,7 @@ pub fn tool_input_system(
             Tool::Brush => {
                 let c = sample_color(cell, &pool);
                 history.record(&mut grid, cell, Some(c));
-                if !state.stroke_used.contains(&c) {
-                    state.stroke_used.push(c);
-                }
+                note_used(&mut state.stroke_used, c);
                 state.last_placed = Some(cell);
             }
             Tool::Erase => {
@@ -1210,9 +1181,7 @@ pub fn tool_input_system(
                 if grid.get(cell).is_some() {
                     let c = sample_color(cell, &pool);
                     history.record(&mut grid, cell, Some(c));
-                    if !state.stroke_used.contains(&c) {
-                        state.stroke_used.push(c);
-                    }
+                    note_used(&mut state.stroke_used, c);
                     state.last_placed = Some(cell);
                 }
             }
@@ -1262,22 +1231,7 @@ pub fn move_drag_system(
         return;
     }
 
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
-        .unwrap_or(false);
-    let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-        && let Some(c) = window.cursor_position()
-    {
-        rect.contains(c)
-    } else {
-        false
-    };
-    let blocked = egui_wants
-        || gizmo_drag.active
-        || cursor_over_gizmo
-        || keys.pressed(KeyCode::Space)
-        || keys.pressed(KeyCode::KeyZ);
+    let blocked = canvas_input_blocked(&mut contexts, &gizmo_drag, &gizmo_rect, &windows, &keys);
 
     let lmb_just = mouse.just_pressed(MouseButton::Left);
     let lmb_pressed = mouse.pressed(MouseButton::Left);
@@ -1320,15 +1274,13 @@ pub fn move_drag_system(
         let (anchor, _) = stroke_anchor_from_hit(&hit, AnchorTarget::Picked);
         let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
 
-        let originals: Vec<(IVec3, Color8)> = match &selection.cells {
-            Some(cells) if !ad_hoc => cells
-                .iter()
-                .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
-                .collect(),
-            _ => effective_aabb
+        let originals: Vec<(IVec3, Color8)> = if ad_hoc {
+            effective_aabb
                 .iter_cells()
                 .filter_map(|p| grid.get(p).map(|c| (p, c)))
-                .collect(),
+                .collect()
+        } else {
+            selection.occupied(&grid).collect()
         };
         if originals.is_empty() {
             return;
@@ -1365,7 +1317,7 @@ pub fn move_drag_system(
         let Some(target) = anchor_target(&anchor, origin, dir) else {
             return;
         };
-        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let shift = Mods::from_keys(&keys).shift;
         let new_delta = constrain_move_delta(target - start, anchor.axis, shift);
         if new_delta == drag.applied_delta {
             return;
@@ -1448,7 +1400,7 @@ pub fn alt_eyedropper_system(keys: Res<ButtonInput<KeyCode>>, mut tool: ResMut<T
     let alt_just = keys.just_pressed(KeyCode::AltLeft) || keys.just_pressed(KeyCode::AltRight);
     let alt_released =
         keys.just_released(KeyCode::AltLeft) || keys.just_released(KeyCode::AltRight);
-    let alt_held = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let alt_held = Mods::from_keys(&keys).alt;
     let z_just = keys.just_pressed(KeyCode::KeyZ);
     let z = keys.pressed(KeyCode::KeyZ);
 
@@ -1490,9 +1442,9 @@ mod tests {
         assert!(cancel_select(&mut state, &mut selection, false, true));
         assert!(selection.aabb.is_some());
 
-        state.phase = SelectPhase::Footprint;
+        state.drag.phase = DragPhase::Footprint;
         assert!(cancel_select(&mut state, &mut selection, true, false));
-        assert_eq!(state.phase, SelectPhase::Idle);
+        assert_eq!(state.drag.phase, DragPhase::Idle);
         assert!(selection.aabb.is_some());
 
         assert!(cancel_select(&mut state, &mut selection, true, false));
@@ -1744,6 +1696,22 @@ mod tests {
     }
 
     #[test]
+    fn note_used_keeps_first_use_order_without_duplicates() {
+        let mut used = Vec::new();
+        for c in [C_G, C_R, C_G, C_B, C_R] {
+            note_used(&mut used, c);
+        }
+        assert_eq!(used, vec![C_G, C_R, C_B]);
+    }
+
+    #[test]
+    fn recent_push_all_leaves_last_pushed_first() {
+        let mut recent = RecentColors(vec![C_R]);
+        recent.push_all([C_G, C_B]);
+        assert_eq!(recent.0, vec![C_B, C_G, C_R]);
+    }
+
+    #[test]
     fn sample_color_pool_of_one_returns_primary() {
         for x in -3..3 {
             for y in 0..3 {
@@ -1851,7 +1819,7 @@ mod tests {
             false,
         );
         assert!(selection.aabb.is_some());
-        assert_eq!(state.phase, SelectPhase::Idle);
+        assert_eq!(state.drag.phase, DragPhase::Idle);
     }
 
     #[test]
@@ -1876,5 +1844,140 @@ mod tests {
             false,
         );
         assert!(selection.aabb.is_none());
+    }
+
+    fn drag_step(
+        drag: &mut FacePlaneDrag,
+        grid: &VoxelGrid,
+        mouse: &mut ButtonInput<MouseButton>,
+        blocked: bool,
+        target: AnchorTarget,
+    ) -> bool {
+        let commit = drag.update(
+            grid,
+            mouse,
+            Vec3::new(0.5, 5.0, 0.5),
+            Vec3::NEG_Y,
+            blocked,
+            target,
+            |_, _, t| t,
+        );
+        mouse.clear();
+        commit
+    }
+
+    fn one_voxel_grid() -> VoxelGrid {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::ZERO, Some(C_R));
+        grid
+    }
+
+    #[test]
+    fn face_plane_drag_press_release_press_commits() {
+        let grid = one_voxel_grid();
+        let mut drag = FacePlaneDrag::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+
+        mouse.press(MouseButton::Left);
+        assert!(!drag_step(
+            &mut drag,
+            &grid,
+            &mut mouse,
+            false,
+            AnchorTarget::Picked
+        ));
+        assert_eq!(drag.phase, DragPhase::Footprint);
+        assert_eq!(drag.corner1, Some(IVec3::ZERO));
+        assert_eq!(drag.corner2, drag.corner1);
+        assert_eq!(drag.normal_sign, 1);
+
+        mouse.release(MouseButton::Left);
+        assert!(!drag_step(
+            &mut drag,
+            &grid,
+            &mut mouse,
+            false,
+            AnchorTarget::Picked
+        ));
+        assert_eq!(drag.phase, DragPhase::Extrude);
+
+        mouse.press(MouseButton::Left);
+        assert!(drag_step(
+            &mut drag,
+            &grid,
+            &mut mouse,
+            false,
+            AnchorTarget::Picked
+        ));
+    }
+
+    #[test]
+    fn face_plane_drag_adjacent_anchors_one_layer_out() {
+        let grid = one_voxel_grid();
+        let mut drag = FacePlaneDrag::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Left);
+        drag_step(&mut drag, &grid, &mut mouse, false, AnchorTarget::Adjacent);
+        assert_eq!(drag.anchor.map(|a| a.target_layer), Some(1));
+        assert_eq!(drag.corner1, Some(IVec3::new(0, 1, 0)));
+    }
+
+    #[test]
+    fn face_plane_drag_blocked_press_neither_starts_nor_commits() {
+        let grid = one_voxel_grid();
+        let mut drag = FacePlaneDrag::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Left);
+        drag_step(&mut drag, &grid, &mut mouse, true, AnchorTarget::Picked);
+        assert!(drag.is_idle());
+
+        mouse.release(MouseButton::Left);
+        mouse.clear();
+        mouse.press(MouseButton::Left);
+        drag_step(&mut drag, &grid, &mut mouse, false, AnchorTarget::Picked);
+        mouse.release(MouseButton::Left);
+        drag_step(&mut drag, &grid, &mut mouse, false, AnchorTarget::Picked);
+        mouse.press(MouseButton::Left);
+        assert!(!drag_step(
+            &mut drag,
+            &grid,
+            &mut mouse,
+            true,
+            AnchorTarget::Picked
+        ));
+        assert_eq!(drag.phase, DragPhase::Extrude);
+    }
+
+    #[test]
+    fn face_plane_drag_footprint_applies_constrain() {
+        let grid = one_voxel_grid();
+        let mut drag = FacePlaneDrag::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Left);
+        drag_step(&mut drag, &grid, &mut mouse, false, AnchorTarget::Picked);
+        let fixed = IVec3::new(4, 0, 4);
+        drag.update(
+            &grid,
+            &mouse,
+            Vec3::new(0.5, 5.0, 0.5),
+            Vec3::NEG_Y,
+            false,
+            AnchorTarget::Picked,
+            |_, _, _| fixed,
+        );
+        assert_eq!(drag.corner2, Some(fixed));
+    }
+
+    #[test]
+    fn face_plane_drag_reset_returns_to_idle() {
+        let mut drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
+            corner1: Some(IVec3::ONE),
+            ..default()
+        };
+        drag.reset();
+        assert!(drag.is_idle());
+        assert_eq!(drag.corner1, None);
+        assert_eq!(drag.thickness, 1);
     }
 }

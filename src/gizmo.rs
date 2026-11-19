@@ -34,6 +34,14 @@ pub struct GizmoFace {
 #[derive(Resource, Default)]
 pub struct GizmoRect(pub Option<bevy::math::Rect>);
 
+impl GizmoRect {
+    pub fn contains_cursor(&self, windows: &Query<&Window, With<PrimaryWindow>>) -> bool {
+        self.0
+            .zip(windows.single().ok().and_then(Window::cursor_position))
+            .is_some_and(|(rect, c)| rect.contains(c))
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct GizmoDrag {
     pub active: bool,

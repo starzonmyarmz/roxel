@@ -7,6 +7,7 @@
 // 4-byte model tag ("RGB ", "GRAY"/"Gray", "CMYK", "LAB "), N×f32 BE values,
 // then u16 BE color type (0=global, 1=spot, 2=normal).
 
+use super::reader::BeReader;
 use anyhow::{Result, bail};
 use std::fs;
 use std::path::Path;
@@ -35,48 +36,47 @@ pub fn export(path: &Path, name: &str, colors: &[[u8; 4]]) -> Result<()> {
 
 pub fn import(path: &Path) -> Result<(String, Vec<[u8; 4]>)> {
     let data = fs::read(path)?;
-    let mut r = Reader::new(&data);
-    if r.read_bytes(4)? != SIG {
+    let mut r = BeReader::new(&data);
+    if r.bytes(4)? != SIG {
         bail!("not an ASE file (bad signature)");
     }
-    let _major = r.read_u16()?;
-    let _minor = r.read_u16()?;
-    let block_count = r.read_u32()?;
+    let _major = r.u16()?;
+    let _minor = r.u16()?;
+    let block_count = r.u32()?;
 
     let mut group_name: Option<String> = None;
     let mut colors: Vec<[u8; 4]> = Vec::new();
 
     for _ in 0..block_count {
-        let block_type = r.read_u16()?;
-        let block_len = r.read_u32()? as usize;
-        let block_end = r.pos + block_len;
+        let block_type = r.u16()?;
+        let block_len = r.u32()? as usize;
+        let mut b = BeReader::new(r.bytes(block_len)?);
 
         match block_type {
             0xC001 => {
-                let name = r.read_utf16be_name()?;
+                let name = read_utf16be_name(&mut b)?;
                 if group_name.is_none() && !name.is_empty() {
                     group_name = Some(name);
                 }
             }
             0x0001 => {
-                let _swatch_name = r.read_utf16be_name()?;
-                let model: [u8; 4] = r.read_bytes(4)?.try_into().unwrap();
-                let rgb = match &model {
+                let _swatch_name = read_utf16be_name(&mut b)?;
+                let rgb = match b.bytes(4)? {
                     b"RGB " => {
-                        let rf = r.read_f32()?;
-                        let gf = r.read_f32()?;
-                        let bf = r.read_f32()?;
+                        let rf = b.f32()?;
+                        let gf = b.f32()?;
+                        let bf = b.f32()?;
                         [to_u8(rf), to_u8(gf), to_u8(bf), 255]
                     }
                     b"GRAY" | b"Gray" => {
-                        let v = to_u8(r.read_f32()?);
+                        let v = to_u8(b.f32()?);
                         [v, v, v, 255]
                     }
                     b"CMYK" => {
-                        let c = r.read_f32()?.clamp(0.0, 1.0);
-                        let m = r.read_f32()?.clamp(0.0, 1.0);
-                        let y = r.read_f32()?.clamp(0.0, 1.0);
-                        let k = r.read_f32()?.clamp(0.0, 1.0);
+                        let c = b.f32()?.clamp(0.0, 1.0);
+                        let m = b.f32()?.clamp(0.0, 1.0);
+                        let y = b.f32()?.clamp(0.0, 1.0);
+                        let k = b.f32()?.clamp(0.0, 1.0);
                         [
                             to_u8((1.0 - c) * (1.0 - k)),
                             to_u8((1.0 - m) * (1.0 - k)),
@@ -84,17 +84,12 @@ pub fn import(path: &Path) -> Result<(String, Vec<[u8; 4]>)> {
                             255,
                         ]
                     }
-                    _ => {
-                        // Unsupported model (e.g. LAB) — skip the rest of the block.
-                        r.pos = block_end;
-                        continue;
-                    }
+                    _ => continue,
                 };
                 colors.push(rgb);
             }
             _ => {}
         }
-        r.pos = block_end;
     }
 
     let name = group_name.unwrap_or_else(|| {
@@ -151,44 +146,17 @@ fn write_color_rgb(buf: &mut Vec<u8>, name: &str, rgb: [u8; 3]) {
     buf.extend_from_slice(&block);
 }
 
-struct Reader<'a> {
-    data: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
+fn read_utf16be_name(r: &mut BeReader) -> Result<String> {
+    let len = r.u16()? as usize;
+    let mut units: Vec<u16> = r
+        .bytes(len * 2)?
+        .chunks_exact(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .collect();
+    if units.last() == Some(&0) {
+        units.pop();
     }
-    fn read_bytes(&mut self, n: usize) -> Result<&'a [u8]> {
-        if self.pos + n > self.data.len() {
-            bail!("unexpected end of ASE data");
-        }
-        let s = &self.data[self.pos..self.pos + n];
-        self.pos += n;
-        Ok(s)
-    }
-    fn read_u16(&mut self) -> Result<u16> {
-        Ok(u16::from_be_bytes(self.read_bytes(2)?.try_into().unwrap()))
-    }
-    fn read_u32(&mut self) -> Result<u32> {
-        Ok(u32::from_be_bytes(self.read_bytes(4)?.try_into().unwrap()))
-    }
-    fn read_f32(&mut self) -> Result<f32> {
-        Ok(f32::from_be_bytes(self.read_bytes(4)?.try_into().unwrap()))
-    }
-    fn read_utf16be_name(&mut self) -> Result<String> {
-        let len = self.read_u16()? as usize;
-        let bytes = self.read_bytes(len * 2)?;
-        let mut units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
-            .collect();
-        if units.last() == Some(&0) {
-            units.pop();
-        }
-        Ok(String::from_utf16_lossy(&units))
-    }
+    Ok(String::from_utf16_lossy(&units))
 }
 
 #[cfg(test)]
@@ -257,6 +225,49 @@ mod tests {
         // file stem includes the test prefix, so just check it's not empty and matches stem
         let stem = path.file_stem().unwrap().to_str().unwrap();
         assert_eq!(name, stem);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn ase_with_blocks(blocks: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        let mut buf = SIG.to_vec();
+        buf.extend_from_slice(&[0, 1, 0, 0]);
+        buf.extend_from_slice(&(blocks.len() as u32).to_be_bytes());
+        for (kind, payload) in blocks {
+            buf.extend_from_slice(&kind.to_be_bytes());
+            buf.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            buf.extend_from_slice(payload);
+        }
+        buf
+    }
+
+    #[test]
+    fn import_skips_unsupported_color_models() {
+        let mut lab = 1u16.to_be_bytes().to_vec();
+        lab.extend_from_slice(&[0, 0]);
+        lab.extend_from_slice(b"LAB ");
+        for v in [50.0f32, 0.0, 0.0] {
+            lab.extend_from_slice(&v.to_be_bytes());
+        }
+        lab.extend_from_slice(&2u16.to_be_bytes());
+        let mut rgb = Vec::new();
+        write_color_rgb(&mut rgb, "red", [255, 0, 0]);
+        let rgb_payload = rgb[6..].to_vec();
+
+        let path = tmp_path("lab");
+        std::fs::write(&path, ase_with_blocks(&[(1, lab), (1, rgb_payload)])).expect("write");
+        let (_, colors) = import(&path).expect("import");
+        assert_eq!(colors, vec![[255, 0, 0, 255]]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_rejects_block_running_past_end_of_file() {
+        let mut bytes = ase_with_blocks(&[(0xC002, Vec::new())]);
+        let len_at = bytes.len() - 4;
+        bytes[len_at..].copy_from_slice(&100u32.to_be_bytes());
+        let path = tmp_path("truncated");
+        std::fs::write(&path, bytes).expect("write");
+        assert!(import(&path).is_err());
         let _ = std::fs::remove_file(&path);
     }
 }

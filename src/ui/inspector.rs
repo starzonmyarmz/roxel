@@ -577,8 +577,8 @@ fn apply_palette_edit(edit: PaletteEdit, insp: &mut Inspector, active_idx: usize
 
 /// Live bounds and voxel count while a shape is being drawn.
 fn shape_section(ui: &mut egui::Ui, theme: &Theme, insp: &Inspector) {
-    let state = insp.shape_state;
-    if insp.tool.current != Tool::Shape || state.phase.is_none() {
+    let state = &insp.shape_state.drag;
+    if insp.tool.current != Tool::Shape || state.is_idle() {
         return;
     }
     let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {

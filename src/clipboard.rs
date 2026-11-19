@@ -41,16 +41,7 @@ impl Clipboard {
 /// present so connected-region selections only copy their voxels.
 pub fn copy_selection(grid: &VoxelGrid, selection: &Selection) -> Option<Stamp> {
     let aabb = selection.aabb?;
-    let cells: Vec<(IVec3, Color8)> = match &selection.cells {
-        Some(mask) => mask
-            .iter()
-            .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
-            .collect(),
-        None => aabb
-            .iter_cells()
-            .filter_map(|p| grid.get(p).map(|c| (p, c)))
-            .collect(),
-    };
+    let cells: Vec<(IVec3, Color8)> = selection.occupied(grid).collect();
     if cells.is_empty() {
         return None;
     }
