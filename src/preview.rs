@@ -154,7 +154,7 @@ pub fn brush_preview_system(
 
     let show_brush_ghost = match world.tool.current {
         Tool::Brush => true,
-        Tool::Shape => gates.shape.phase.is_none(),
+        Tool::Shape => gates.shape.drag.is_idle(),
         _ => false,
     };
     if show_brush_ghost {

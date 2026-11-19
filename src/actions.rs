@@ -505,7 +505,7 @@ impl ActionStateParams<'_> {
             has_redo: !self.history.redo.is_empty(),
             stroke_open: self.history.is_open(),
             has_selection: self.selection.aabb.is_some(),
-            selection_idle: self.select_state.phase == crate::select::SelectPhase::Idle,
+            selection_idle: self.select_state.drag.is_idle(),
             has_clipboard: self.clipboard.has_stamp(),
             has_voxels: self.grid.count() > 0,
             dialog_busy: self.pending.is_active(),

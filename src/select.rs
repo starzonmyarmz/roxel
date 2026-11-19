@@ -1,6 +1,6 @@
 use crate::GridResource;
 use crate::actions::Mods;
-use crate::tools::{StrokeAnchor, Tool, ToolState, note_used};
+use crate::tools::{FacePlaneDrag, Tool, ToolState, note_used};
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
@@ -157,39 +157,15 @@ fn aabb_of_cells_iter(mut iter: impl Iterator<Item = IVec3>) -> Option<Selection
     Some(SelectionAabb { min, max })
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SelectPhase {
-    #[default]
-    Idle,
-    Footprint,
-    Extrude,
-}
-
 #[derive(Resource, Default)]
 pub struct SelectState {
-    pub phase: SelectPhase,
-    pub anchor: Option<StrokeAnchor>,
-    pub corner1: Option<IVec3>,
-    pub corner2: Option<IVec3>,
-    pub normal_sign: i32,
-    pub thickness: i32,
+    pub drag: FacePlaneDrag,
     /// Wall-clock seconds at the previous LMB-press while the Select tool
     /// was active. Used together with `last_press_cell` to detect a
-    /// double-click. Not cleared by `reset()` — `reset()` runs between the
+    /// double-click. Not cleared by `drag.reset()`, which runs between the
     /// first and second click of a double-click sequence.
     pub last_press_secs: f64,
     pub last_press_cell: Option<IVec3>,
-}
-
-impl SelectState {
-    pub fn reset(&mut self) {
-        self.phase = SelectPhase::Idle;
-        self.anchor = None;
-        self.corner1 = None;
-        self.corner2 = None;
-        self.normal_sign = 0;
-        self.thickness = 1;
-    }
 }
 
 /// Clear every non-empty cell in the active selection. When the selection has
@@ -404,8 +380,8 @@ pub fn aabb_of_cells(cells: &[IVec3]) -> Option<SelectionAabb> {
 
 pub fn displayed_aabb(selection: &Selection, state: &SelectState) -> Option<SelectionAabb> {
     selection.aabb.or_else(|| {
-        if state.phase != SelectPhase::Idle {
-            in_progress_aabb(state)
+        if !state.drag.is_idle() {
+            in_progress_aabb(&state.drag)
         } else {
             None
         }
@@ -441,18 +417,18 @@ pub fn selection_voxel_count_system(
     count.0 = displayed_voxel_count(&selection, &state, &grid);
 }
 
-/// Build an in-progress AABB from the current `SelectState` corners + signed
-/// extrude offset along the anchor axis. Returns None during `Idle`.
+/// Build an in-progress AABB from the drag's corners + signed extrude offset
+/// along the anchor axis. Returns None during `Idle`.
 ///
-/// `state.thickness` here is the signed cell offset from `target_layer` in the
+/// `drag.thickness` here is the signed cell offset from `target_layer` in the
 /// normal direction: `0` is a single-cell-deep AABB on the anchor plane, `+N`
 /// extends `N` cells in the face-normal direction, `-N` extends `N` cells back
 /// into the surface.
-pub fn in_progress_aabb(state: &SelectState) -> Option<SelectionAabb> {
-    let (Some(anchor), Some(c1), Some(c2)) = (state.anchor, state.corner1, state.corner2) else {
+pub fn in_progress_aabb(drag: &FacePlaneDrag) -> Option<SelectionAabb> {
+    let (Some(anchor), Some(c1), Some(c2)) = (drag.anchor, drag.corner1, drag.corner2) else {
         return None;
     };
-    let depth_end = anchor.target_layer + state.thickness * state.normal_sign;
+    let depth_end = anchor.target_layer + drag.thickness * drag.normal_sign;
     let mut a = c1.to_array();
     let mut b = c2.to_array();
     a[anchor.axis] = anchor.target_layer;
@@ -579,8 +555,8 @@ pub fn selection_render_system(
     }
     // In-progress drag takes priority over a committed selection so the user
     // sees the new region they're drawing.
-    let active_aabb = if state.phase != SelectPhase::Idle {
-        in_progress_aabb(&state).or(selection.aabb)
+    let active_aabb = if !state.drag.is_idle() {
+        in_progress_aabb(&state.drag).or(selection.aabb)
     } else {
         selection.aabb
     };
@@ -592,7 +568,7 @@ pub fn selection_render_system(
 
     // Per-cell mask wins: trace the silhouette of the masked region so the
     // marching ants follow one merged shape instead of every voxel's cube.
-    if state.phase == SelectPhase::Idle && selection.cells.is_some() {
+    if state.drag.is_idle() && selection.cells.is_some() {
         for &(axis, anchor) in silhouette.iter() {
             let a = Vec3::new(anchor.x as f32, anchor.y as f32, anchor.z as f32);
             let mut b = a;
@@ -714,6 +690,7 @@ pub fn move_selection_keys_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::{DragPhase, StrokeAnchor};
 
     fn fill_grid(grid: &mut VoxelGrid, color: Color8, points: &[IVec3]) {
         for p in points {
@@ -1234,16 +1211,18 @@ mod tests {
             g.set(IVec3::new(x, 5, 0), Some([1, 1, 1, 255]));
         }
         let state = SelectState {
-            phase: SelectPhase::Extrude,
-            anchor: Some(StrokeAnchor {
-                axis: 1,
-                plane_world: 5.0,
-                target_layer: 5,
-            }),
-            corner1: Some(IVec3::new(0, 5, 0)),
-            corner2: Some(IVec3::new(2, 5, 0)),
-            normal_sign: 1,
-            thickness: 0,
+            drag: FacePlaneDrag {
+                phase: DragPhase::Extrude,
+                anchor: Some(StrokeAnchor {
+                    axis: 1,
+                    plane_world: 5.0,
+                    target_layer: 5,
+                }),
+                corner1: Some(IVec3::new(0, 5, 0)),
+                corner2: Some(IVec3::new(2, 5, 0)),
+                normal_sign: 1,
+                thickness: 0,
+            },
             ..Default::default()
         };
         let mut sel = Selection::default();
@@ -1257,8 +1236,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_extrudes_positive_offset_in_normal_direction() {
         // Face-up pick: normal_sign = +1, target_layer = 5.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1268,9 +1247,8 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 3,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 5);
         assert_eq!(aabb.max.y, 8);
     }
@@ -1278,8 +1256,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_extrudes_negative_offset_into_surface() {
         // Same pick but user drags the opposite direction.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1289,17 +1267,16 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: -3,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 2);
         assert_eq!(aabb.max.y, 5);
     }
 
     #[test]
     fn in_progress_aabb_zero_offset_is_single_cell_thick() {
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1309,9 +1286,8 @@ mod tests {
             corner2: Some(IVec3::new(2, 5, 2)),
             normal_sign: 1,
             thickness: 0,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 5);
         assert_eq!(aabb.max.y, 5);
     }
@@ -1358,8 +1334,8 @@ mod tests {
         // After select_input's Idle branch on a top-face pick of voxel (3,4,5):
         // target_layer == picked cell.y, corner1 == corner2 == picked cell,
         // thickness=0. AABB must equal the picked voxel exactly.
-        let state = SelectState {
-            phase: SelectPhase::Footprint,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Footprint,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1369,9 +1345,8 @@ mod tests {
             corner2: Some(IVec3::new(3, 4, 5)),
             normal_sign: 1,
             thickness: 0,
-            ..Default::default()
         };
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min, IVec3::new(3, 4, 5));
         assert_eq!(aabb.max, IVec3::new(3, 4, 5));
     }
@@ -1550,8 +1525,8 @@ mod tests {
     #[test]
     fn in_progress_aabb_respects_negative_normal_sign() {
         // Pick on bottom face: normal_sign = -1, target_layer below the cube.
-        let state = SelectState {
-            phase: SelectPhase::Extrude,
+        let drag = FacePlaneDrag {
+            phase: DragPhase::Extrude,
             anchor: Some(StrokeAnchor {
                 axis: 1,
                 plane_world: 5.0,
@@ -1561,10 +1536,9 @@ mod tests {
             corner2: Some(IVec3::new(2, 4, 2)),
             normal_sign: -1,
             thickness: 3,
-            ..Default::default()
         };
         // Drag in normal direction (downward) extends min below target_layer.
-        let aabb = in_progress_aabb(&state).unwrap();
+        let aabb = in_progress_aabb(&drag).unwrap();
         assert_eq!(aabb.min.y, 1);
         assert_eq!(aabb.max.y, 4);
     }
