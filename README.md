@@ -9,9 +9,11 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 ## Features
 
 - Brush, erase, recolor, eyedrop, shape, select, and move tools on an open-world 3D voxel grid — paint anywhere on X / Z and as high as memory allows; the floor at y = 0 is the only hard boundary
-- Shape tool: rectangle, ellipse, line — 2D on the active build plane or extruded into a 3D box / cylinder / line; long-press the shape rail button for a primitive picker, hold Shift while dragging the footprint to lock aspect (square / circle / 45° line)
-- Select tool: drag a 3D AABB on a face plane, then bulk delete / recolor inside it
+- Shape tool: rectangle, ellipse, line, sphere — 2D on the active build plane or extruded into a 3D box / cylinder / line / ellipsoid; press S again to cycle or long-press the shape button for a picker, hold Shift while dragging the footprint to lock aspect (square / circle / 45° line)
+- Paint tool: recolor voxels by click or drag, or double-click to flood-fill a connected same-color region
+- Select tool: drag a 3D AABB on a face plane or double-click a same-color region, then bulk delete / recolor / copy / cut / paste
 - Move tool: drag a selected voxel along the picked face plane or arrow-key nudge; click a bare voxel with no selection to move just that voxel
+- Double or halve the scene's voxel density
 - Shift+click line draw between the last placed voxel and the cursor
 - Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes with add/new/duplicate/rename/delete and drag-to-reorder
 - Orbit / pan / zoom camera with isometric default angle

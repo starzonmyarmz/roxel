@@ -13,8 +13,8 @@ Roxel reads and writes the common voxel formats (MagicaVoxel, Qubicle, Goxel) an
 ## Highlights
 
 - Brush, erase, recolor, eyedrop, shape, select, and move tools
-- Shape tool with 2D and extruded 3D primitives
-- 3D box selection for bulk delete / recolor / move
+- Shape tool with 2D and extruded 3D primitives, including spheres
+- 3D box or same-color selection for bulk delete / recolor / move / copy and paste
 - Built-in and user-defined color palettes
 - Orbit / pan / zoom camera with an isometric default angle
 - `.rox` project files plus import / export across many formats
