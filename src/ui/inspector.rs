@@ -1,16 +1,14 @@
 //! The left inspector side panel, split out of `ui_system` (`ui.rs`).
 
+use crate::actions::{Action, ActionQueue, ActionState, Origin};
 use crate::select::{SelectState, Selection};
 use crate::theme::{Preferences, Theme};
 use crate::tools::{
     CurrentColor, ExtraColors, RecentColors, ShapeOptions, ShapeState, Tool, ToolState,
     apply_swatch_click,
 };
-use crate::ui::dialogs::{self, CurrentProjectPath, DialogResult, DocStatus, PendingDialog};
-use crate::ui::palette::{
-    self, DeleteConfirm, Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes,
-    WorkingPalette,
-};
+use crate::ui::dialogs::{CurrentProjectPath, DocStatus};
+use crate::ui::palette::{self, PaletteChoice, PaletteRenameState, Palettes, WorkingPalette};
 use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
 use crate::ui::{ZoomReadout, color_picker, icons, widgets};
 use bevy_egui::egui;
@@ -36,6 +34,41 @@ fn slot_min_lerp(origin: egui::Pos2, cols: usize, step: egui::Vec2, slot_f: f32)
     a + (b - a) * t
 }
 
+/// Items of the palette `…` menu; `None` is a separator.
+const PALETTE_MENU: &[Option<Action>] = &[
+    Some(Action::SwitchPalette),
+    None,
+    Some(Action::NewPalette),
+    Some(Action::DuplicatePalette),
+    Some(Action::RenamePalette),
+    Some(Action::DeletePalette),
+    None,
+    Some(Action::ExportAse),
+    Some(Action::ImportAse),
+];
+
+/// A palette `…` menu item with its label and enabled state resolved.
+pub struct PaletteMenuRow {
+    action: Action,
+    label: std::borrow::Cow<'static, str>,
+    enabled: bool,
+}
+
+/// Resolve [`PALETTE_MENU`] against `s` before the inspector takes its
+/// mutable borrows of the palettes.
+pub fn palette_menu_rows(s: &ActionState) -> Vec<Option<PaletteMenuRow>> {
+    PALETTE_MENU
+        .iter()
+        .map(|item| {
+            item.map(|action| PaletteMenuRow {
+                action,
+                label: action.menu_label(s),
+                enabled: action.enabled(s),
+            })
+        })
+        .collect()
+}
+
 /// The left inspector side panel: Status / Color / Palette / Shape /
 /// Selection sections. Split out of `ui_system`; returns the panel response
 /// (`None` when the UI is hidden) so the caller can anchor onboarding and fix
@@ -59,9 +92,8 @@ pub fn inspector_panel(
     palette_choice: &mut PaletteChoice,
     palette_rename: &mut PaletteRenameState,
     working: &mut WorkingPalette,
-    delete: &mut DeleteConfirm,
-    switcher: &mut PaletteSwitcher,
-    pending: &mut PendingDialog,
+    palette_menu: &[Option<PaletteMenuRow>],
+    actions: &mut ActionQueue,
     tool: &ToolState,
     shape_options: &ShapeOptions,
     shape_state: &ShapeState,
@@ -242,7 +274,6 @@ pub fn inspector_panel(
                                     let active_idx =
                                         palette_choice.0.min(palettes.0.len().saturating_sub(1));
                                     palette_choice.0 = active_idx;
-                                    let active_is_builtin = palettes.0[active_idx].builtin;
 
                                     // Buffer so the rename field doesn't overflow and grow the panel.
                                     let row_w = (ui.available_width() - 2.0).max(80.0);
@@ -263,124 +294,16 @@ pub fn inspector_panel(
                                                 ui.set_min_width(width::TOP_BAR_MENU);
                                                 ui.spacing_mut().button_padding =
                                                     crate::ui::tokens::pad::MENU;
-                                                if ui.button("Switch palette…").clicked() {
-                                                    switcher.open_fresh();
-                                                }
-                                                ui.separator();
-                                                if ui.button("New palette").clicked() {
-                                                    working.clear();
-                                                    let name =
-                                                        palette::next_palette_name(&palettes.0);
-                                                    palettes.0.push(Palette {
-                                                        name,
-                                                        colors: Vec::new(),
-                                                        builtin: false,
-                                                    });
-                                                    let i = palettes.0.len() - 1;
-                                                    palette_choice.0 = i;
-                                                    palette_rename.editing = Some(i);
-                                                    palette_rename.buf = palettes.0[i].name.clone();
-                                                    io::palettes::save(&palettes.0);
-                                                }
-                                                let save_as_label = if active_is_builtin {
-                                                    "Save as new palette"
-                                                } else {
-                                                    "Duplicate"
-                                                };
-                                                if ui.button(save_as_label).clicked() {
-                                                    let i = palette::save_as_new(
-                                                        palettes,
-                                                        palette_choice,
-                                                        working,
-                                                    );
-                                                    palette_rename.editing = Some(i);
-                                                    palette_rename.buf = palettes.0[i].name.clone();
-                                                    io::palettes::save(&palettes.0);
-                                                }
-                                                if !active_is_builtin {
-                                                    if ui.button("Rename…").clicked() {
-                                                        palette_rename.editing = Some(active_idx);
-                                                        palette_rename.buf =
-                                                            palettes.0[active_idx].name.clone();
-                                                    }
-                                                    let has_user = palettes
-                                                        .0
-                                                        .iter()
-                                                        .filter(|p| !p.builtin)
-                                                        .count()
-                                                        > 0;
-                                                    if ui
-                                                        .add_enabled(
-                                                            has_user,
-                                                            egui::Button::new("Delete"),
-                                                        )
-                                                        .clicked()
+                                                for row in palette_menu {
+                                                    let Some(row) = row else {
+                                                        ui.separator();
+                                                        continue;
+                                                    };
+                                                    let button = egui::Button::new(&*row.label);
+                                                    if ui.add_enabled(row.enabled, button).clicked()
                                                     {
-                                                        delete.request(palettes, active_idx);
+                                                        actions.push(row.action, Origin::Ui);
                                                     }
-                                                }
-                                                ui.separator();
-                                                let dialog_busy = pending.is_active();
-                                                let safe_idx = palette_choice
-                                                    .0
-                                                    .min(palettes.0.len().saturating_sub(1));
-                                                let export_name = palettes.0[safe_idx].name.clone();
-                                                let export_colors = palette::display_colors(
-                                                    palettes, working, safe_idx,
-                                                )
-                                                .to_vec();
-                                                let default_filename = format!(
-                                                    "{}.ase",
-                                                    palette::sanitize_filename(&export_name)
-                                                );
-                                                if ui
-                                                    .add_enabled(
-                                                        !dialog_busy,
-                                                        egui::Button::new("Export .ase…"),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    let start_dir = prefs.last_dir.clone();
-                                                    pending.spawn(async move {
-                                                        dialogs::new_dialog(&start_dir)
-                                                            .add_filter(
-                                                                "Adobe Swatch Exchange",
-                                                                &["ase"],
-                                                            )
-                                                            .set_file_name(&default_filename)
-                                                            .save_file()
-                                                            .await
-                                                            .map(|f| {
-                                                                DialogResult::ExportAse(
-                                                                    f.path().to_path_buf(),
-                                                                    export_name,
-                                                                    export_colors,
-                                                                )
-                                                            })
-                                                    });
-                                                }
-                                                if ui
-                                                    .add_enabled(
-                                                        !dialog_busy,
-                                                        egui::Button::new("Import .ase…"),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    let start_dir = prefs.last_dir.clone();
-                                                    pending.spawn(async move {
-                                                        dialogs::new_dialog(&start_dir)
-                                                            .add_filter(
-                                                                "Adobe Swatch Exchange",
-                                                                &["ase"],
-                                                            )
-                                                            .pick_file()
-                                                            .await
-                                                            .map(|f| {
-                                                                DialogResult::ImportAse(
-                                                                    f.path().to_path_buf(),
-                                                                )
-                                                            })
-                                                    });
                                                 }
                                             });
                                     });
@@ -669,12 +592,7 @@ pub fn inspector_panel(
                                     }
 
                                     if add_clicked {
-                                        let (colors, persist) =
-                                            palette::edit_colors(palettes, working, active_idx);
-                                        colors.push(color.0);
-                                        if persist {
-                                            io::palettes::save(&palettes.0);
-                                        }
+                                        actions.push(Action::AddColorToPalette, Origin::Ui);
                                     }
                                     if let Some(i) = remove_idx {
                                         let (colors, persist) =

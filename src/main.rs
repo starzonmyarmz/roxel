@@ -164,6 +164,7 @@ fn main() {
         .init_resource::<DiscardConfirm>()
         .init_resource::<crate::ui::DeleteConfirm>()
         .init_resource::<PaletteSwitcher>()
+        .init_resource::<crate::ui::PaletteRenameState>()
         .insert_resource(palettes)
         .init_resource::<crate::shot::ShotRequest>()
         .init_resource::<crate::shot::ShotSession>()

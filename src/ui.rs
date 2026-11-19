@@ -22,8 +22,9 @@ pub use dialogs::{
 };
 pub use dialogs::{spawn_export, spawn_export_ase, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{
-    DeleteConfirm, DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes,
-    WorkingPalette, display_colors, edit_colors, next_palette_name, request_select, save_as_new,
+    DeleteConfirm, DiscardConfirm, Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher,
+    Palettes, WorkingPalette, display_colors, edit_colors, next_palette_name, request_select,
+    save_as_new,
 };
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
@@ -110,7 +111,7 @@ pub struct UiCore<'w> {
 #[derive(SystemParam)]
 pub struct UiBundles<'w, 's> {
     pub colors: ColorParams<'w>,
-    pub palette_params: PaletteParams<'w, 's>,
+    pub palette_params: PaletteParams<'w>,
     pub prefs_params: PrefsParams<'w>,
     pub input: UiInput<'w>,
     pub zoom: ZoomReadout<'w, 's>,
@@ -251,6 +252,7 @@ pub fn ui_system(
         onboarding_anchors.tool_rail = Some(island_resp.rect);
     }
 
+    let palette_menu = inspector::palette_menu_rows(&action_state!());
     let inspector_resp = inspector::inspector_panel(
         ctx,
         ui_visible.0,
@@ -269,9 +271,8 @@ pub fn ui_system(
         &mut palette_choice,
         &mut palette_rename,
         &mut working,
-        &mut delete,
-        &mut switcher,
-        &mut pending,
+        &palette_menu,
+        &mut actions,
         &tool,
         &shape_options,
         &shape_state,

@@ -310,17 +310,17 @@ pub fn delete_palette(
 }
 
 /// Transient UI state for inline rename of the active palette.
-#[derive(Default)]
+#[derive(Resource, Default)]
 pub struct PaletteRenameState {
     pub editing: Option<usize>,
     pub buf: String,
 }
 
 #[derive(SystemParam)]
-pub struct PaletteParams<'w, 's> {
+pub struct PaletteParams<'w> {
     pub palettes: ResMut<'w, Palettes>,
     pub choice: ResMut<'w, PaletteChoice>,
-    pub rename: Local<'s, PaletteRenameState>,
+    pub rename: ResMut<'w, PaletteRenameState>,
     pub working: ResMut<'w, WorkingPalette>,
     pub discard: ResMut<'w, DiscardConfirm>,
     pub delete: ResMut<'w, DeleteConfirm>,

@@ -17,8 +17,8 @@ use crate::theme::{Preferences, PreferencesWindow, ThemePref, save_preferences};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState};
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DeleteConfirm, DialogResult, DiscardConfirm, GuardedAction,
-    Palette, PaletteChoice, Palettes, PendingDialog, RecentFiles, Toasts, UnsavedGuard,
-    WorkingPalette,
+    Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes, PendingDialog,
+    RecentFiles, Toasts, UnsavedGuard, WorkingPalette,
 };
 use roxel::color_space::ColorSpace;
 use roxel::grid::Color8;
@@ -397,10 +397,12 @@ pub enum Action {
     ToggleOriginAxes,
     SetColorSpace(ColorSpace),
 
+    SwitchPalette,
     SelectPalette(usize),
     AddColorToPalette,
     NewPalette,
     DuplicatePalette,
+    RenamePalette,
     DeletePalette,
     ImportAse,
     ExportAse,
@@ -579,9 +581,11 @@ impl Action {
         Action::SetColorSpace(ColorSpace::Hsl),
         Action::SetColorSpace(ColorSpace::Hsb),
         Action::SetColorSpace(ColorSpace::Oklch),
+        Action::SwitchPalette,
         Action::AddColorToPalette,
         Action::NewPalette,
         Action::DuplicatePalette,
+        Action::RenamePalette,
         Action::DeletePalette,
         Action::ImportAse,
         Action::ExportAse,
@@ -899,6 +903,13 @@ impl Action {
                 )
             }
 
+            Action::SwitchPalette => spec(
+                "Switch palette…",
+                "Switch palette…",
+                C::Palette,
+                "choose change browse",
+                None,
+            ),
             Action::SelectPalette(_) => spec(
                 "Switch to palette",
                 "Switch to palette",
@@ -924,9 +935,12 @@ impl Action {
                 "Duplicate palette",
                 "Duplicate",
                 C::Palette,
-                "copy clone",
+                "copy clone save as new",
                 None,
             ),
+            Action::RenamePalette => {
+                spec("Rename palette…", "Rename…", C::Palette, "name title", None)
+            }
             Action::DeletePalette => {
                 spec("Delete palette", "Delete", C::Palette, "remove trash", None)
             }
@@ -1014,7 +1028,16 @@ impl Action {
             Action::ToggleFlyby if s.flyby_active => "Stop flyby camera".into(),
             Action::ToggleFloorGrid if s.prefs.show_floor_grid => "Hide floor grid".into(),
             Action::ToggleOriginAxes if s.prefs.show_origin_axes => "Hide origin axes".into(),
+            Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
             _ => self.spec().label.into(),
+        }
+    }
+
+    /// Label for `s` inside a menu.
+    pub fn menu_label(self, s: &ActionState) -> Cow<'static, str> {
+        match self {
+            Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
+            _ => self.spec().menu_label.into(),
         }
     }
 
@@ -1069,14 +1092,15 @@ impl Action {
             | Action::ToggleFloorGrid
             | Action::ToggleOriginAxes
             | Action::NewPalette
+            | Action::SwitchPalette
             | Action::Preferences
             | Action::Changelog => true,
             Action::SelectPalette(i) => i < s.palettes.len() && i != s.palette_choice,
             Action::AddColorToPalette => {
-                !s.active_is_builtin() && !s.active_colors.contains(&s.current_color)
+                s.active_palette().is_some() && !s.active_colors.contains(&s.current_color)
             }
             Action::DuplicatePalette => s.active_palette().is_some(),
-            Action::DeletePalette => !s.active_is_builtin(),
+            Action::RenamePalette | Action::DeletePalette => !s.active_is_builtin(),
             Action::ExportAse => dialog_ok && s.active_palette().is_some(),
             Action::SetTheme(t) => s.prefs.theme != t,
         }
@@ -1265,6 +1289,8 @@ pub struct PaletteOpParams<'w> {
     working: ResMut<'w, WorkingPalette>,
     discard: ResMut<'w, DiscardConfirm>,
     delete: ResMut<'w, DeleteConfirm>,
+    rename: ResMut<'w, PaletteRenameState>,
+    switcher: ResMut<'w, PaletteSwitcher>,
 }
 
 #[derive(SystemParam)]
@@ -1473,6 +1499,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             }
         }
 
+        Action::SwitchPalette => pal.switcher.open_fresh(),
         Action::SelectPalette(i) => {
             if i < pal.palettes.0.len() {
                 crate::ui::request_select(i, &mut pal.choice, &mut pal.working, &mut pal.discard);
@@ -1497,13 +1524,22 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
                 colors: Vec::new(),
                 builtin: false,
             });
-            pal.choice.0 = pal.palettes.0.len() - 1;
+            let i = pal.palettes.0.len() - 1;
+            pal.choice.0 = i;
+            start_rename(pal, i);
             roxel::io::palettes::save(&pal.palettes.0);
         }
         Action::DuplicatePalette => {
             pal.choice.0 = active_index(pal);
-            crate::ui::save_as_new(&mut pal.palettes, &mut pal.choice, &mut pal.working);
+            let i = crate::ui::save_as_new(&mut pal.palettes, &mut pal.choice, &mut pal.working);
+            start_rename(pal, i);
             roxel::io::palettes::save(&pal.palettes.0);
+        }
+        Action::RenamePalette => {
+            let i = active_index(pal);
+            if pal.palettes.0.get(i).is_some_and(|p| !p.builtin) {
+                start_rename(pal, i);
+            }
         }
         Action::DeletePalette => pal.delete.request(&pal.palettes, pal.choice.0),
         Action::ImportAse => crate::ui::spawn_import(
@@ -1533,6 +1569,11 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
         Action::CheckForUpdates => crate::updater::start_check(&mut app.updater, true),
         Action::About => app.about.0 = true,
     }
+}
+
+fn start_rename(pal: &mut PaletteOpParams, i: usize) {
+    pal.rename.editing = Some(i);
+    pal.rename.buf = pal.palettes.0[i].name.clone();
 }
 
 fn active_index(pal: &PaletteOpParams) -> usize {
@@ -1663,6 +1704,26 @@ mod tests {
         assert_eq!(Action::ToggleFlyby.label(&s), "Start flyby camera");
         s.flyby_active = true;
         assert_eq!(Action::ToggleFlyby.label(&s), "Stop flyby camera");
+    }
+
+    #[test]
+    fn palette_actions_follow_the_active_palette() {
+        let palettes = vec![pal("Built", true), pal("Mine", false)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        assert!(!Action::RenamePalette.enabled(&s));
+        assert!(!Action::DeletePalette.enabled(&s));
+        assert_eq!(
+            Action::DuplicatePalette.menu_label(&s),
+            "Save as new palette"
+        );
+        assert!(Action::AddColorToPalette.enabled(&s));
+        s.palette_choice = 1;
+        assert!(Action::RenamePalette.enabled(&s));
+        assert!(Action::DeletePalette.enabled(&s));
+        assert_eq!(Action::DuplicatePalette.menu_label(&s), "Duplicate");
+        s.active_colors = &[[10, 20, 30, 255]];
+        assert!(!Action::AddColorToPalette.enabled(&s));
     }
 
     #[test]
