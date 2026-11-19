@@ -8,14 +8,14 @@ Guidance for Claude Code working in this repo.
 - `cargo run --features dev` — faster link via Bevy shared lib
 - `cargo run --release` — release
 - `cargo check` — iterate with this, not `cargo build`
-- `cargo test` — unit tests
+- `cargo test --workspace` — unit tests (root crate + `roxel-core`)
 - `cargo fmt` / `cargo clippy`
 
 ## Tests
 
-Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs`. No `tests/` dir, no lib target. Coverage focuses on pure logic (grid, history, shapes, picking, mesh, camera, theme, io::*). **Don't spin up a Bevy `App` in tests** — exercise pure functions. File-IO tests use `std::env::temp_dir()`; don't add `tempfile`.
+Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs` and `roxel-core/src/*.rs`. No `tests/` dir; the only lib target is `roxel-core`. Coverage focuses on pure logic (grid, history, shapes, picking, mesh, camera, theme, io::*). **Don't spin up a Bevy `App` in tests** — exercise pure functions. File-IO tests use `std::env::temp_dir()`; don't add `tempfile`.
 
-**Always add/update tests when adding/modifying a feature** — `cargo test` is a pre-push gate.
+**Always add/update tests when adding/modifying a feature** — `cargo test --workspace` is a pre-push gate.
 
 ## User docs
 
@@ -26,7 +26,7 @@ User-facing docs live in `docs/src/*.md` (markdown; mdBook is the current render
 Tracked in `.githooks/`. Opt in once per clone: `git config core.hooksPath .githooks`.
 
 - `pre-commit` — `cargo fmt --all -- --check`
-- `pre-push` — `cargo clippy --all-targets --no-deps -- -D warnings`, then `cargo test`
+- `pre-push` — `cargo clippy --workspace --all-targets --no-deps -- -D warnings`, then `cargo test --workspace`
 
 CI re-runs all three (fmt, clippy `-D warnings`, test), so `--no-verify` is caught upstream. Clippy is a hard gate — keep the tree warning-free.
 

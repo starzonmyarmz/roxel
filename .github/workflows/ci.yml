@@ -69,4 +69,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: cargo nextest
-        run: cargo nextest run --no-fail-fast
+        run: cargo nextest run --workspace --no-fail-fast

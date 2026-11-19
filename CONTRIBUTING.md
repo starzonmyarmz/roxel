@@ -11,7 +11,7 @@ git config core.hooksPath .githooks
 This enables:
 
 - `pre-commit` — `cargo fmt --all -- --check`
-- `pre-push` — `cargo test`
+- `pre-push` — `cargo clippy --workspace --all-targets --no-deps -- -D warnings`, then `cargo test --workspace`
 
 Both can be bypassed with `--no-verify` when intentional; CI re-runs them.
 
@@ -23,13 +23,13 @@ it automatically the first time you build.
 - `cargo check` — fast type/borrow check; use this in iteration
 - `cargo run` — launch the editor (dev profile, opt-level=1 for the crate)
 - `cargo run --release` — slow build, fast runtime
-- `cargo test` — unit tests (inline `#[cfg(test)] mod tests` per source file)
+- `cargo test --workspace` — unit tests (inline `#[cfg(test)] mod tests` per source file)
 - `cargo fmt` / `cargo clippy` — standard toolchain
 
 ## Rules of the road
 
 - **Tests ship with features.** Every feature add or modification lands with
-  tests in the same change. `cargo test` is a pre-push and CI gate.
+  tests in the same change. `cargo test --workspace` is a pre-push and CI gate.
 - **Changelog entries ship with user-visible changes.** Any `feat:`, `fix:`,
   or `perf:` commit must add a bullet under `## [Unreleased]` in
   `CHANGELOG.md`. Doc / chore / refactor commits don't need an entry. CI
