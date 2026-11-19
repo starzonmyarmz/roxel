@@ -793,6 +793,19 @@ fn select_input(
     }
 }
 
+fn canvas_input_blocked(
+    contexts: &mut EguiContexts,
+    gizmo_drag: &crate::gizmo::GizmoDrag,
+    gizmo_rect: &crate::gizmo::GizmoRect,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    keys: &ButtonInput<KeyCode>,
+) -> bool {
+    crate::ui::egui_wants_pointer(contexts)
+        || gizmo_drag.active
+        || gizmo_rect.contains_cursor(windows)
+        || keys.any_pressed([KeyCode::Space, KeyCode::KeyZ])
+}
+
 pub fn tool_input_system(
     mut contexts: EguiContexts,
     pointer: Pointer,
@@ -836,10 +849,7 @@ pub fn tool_input_system(
         state: mut select_state,
         mut selection,
     } = select_params;
-    let egui_wants_pointer = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
-        .unwrap_or(false);
+    let blocked = canvas_input_blocked(&mut contexts, &gizmo_drag, &gizmo_rect, &windows, &keys);
 
     let lmb_pressed = mouse.pressed(MouseButton::Left);
     let lmb_just = mouse.just_pressed(MouseButton::Left);
@@ -865,16 +875,6 @@ pub fn tool_input_system(
     }
 
     if tool.current == Tool::Select {
-        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-            && let Some(c) = window.cursor_position()
-        {
-            rect.contains(c)
-        } else {
-            false
-        };
-        let space = keys.pressed(KeyCode::Space);
-        let z = keys.pressed(KeyCode::KeyZ);
-        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
         if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
             // Double-click on a voxel selects every 6-connected same-color
             // voxel touching it. Detect before delegating to `select_input`
@@ -926,16 +926,6 @@ pub fn tool_input_system(
     }
 
     if tool.current == Tool::Shape {
-        let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-            && let Some(c) = window.cursor_position()
-        {
-            rect.contains(c)
-        } else {
-            false
-        };
-        let space = keys.pressed(KeyCode::Space);
-        let z = keys.pressed(KeyCode::KeyZ);
-        let blocked = egui_wants_pointer || gizmo_drag.active || cursor_over_gizmo || space || z;
         if let Some((origin, dir)) = cursor_ray(&cameras, &windows) {
             shape_input(
                 &shape_options,
@@ -960,26 +950,7 @@ pub fn tool_input_system(
         return;
     }
 
-    if egui_wants_pointer || gizmo_drag.active {
-        return;
-    }
-
-    // Space held = pan modifier for the camera; suppress tool input so a pan
-    // drag doesn't also paint.
-    if keys.pressed(KeyCode::Space) {
-        return;
-    }
-
-    // Z held = zoom modifier (handled by zoom_click_system); suppress tools.
-    if keys.pressed(KeyCode::KeyZ) {
-        return;
-    }
-
-    // Suppress tool clicks that land on the gizmo viewport rect.
-    if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-        && let Some(c) = window.cursor_position()
-        && rect.contains(c)
-    {
+    if blocked {
         return;
     }
 
@@ -1262,22 +1233,7 @@ pub fn move_drag_system(
         return;
     }
 
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_area() || c.wants_pointer_input())
-        .unwrap_or(false);
-    let cursor_over_gizmo = if let (Some(rect), Ok(window)) = (gizmo_rect.0, windows.single())
-        && let Some(c) = window.cursor_position()
-    {
-        rect.contains(c)
-    } else {
-        false
-    };
-    let blocked = egui_wants
-        || gizmo_drag.active
-        || cursor_over_gizmo
-        || keys.pressed(KeyCode::Space)
-        || keys.pressed(KeyCode::KeyZ);
+    let blocked = canvas_input_blocked(&mut contexts, &gizmo_drag, &gizmo_rect, &windows, &keys);
 
     let lmb_just = mouse.just_pressed(MouseButton::Left);
     let lmb_pressed = mouse.pressed(MouseButton::Left);

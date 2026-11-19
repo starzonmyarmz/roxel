@@ -1280,11 +1280,7 @@ pub fn shortcut_system(
         return;
     }
     let gate = ShortcutGate {
-        typing: input
-            .contexts
-            .ctx_mut()
-            .map(|c| c.wants_keyboard_input())
-            .unwrap_or(false),
+        typing: crate::ui::egui_wants_keyboard(&mut input.contexts),
         modal: input.modal.0,
         palette_open: input.cmd_palette.open,
         prefs_open: input.prefs_window.open,

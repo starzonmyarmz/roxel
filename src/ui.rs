@@ -50,6 +50,18 @@ use roxel::history::History;
 #[derive(Resource, Default)]
 pub struct ModalActive(pub bool);
 
+/// The pointer belongs to egui: over a panel, or mid-drag on a widget.
+pub fn egui_wants_pointer(contexts: &mut EguiContexts) -> bool {
+    contexts
+        .ctx_mut()
+        .is_ok_and(|c| c.is_pointer_over_area() || c.is_using_pointer())
+}
+
+/// A text field has keyboard focus.
+pub fn egui_wants_keyboard(contexts: &mut EguiContexts) -> bool {
+    contexts.ctx_mut().is_ok_and(|c| c.wants_keyboard_input())
+}
+
 #[derive(SystemParam)]
 pub struct ZoomReadout<'w, 's> {
     pub cameras: Query<'w, 's, &'static PanOrbitCamera>,

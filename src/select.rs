@@ -690,11 +690,7 @@ pub fn selection_escape_system(
     if !keys.just_pressed(KeyCode::Escape) || tool.current == Tool::Select {
         return;
     }
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if !egui_wants && selection.aabb.is_some() {
+    if !crate::ui::egui_wants_keyboard(&mut contexts) && selection.aabb.is_some() {
         selection.clear();
     }
 }
@@ -713,11 +709,7 @@ pub fn move_selection_keys_system(
     if tool.current != Tool::Move || selection.aabb.is_none() || history.is_open() {
         return;
     }
-    let egui_wants = contexts
-        .ctx_mut()
-        .map(|c| c.wants_keyboard_input())
-        .unwrap_or(false);
-    if egui_wants {
+    if crate::ui::egui_wants_keyboard(&mut contexts) {
         return;
     }
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
