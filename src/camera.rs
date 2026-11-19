@@ -172,6 +172,37 @@ pub fn apply_recenter_system(
     request.base_focus = None;
 }
 
+/// Orbit / pan / zoom easing for `reduce_motion`: none, or the library
+/// defaults.
+pub fn camera_smoothness(reduce_motion: bool) -> (f32, f32, f32) {
+    if reduce_motion {
+        return (0.0, 0.0, 0.0);
+    }
+    let d = PanOrbitCamera::default();
+    (d.orbit_smoothness, d.pan_smoothness, d.zoom_smoothness)
+}
+
+pub fn apply_camera_motion_system(
+    prefs: Res<crate::theme::Preferences>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    let want = camera_smoothness(prefs.reduce_motion);
+    for mut cam in &mut cameras {
+        if (
+            cam.orbit_smoothness,
+            cam.pan_smoothness,
+            cam.zoom_smoothness,
+        ) != want
+        {
+            (
+                cam.orbit_smoothness,
+                cam.pan_smoothness,
+                cam.zoom_smoothness,
+            ) = want;
+        }
+    }
+}
+
 /// Auto-orbit "drone" camera. While `active`, `flyby_system` rewrites the
 /// PanOrbitCamera target_* fields every frame from a parametric path, so user
 /// RMB-drag is silently absorbed — only Esc or another palette toggle stops
@@ -247,6 +278,13 @@ pub fn flyby_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reduced_motion_removes_camera_easing() {
+        assert_eq!(camera_smoothness(true), (0.0, 0.0, 0.0));
+        let (orbit, pan, zoom) = camera_smoothness(false);
+        assert!(orbit > 0.0 && pan > 0.0 && zoom > 0.0);
+    }
 
     #[test]
     fn iso_offset_is_equal_per_axis() {

@@ -9,8 +9,8 @@
 
 use super::command_palette::fuzzy_match;
 use super::palette::{Palette, PaletteSwitcher};
-use super::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, swatch, width};
-use super::{icons, widgets};
+use super::search_popover::{self, SearchNav, SearchPopover};
+use super::tokens::{font, radius, size, space, swatch};
 use crate::theme::Theme;
 use bevy_egui::egui;
 
@@ -37,14 +37,8 @@ pub fn draw(
     // window draw, so capture it first.
     let opened_this_frame = switcher.just_opened;
 
-    // Pre-consume nav keys so the search field doesn't move the caret.
-    let (mut down, mut up, mut enter, mut esc) = (false, false, false, false);
-    ctx.input_mut(|i| {
-        down = i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
-        up = i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp);
-        enter = i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-        esc = i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
-    });
+    // Taken before the search field reads them so the caret stays put.
+    let nav = SearchNav::consume(ctx);
 
     // Build the visible item list (headers + filtered palettes). `selectable`
     // holds just the palette global indices, in display order, for nav.
@@ -74,132 +68,62 @@ pub fn draw(
     }
     if !selectable.is_empty() {
         let n = selectable.len();
-        if down {
+        if nav.down {
             switcher.selected = (switcher.selected + 1) % n;
         }
-        if up {
+        if nav.up {
             switcher.selected = (switcher.selected + n - 1) % n;
         }
     }
 
     let prev_search = switcher.search.clone();
     let mut chosen: Option<usize> = None;
-    let mut close_after = esc;
-    if enter {
+    let mut close_after = nav.esc;
+    if nav.enter {
         chosen = selectable.get(switcher.selected).copied();
     }
 
-    let window_response = egui::Window::new("Palette switcher")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-        .default_width(width::COMMAND_PALETTE)
-        .min_width(width::COMMAND_PALETTE)
-        .frame(widgets::modal_frame(theme, pad::SEARCH))
-        .show(ctx, |ui| {
-            ui.set_min_width(width::COMMAND_PALETTE - pad::SEARCH.x * 2.0);
-
-            let margin = egui::Margin::symmetric(space::SM as i8, space::SX as i8);
-            let inner = egui::Frame::new()
-                .fill(theme.surface)
-                .corner_radius(egui::CornerRadius::same(radius::SM))
-                .inner_margin(margin)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Image::new(icons::search())
-                                .fit_to_exact_size(icon::md_square())
-                                .tint(theme.text_dim),
-                        );
-                        ui.add_space(space::XS);
-                        ui.add(
-                            egui::TextEdit::singleline(&mut switcher.search)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("Search palettes…")
-                                .font(egui::TextStyle::Body)
-                                .frame(false),
-                        )
-                    })
-                    .inner
-                });
-            let resp = inner.inner;
-            if switcher.just_opened {
-                resp.request_focus();
-                switcher.just_opened = false;
-            } else if !resp.has_focus() && !resp.lost_focus() {
-                resp.request_focus();
-            }
-
-            ui.add_space(space::XS);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
-            ui.add_space(space::SX);
-
-            if selectable.is_empty() {
-                ui.add_space(space::SM);
-                widgets::hint_label(ui, theme, "No palettes match.");
-                ui.add_space(space::SM);
-            } else {
-                egui::ScrollArea::vertical()
-                    .max_height(height::COMMAND_PALETTE_MAX)
-                    .auto_shrink([false, true])
-                    .scroll_bar_visibility(
-                        egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
-                    )
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = space::XXS;
-                        let mut sel_cursor = 0usize;
-                        for (idx, item) in items.iter().enumerate() {
-                            match item {
-                                Item::Header(label) => {
-                                    // Breathing room above each group (except the first,
-                                    // already spaced off the search divider) so the groups
-                                    // read as distinct bands rather than one run-on list.
-                                    if idx != 0 {
-                                        ui.add_space(space::SM);
-                                    }
-                                    header_row(ui, theme, label);
-                                }
-                                Item::Palette(gi) => {
-                                    let selected = sel_cursor == switcher.selected;
-                                    sel_cursor += 1;
-                                    if palette_row(ui, theme, &palettes[*gi], selected) {
-                                        chosen = Some(*gi);
-                                    }
-                                }
-                            }
+    let popover = SearchPopover {
+        id: "Palette switcher",
+        hint: "Search palettes…",
+        empty: "No palettes match.",
+        enter_label: "Switch",
+    };
+    let clicked_outside = search_popover::show(
+        ctx,
+        theme,
+        &popover,
+        &mut switcher.search,
+        &mut switcher.just_opened,
+        !selectable.is_empty(),
+        |ui| {
+            let mut sel_cursor = 0usize;
+            for (idx, item) in items.iter().enumerate() {
+                match item {
+                    Item::Header(label) => {
+                        // Breathing room above each group (except the first,
+                        // already spaced off the search divider) so the groups
+                        // read as distinct bands rather than one run-on list.
+                        if idx != 0 {
+                            ui.add_space(space::SM);
                         }
-                    });
+                        header_row(ui, theme, label);
+                    }
+                    Item::Palette(gi) => {
+                        let selected = sel_cursor == switcher.selected;
+                        sel_cursor += 1;
+                        if palette_row(ui, theme, &palettes[*gi], selected) {
+                            chosen = Some(*gi);
+                        }
+                    }
+                }
             }
-
-            ui.add_space(space::SX);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
-            ui.add_space(space::SX);
-            footer_hint(ui, theme);
-        });
-
-    // Click outside closes (matches command palette) — but not the opening click,
-    // which is still registered this frame and lands on the `…` menu.
-    if let Some(wr) = window_response
-        && !opened_this_frame
-    {
-        let rect = wr.response.rect;
-        let clicked_outside = ctx.input(|i| {
-            i.pointer.any_click()
-                && !rect.contains(i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))
-        });
-        if clicked_outside {
-            close_after = true;
-        }
+        },
+    );
+    // The opening click (on the inspector's `…` menu) is still registered this
+    // frame and lands outside the popover; don't read it as a dismissal.
+    if clicked_outside && !opened_this_frame {
+        close_after = true;
     }
 
     if switcher.search != prev_search {
@@ -213,7 +137,7 @@ pub fn draw(
 
 fn header_row(ui: &mut egui::Ui, theme: &Theme, label: &str) {
     let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), size::CMD_PALETTE_ROW * 0.8),
+        egui::vec2(ui.available_width(), size::CMD_PALETTE_HEADER_ROW),
         egui::Sense::hover(),
     );
     ui.painter().text(
@@ -250,7 +174,7 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
     );
     ui.painter().galley(
         egui::pos2(
-            rect.left() + 10.0,
+            rect.left() + space::FIELD_PAD_X,
             rect.center().y - name_galley.size().y * 0.5,
         ),
         name_galley,
@@ -264,7 +188,7 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
     let step = sw + space::XXS;
     let max_count = ((full * 0.6) / step).floor().max(0.0) as usize;
     let count = pal.colors.len().min(max_count);
-    let mut x = rect.right() - 10.0 - count as f32 * step + space::XXS;
+    let mut x = rect.right() - space::FIELD_PAD_X - count as f32 * step + space::XXS;
     let y = rect.center().y - sh * 0.5;
     for c in pal.colors.iter().take(count) {
         let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);
@@ -275,66 +199,6 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
     }
 
     resp.clicked()
-}
-
-fn footer_hint(ui: &mut egui::Ui, theme: &Theme) {
-    let chip_color = theme.text;
-    let label_color = theme.text_dim;
-    let chip_h = icon::XS + space::SM;
-    let chip_pad_x = space::SX;
-
-    let icon_chip = |ui: &mut egui::Ui, src: egui::ImageSource<'static>| {
-        let w = icon::XS + chip_pad_x * 2.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
-        ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
-        let img_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon::XS, icon::XS));
-        egui::Image::new(src)
-            .tint(chip_color)
-            .paint_at(ui, img_rect);
-    };
-    let text_chip = |ui: &mut egui::Ui, s: &str| {
-        let galley = ui.painter().layout_no_wrap(
-            s.to_string(),
-            egui::FontId::monospace(font::SMALL),
-            chip_color,
-        );
-        let w = galley.size().x + chip_pad_x * 2.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
-        ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
-        let pos = egui::pos2(
-            rect.center().x - galley.size().x * 0.5,
-            rect.center().y - galley.size().y * 0.5,
-        );
-        ui.painter().galley(pos, galley, chip_color);
-    };
-    let plain = |ui: &mut egui::Ui, s: &str| {
-        let galley = ui.painter().layout_no_wrap(
-            s.to_string(),
-            egui::FontId::proportional(font::SMALL),
-            label_color,
-        );
-        let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
-        ui.painter().galley(rect.min, galley, label_color);
-    };
-
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-        ui.spacing_mut().interact_size.y = chip_h;
-        icon_chip(ui, icons::arrow_up());
-        icon_chip(ui, icons::arrow_down());
-        ui.add_space(space::XXS);
-        plain(ui, "Navigate");
-        ui.add_space(space::FOOTER_GROUP);
-        icon_chip(ui, icons::corner_down_left());
-        ui.add_space(space::XXS);
-        plain(ui, "Switch");
-        ui.add_space(space::FOOTER_GROUP);
-        text_chip(ui, "Esc");
-        ui.add_space(space::XXS);
-        plain(ui, "Close");
-    });
 }
 
 /// Split palettes into `(user, builtin)` global-index lists, each filtered by

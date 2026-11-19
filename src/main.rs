@@ -80,7 +80,7 @@ use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, DiscardConfirm, DocStatus, GuardedAction,
     PaletteChoice, PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles,
     SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette, poll_dialogs_system,
-    process_save_preview_system, tab_toggle_system, toast_lifetime_system, ui_system,
+    process_save_preview_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -214,6 +214,7 @@ fn main() {
             ),
         );
     app.init_resource::<crate::menu::AboutWindow>();
+    app.init_resource::<crate::ui::ShortcutsWindow>();
     #[cfg(target_os = "macos")]
     {
         use crate::menu::native;
@@ -287,6 +288,8 @@ fn main() {
         (
             crate::icon::set_window_icon,
             refresh_theme_system,
+            crate::theme::apply_ui_scale_system,
+            crate::camera::apply_camera_motion_system,
             zoom_click_system,
             apply_canvas_bg_system,
             floor_dots_system,
@@ -308,7 +311,6 @@ fn main() {
             .after(bevy_egui::EguiPreUpdateSet::InitContexts)
             .before(bevy_egui::EguiPreUpdateSet::BeginPass),
     )
-    .add_systems(Update, tab_toggle_system)
     .add_systems(
         bevy_egui::EguiPrimaryContextPass,
         (

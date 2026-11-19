@@ -1,7 +1,8 @@
 use crate::actions::{Action, ActionState, Category, Chord, KeyToken, Platform};
 use crate::theme::Theme;
-use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, width};
-use crate::ui::{icons, widgets};
+use crate::ui::icons;
+use crate::ui::search_popover::{self, SearchNav, SearchPopover};
+use crate::ui::tokens::{font, icon, radius, size, space, width};
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -161,19 +162,11 @@ pub fn draw(
     if !palette.open {
         return None;
     }
-    // Pre-consume arrow/enter/esc keys so the search TextEdit doesn't read
-    // them this frame. This keeps the text caret stable while the user is
-    // navigating the result list.
-    let (mut down, mut up, mut enter, mut esc) = (false, false, false, false);
-    ctx.input_mut(|i| {
-        down = i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
-        up = i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp);
-        enter = i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-        esc = i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
-    });
+    // Taken before the search field reads them so the caret stays put.
+    let nav = SearchNav::consume(ctx);
 
     let prev_search = palette.search.clone();
-    let mut close_after = false;
+    let mut close_after = nav.esc;
     let mut pending: Option<Action> = None;
 
     let order = rank(catalog, &palette.search);
@@ -186,17 +179,14 @@ pub fn draw(
 
     // Apply navigation (skip disabled entries).
     if !order.is_empty() {
-        if down {
+        if nav.down {
             palette.selected = next_enabled(catalog, &order, palette.selected, 1);
         }
-        if up {
+        if nav.up {
             palette.selected = next_enabled(catalog, &order, palette.selected, -1);
         }
     }
-    if esc {
-        close_after = true;
-    }
-    if enter
+    if nav.enter
         && let Some(&idx) = order.get(palette.selected)
         && catalog[idx].enabled
     {
@@ -204,102 +194,31 @@ pub fn draw(
         close_after = true;
     }
 
-    let window_response = egui::Window::new("Command palette")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-        .default_width(width::COMMAND_PALETTE)
-        .min_width(width::COMMAND_PALETTE)
-        .frame(widgets::modal_frame(theme, pad::SEARCH))
-        .show(ctx, |ui| {
-            ui.set_min_width(width::COMMAND_PALETTE - pad::SEARCH.x * 2.0);
-
-            let margin = egui::Margin::symmetric(space::SM as i8, space::SX as i8);
-            let inner = egui::Frame::new()
-                .fill(theme.surface)
-                .corner_radius(egui::CornerRadius::same(radius::SM))
-                .inner_margin(margin)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Image::new(icons::search())
-                                .fit_to_exact_size(icon::md_square())
-                                .tint(theme.text_dim),
-                        );
-                        ui.add_space(space::XS);
-                        ui.add(
-                            egui::TextEdit::singleline(&mut palette.search)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("Type a command…")
-                                .font(egui::TextStyle::Body)
-                                .frame(false),
-                        )
-                    })
-                    .inner
-                });
-            let resp = inner.inner;
-            if palette.just_opened {
-                resp.request_focus();
-                palette.just_opened = false;
-            } else if !resp.has_focus() && !resp.lost_focus() {
-                resp.request_focus();
+    let popover = SearchPopover {
+        id: "Command palette",
+        hint: "Type a command…",
+        empty: "No commands match.",
+        enter_label: "Run",
+    };
+    let clicked_outside = search_popover::show(
+        ctx,
+        theme,
+        &popover,
+        &mut palette.search,
+        &mut palette.just_opened,
+        !order.is_empty(),
+        |ui| {
+            for (visual_idx, &idx) in order.iter().enumerate() {
+                let entry = &catalog[idx];
+                let selected = visual_idx == palette.selected;
+                if draw_row(ui, theme, entry, selected) && entry.enabled {
+                    pending = Some(entry.action);
+                    close_after = true;
+                }
             }
-
-            ui.add_space(space::XS);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
-            ui.add_space(space::SX);
-
-            if order.is_empty() {
-                ui.add_space(space::SM);
-                widgets::hint_label(ui, theme, "No commands match.");
-                ui.add_space(space::SM);
-            } else {
-                egui::ScrollArea::vertical()
-                    .max_height(height::COMMAND_PALETTE_MAX)
-                    .auto_shrink([false, true])
-                    .scroll_bar_visibility(
-                        egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
-                    )
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = space::XXS;
-                        for (visual_idx, &idx) in order.iter().enumerate() {
-                            let entry = &catalog[idx];
-                            let selected = visual_idx == palette.selected;
-                            if draw_row(ui, theme, entry, selected) && entry.enabled {
-                                pending = Some(entry.action);
-                                close_after = true;
-                            }
-                        }
-                    });
-            }
-
-            ui.add_space(space::SX);
-            ui.painter().hline(
-                ui.clip_rect().x_range(),
-                ui.cursor().min.y,
-                egui::Stroke::new(stroke::HAIR, theme.border),
-            );
-            ui.add_space(space::SX);
-            draw_footer_hint(ui, theme);
-        });
-
-    // Close when the user clicks anywhere outside the window.
-    if let Some(wr) = window_response {
-        let rect = wr.response.rect;
-        let clicked_outside = ctx.input(|i| {
-            i.pointer.any_click()
-                && !rect.contains(i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))
-        });
-        if clicked_outside {
-            close_after = true;
-        }
-    }
+        },
+    );
+    close_after |= clicked_outside;
 
     if palette.search != prev_search {
         // Re-clamp + reset to first enabled when the user types.
@@ -316,69 +235,6 @@ pub fn draw(
         palette.open = false;
     }
     pending
-}
-
-fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
-    let chip_color = theme.text;
-    let label_color = theme.text_dim;
-    let chip_h = icon::XS + space::SM;
-    let chip_pad_x = space::SX;
-
-    let icon_chip = |ui: &mut egui::Ui, src: egui::ImageSource<'static>| {
-        let w = icon::XS + chip_pad_x * 2.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
-        ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
-        let img_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon::XS, icon::XS));
-        egui::Image::new(src)
-            .tint(chip_color)
-            .paint_at(ui, img_rect);
-    };
-
-    let text_chip = |ui: &mut egui::Ui, s: &str| {
-        let galley = ui.painter().layout_no_wrap(
-            s.to_string(),
-            egui::FontId::monospace(font::SMALL),
-            chip_color,
-        );
-        let w = galley.size().x + chip_pad_x * 2.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, chip_h), egui::Sense::hover());
-        ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
-        let pos = egui::pos2(
-            rect.center().x - galley.size().x * 0.5,
-            rect.center().y - galley.size().y * 0.5,
-        );
-        ui.painter().galley(pos, galley, chip_color);
-    };
-
-    let plain = |ui: &mut egui::Ui, s: &str| {
-        let galley = ui.painter().layout_no_wrap(
-            s.to_string(),
-            egui::FontId::proportional(font::SMALL),
-            label_color,
-        );
-        let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
-        ui.painter().galley(rect.min, galley, label_color);
-    };
-
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-        ui.spacing_mut().interact_size.y = chip_h;
-
-        icon_chip(ui, icons::arrow_up());
-        icon_chip(ui, icons::arrow_down());
-        ui.add_space(space::XXS);
-        plain(ui, "Navigate");
-        ui.add_space(space::FOOTER_GROUP);
-        icon_chip(ui, icons::corner_down_left());
-        ui.add_space(space::XXS);
-        plain(ui, "Run");
-        ui.add_space(space::FOOTER_GROUP);
-        text_chip(ui, "Esc");
-        ui.add_space(space::XXS);
-        plain(ui, "Close");
-    });
 }
 
 fn next_enabled(catalog: &[CatalogEntry], order: &[usize], current: usize, step: i32) -> usize {
@@ -424,7 +280,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     let chip_color = theme.text;
 
     // Category chip (left).
-    let chip_x = rect.left() + 10.0;
+    let chip_x = rect.left() + space::FIELD_PAD_X;
     let chip_text = entry.category.label();
     let chip_galley = ui.painter().layout_no_wrap(
         chip_text.to_string(),
@@ -436,7 +292,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
         .galley(egui::pos2(chip_x, chip_y), chip_galley.clone(), dim);
 
     // Label.
-    let label_x = chip_x + 56.0;
+    let label_x = chip_x + width::CATEGORY_CHIP;
     let label_galley = ui.painter().layout_no_wrap(
         entry.label.clone(),
         egui::FontId::proportional(font::BODY),
@@ -470,7 +326,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
             })
             .collect();
         let total: f32 = widths.iter().sum::<f32>() + gap * (tokens.len().saturating_sub(1)) as f32;
-        let mut x = rect.right() - 10.0 - total;
+        let mut x = rect.right() - space::FIELD_PAD_X - total;
         let y = rect.center().y - chip_h * 0.5;
         for tok in &tokens {
             let w = match tok {
@@ -576,6 +432,7 @@ mod tests {
             has_voxels: false,
             dialog_busy: false,
             flyby_active: false,
+            focus_mode: false,
             checking_updates: false,
             update_tag: None,
             palettes,
@@ -593,6 +450,30 @@ mod tests {
             colors: vec![[1, 2, 3, 255], [4, 5, 6, 255]],
             builtin,
         }
+    }
+
+    #[test]
+    fn catalog_lists_app_level_commands() {
+        let palettes = vec![pal("Built", true), pal("Mine", false)];
+        let prefs = Preferences::default();
+        let recent = vec![std::path::PathBuf::from("/tmp/castle.rox")];
+        let mut s = state(&palettes, &prefs);
+        s.recent = &recent;
+        s.palette_choice = 1;
+        let catalog = build_catalog(&s);
+        let listed = |a: Action| catalog.iter().any(|e| e.action == a && e.enabled);
+        for action in [
+            Action::CheckForUpdates,
+            Action::ShowOnboarding,
+            Action::SetColorSpace(roxel::color_space::ColorSpace::Oklch),
+            Action::OpenRecent(0),
+            Action::RenamePalette,
+            Action::ToggleFocusMode,
+            Action::ShowShortcuts,
+        ] {
+            assert!(listed(action), "{action:?} missing or disabled");
+        }
+        assert!(catalog.iter().any(|e| e.label == "Open recent: castle.rox"));
     }
 
     #[test]

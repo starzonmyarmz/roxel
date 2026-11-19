@@ -46,6 +46,11 @@ Release notes.
 - Idle frames do less work with a selection, shape preview or brush active.
 - PNG and Roxel Shot exports save in the background instead of freezing the app.
 - glTF and OBJ exports merge same-color faces, so files are much smaller.
+- Preferences → Appearance adds UI scale (80–150%) and Reduce motion.
+- Help → Keyboard Shortcuts (Cmd/Ctrl+/) lists every shortcut.
+- Focus mode is in the View menu and the command palette.
+- Selected chips, primary buttons and dim text meet WCAG AA contrast in both themes.
+- Tools have one name everywhere: Eyedropper and Select, not Pick and Marquee select.
 
 ## [0.7.1] - 2026-06-03
 

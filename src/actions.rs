@@ -18,7 +18,7 @@ use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, 
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DeleteConfirm, DialogResult, DiscardConfirm, GuardedAction,
     Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes, PendingDialog,
-    RecentFiles, Toasts, UnsavedGuard, WorkingPalette,
+    RecentFiles, ShortcutsWindow, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
 };
 use roxel::color_space::ColorSpace;
 use roxel::grid::Color8;
@@ -177,6 +177,8 @@ fn key_name(key: KeyCode, platform: Platform) -> Cow<'static, str> {
         KeyCode::Backspace if platform == Platform::Mac => "⌫".into(),
         KeyCode::Backspace => "Backspace".into(),
         KeyCode::Comma => ",".into(),
+        KeyCode::Backquote => "`".into(),
+        KeyCode::Slash => "/".into(),
         KeyCode::Equal => "=".into(),
         KeyCode::Minus => "-".into(),
         other => {
@@ -395,6 +397,7 @@ pub enum Action {
     ToggleFlyby,
     ToggleFloorGrid,
     ToggleOriginAxes,
+    ToggleFocusMode,
     SetColorSpace(ColorSpace),
 
     SwitchPalette,
@@ -411,6 +414,7 @@ pub enum Action {
     Preferences,
     SetTheme(ThemePref),
     ShowOnboarding,
+    ShowShortcuts,
     Changelog,
     CheckForUpdates,
     About,
@@ -458,6 +462,7 @@ pub struct ActionState<'a> {
     pub has_voxels: bool,
     pub dialog_busy: bool,
     pub flyby_active: bool,
+    pub focus_mode: bool,
     pub checking_updates: bool,
     pub update_tag: Option<&'a str>,
     pub palettes: &'a [Palette],
@@ -480,6 +485,7 @@ pub struct ActionStateParams<'w> {
     grid: Res<'w, GridResource>,
     pending: Res<'w, PendingDialog>,
     flyby: Res<'w, FlybyState>,
+    ui_visible: Res<'w, UiVisible>,
     updater: Res<'w, crate::updater::UpdateCheck>,
     palettes: Res<'w, Palettes>,
     choice: Res<'w, PaletteChoice>,
@@ -504,6 +510,7 @@ impl ActionStateParams<'_> {
             has_voxels: self.grid.count() > 0,
             dialog_busy: self.pending.is_active(),
             flyby_active: self.flyby.active,
+            focus_mode: !self.ui_visible.0,
             checking_updates: self.updater.is_checking(),
             update_tag: self.updater.available().map(|r| r.tag.as_str()),
             palettes: &self.palettes.0,
@@ -580,6 +587,7 @@ impl Action {
         Action::ToggleFlyby,
         Action::ToggleFloorGrid,
         Action::ToggleOriginAxes,
+        Action::ToggleFocusMode,
         Action::SetColorSpace(ColorSpace::Hex),
         Action::SetColorSpace(ColorSpace::Rgb),
         Action::SetColorSpace(ColorSpace::Hsl),
@@ -599,6 +607,7 @@ impl Action {
         Action::SetTheme(ThemePref::Light),
         Action::SetTheme(ThemePref::Dark),
         Action::ShowOnboarding,
+        Action::ShowShortcuts,
         Action::Changelog,
         Action::CheckForUpdates,
         Action::About,
@@ -766,31 +775,26 @@ impl Action {
             ),
 
             Action::SelectTool(tool) => {
-                let (label, menu_label, keywords, key) = match tool {
-                    Tool::Brush => ("Switch to Brush", "Brush", "paint place draw", K::KeyB),
-                    Tool::Erase => ("Switch to Erase", "Erase", "delete remove", K::KeyE),
+                let (label, keywords, key) = match tool {
+                    Tool::Brush => ("Switch to Brush", "paint place draw", K::KeyB),
+                    Tool::Erase => ("Switch to Erase", "delete remove", K::KeyE),
                     Tool::Paint => (
                         "Switch to Paint",
-                        "Paint",
                         "recolor bucket flood fill region selection",
                         K::KeyP,
                     ),
-                    Tool::Eyedropper => (
-                        "Switch to Eyedropper",
-                        "Eyedropper",
-                        "pick sample color",
-                        K::KeyI,
-                    ),
-                    Tool::Shape => (
-                        "Switch to Shape",
-                        "Shape",
-                        "rectangle ellipse line",
-                        K::KeyS,
-                    ),
-                    Tool::Select => ("Switch to Select", "Select", "marquee region", K::KeyM),
-                    Tool::Move => ("Switch to Move", "Move", "translate nudge", K::KeyV),
+                    Tool::Eyedropper => ("Switch to Eyedropper", "pick sample color", K::KeyI),
+                    Tool::Shape => ("Switch to Shape", "rectangle ellipse line", K::KeyS),
+                    Tool::Select => ("Switch to Select", "marquee region", K::KeyM),
+                    Tool::Move => ("Switch to Move", "translate nudge", K::KeyV),
                 };
-                spec(label, menu_label, C::Tools, keywords, Some(Chord::key(key)))
+                spec(
+                    label,
+                    tool.label(),
+                    C::Tools,
+                    keywords,
+                    Some(Chord::key(key)),
+                )
             }
             Action::SelectShape(prim) => {
                 let (label, menu_label, keywords) = match prim {
@@ -889,6 +893,13 @@ impl Action {
                 C::View,
                 "red green blue center point triad toggle",
                 None,
+            ),
+            Action::ToggleFocusMode => spec(
+                "Enter focus mode",
+                "Focus Mode",
+                C::View,
+                "hide interface chrome panels inspector distraction zen",
+                Some(Chord::key(K::Backquote)),
             ),
             Action::SetColorSpace(space) => {
                 let label = match space {
@@ -992,6 +1003,13 @@ impl Action {
                 "tutorial intro welcome help",
                 None,
             ),
+            Action::ShowShortcuts => spec(
+                "Keyboard shortcuts",
+                "Keyboard Shortcuts",
+                C::Help,
+                "keys hotkeys keybindings cheat sheet help",
+                Some(Chord::cmd(K::Slash)),
+            ),
             Action::Changelog => spec(
                 "Open Changelog",
                 "Changelog",
@@ -1032,6 +1050,7 @@ impl Action {
             Action::ToggleFlyby if s.flyby_active => "Stop flyby camera".into(),
             Action::ToggleFloorGrid if s.prefs.show_floor_grid => "Hide floor grid".into(),
             Action::ToggleOriginAxes if s.prefs.show_origin_axes => "Hide origin axes".into(),
+            Action::ToggleFocusMode if s.focus_mode => "Exit focus mode".into(),
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
             Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
             _ => self.spec().label.into(),
@@ -1070,6 +1089,7 @@ impl Action {
             | Action::SetColorSpace(_)
             | Action::ShowCommandPalette
             | Action::ShowOnboarding
+            | Action::ShowShortcuts
             | Action::About => true,
             Action::CheckForUpdates => !s.checking_updates,
             Action::OpenProject
@@ -1100,6 +1120,7 @@ impl Action {
             | Action::ToggleFlyby
             | Action::ToggleFloorGrid
             | Action::ToggleOriginAxes
+            | Action::ToggleFocusMode
             | Action::NewPalette
             | Action::SwitchPalette
             | Action::Preferences
@@ -1162,7 +1183,10 @@ impl Action {
     pub fn is_check(self) -> bool {
         matches!(
             self,
-            Action::ToggleFloorGrid | Action::ToggleOriginAxes | Action::SetColorSpace(_)
+            Action::ToggleFloorGrid
+                | Action::ToggleOriginAxes
+                | Action::ToggleFocusMode
+                | Action::SetColorSpace(_)
         )
     }
 
@@ -1171,6 +1195,7 @@ impl Action {
         match self {
             Action::ToggleFloorGrid => s.prefs.show_floor_grid,
             Action::ToggleOriginAxes => s.prefs.show_origin_axes,
+            Action::ToggleFocusMode => s.focus_mode,
             Action::SetColorSpace(space) => s.prefs.color_space == space,
             _ => false,
         }
@@ -1202,6 +1227,7 @@ pub struct ShortcutGate {
     pub modal: bool,
     pub palette_open: bool,
     pub prefs_open: bool,
+    pub shortcuts_open: bool,
 }
 
 impl ShortcutGate {
@@ -1212,6 +1238,7 @@ impl ShortcutGate {
         match action {
             Action::ShowCommandPalette => free || self.palette_open,
             Action::Preferences => free || self.prefs_open,
+            Action::ShowShortcuts => free || self.shortcuts_open,
             _ => free,
         }
     }
@@ -1238,6 +1265,7 @@ pub struct ShortcutInput<'w, 's> {
     modal: Res<'w, crate::ui::ModalActive>,
     cmd_palette: Res<'w, CommandPalette>,
     prefs_window: Res<'w, PreferencesWindow>,
+    shortcuts: Res<'w, ShortcutsWindow>,
 }
 
 /// The one keyboard-shortcut handler: matches this frame's keys against every
@@ -1260,6 +1288,7 @@ pub fn shortcut_system(
         modal: input.modal.0,
         palette_open: input.cmd_palette.open,
         prefs_open: input.prefs_window.open,
+        shortcuts_open: input.shortcuts.0,
     };
     let mods = Mods::from_keys(&input.keys);
     let keys = &input.keys;
@@ -1315,6 +1344,7 @@ pub struct ViewParams<'w, 's> {
     view_preset: ResMut<'w, PendingViewPreset>,
     frame_view: ResMut<'w, PendingFrameView>,
     flyby: ResMut<'w, FlybyState>,
+    ui_visible: ResMut<'w, UiVisible>,
     cameras: Query<'w, 's, &'static mut PanOrbitCamera>,
 }
 
@@ -1337,6 +1367,7 @@ pub struct AppParams<'w> {
     onboarding: ResMut<'w, crate::onboarding::Onboarding>,
     updater: ResMut<'w, crate::updater::UpdateCheck>,
     about: ResMut<'w, crate::menu::AboutWindow>,
+    shortcuts: ResMut<'w, ShortcutsWindow>,
 }
 
 #[derive(SystemParam)]
@@ -1528,6 +1559,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             app.prefs.show_origin_axes = !app.prefs.show_origin_axes;
             save_preferences(&app.prefs);
         }
+        Action::ToggleFocusMode => view.ui_visible.0 = !view.ui_visible.0,
         Action::SetColorSpace(space) => {
             if app.prefs.color_space != space {
                 app.prefs.color_space = space;
@@ -1607,6 +1639,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             None => crate::updater::start_check(&mut app.updater, true),
         },
         Action::About => app.about.0 = true,
+        Action::ShowShortcuts => app.shortcuts.0 = !app.shortcuts.0,
     }
 }
 
@@ -1636,6 +1669,7 @@ mod tests {
             has_voxels: false,
             dialog_busy: false,
             flyby_active: false,
+            focus_mode: false,
             checking_updates: false,
             update_tag: None,
             palettes,
@@ -1692,6 +1726,23 @@ mod tests {
                 KeyToken::Key("S".into())
             ]
         );
+    }
+
+    #[test]
+    fn tool_actions_use_the_tool_name() {
+        for tool in [
+            Tool::Brush,
+            Tool::Erase,
+            Tool::Paint,
+            Tool::Eyedropper,
+            Tool::Shape,
+            Tool::Select,
+            Tool::Move,
+        ] {
+            let spec = Action::SelectTool(tool).spec();
+            assert_eq!(spec.menu_label, tool.label());
+            assert_eq!(spec.label, format!("Switch to {}", tool.label()));
+        }
     }
 
     #[test]
@@ -1812,6 +1863,34 @@ mod tests {
         let s = state(&palettes, &prefs);
         assert!(!Action::SelectTool(Tool::Brush).enabled(&s));
         assert!(Action::SelectTool(Tool::Erase).enabled(&s));
+    }
+
+    #[test]
+    fn focus_mode_is_a_backquote_check_item() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        assert_eq!(
+            Action::ToggleFocusMode.shortcut_text().as_deref(),
+            Some("`")
+        );
+        assert!(Action::ToggleFocusMode.is_check());
+        assert!(!Action::ToggleFocusMode.checked(&s));
+        assert_eq!(Action::ToggleFocusMode.label(&s), "Enter focus mode");
+        s.focus_mode = true;
+        assert!(Action::ToggleFocusMode.checked(&s));
+        assert_eq!(Action::ToggleFocusMode.label(&s), "Exit focus mode");
+        let gate = ShortcutGate::default();
+        let fired = shortcut_action(Mods::default(), |k| k == KeyCode::Backquote, &s, gate);
+        assert_eq!(fired, Some(Action::ToggleFocusMode));
+        let typing = ShortcutGate {
+            typing: true,
+            ..gate
+        };
+        assert_eq!(
+            shortcut_action(Mods::default(), |k| k == KeyCode::Backquote, &s, typing),
+            None
+        );
     }
 
     #[test]
@@ -2040,7 +2119,7 @@ mod tests {
     }
 
     #[test]
-    fn open_palette_and_prefs_close_with_their_own_shortcut() {
+    fn open_palette_prefs_and_sheet_close_with_their_own_shortcut() {
         let palettes = vec![pal("A", true)];
         let prefs = Preferences::default();
         let s = state(&palettes, &prefs);
@@ -2048,7 +2127,7 @@ mod tests {
             typing: true,
             modal: true,
             palette_open: true,
-            prefs_open: false,
+            ..Default::default()
         };
         assert_eq!(
             fire(&s, CMD, KeyCode::KeyK, palette),
@@ -2057,14 +2136,24 @@ mod tests {
         let prefs_gate = ShortcutGate {
             typing: false,
             modal: true,
-            palette_open: false,
             prefs_open: true,
+            ..Default::default()
         };
         assert_eq!(
             fire(&s, CMD, KeyCode::Comma, prefs_gate),
             Some(Action::Preferences)
         );
         assert_eq!(fire(&s, CMD, KeyCode::KeyK, prefs_gate), None);
+        let sheet = ShortcutGate {
+            modal: true,
+            shortcuts_open: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            fire(&s, CMD, KeyCode::Slash, sheet),
+            Some(Action::ShowShortcuts)
+        );
+        assert_eq!(fire(&s, CMD, KeyCode::Comma, sheet), None);
     }
 
     #[test]

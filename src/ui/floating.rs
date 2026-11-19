@@ -118,32 +118,11 @@ pub fn tool_island_contents(
     prefs: &mut Preferences,
 ) {
     ui.spacing_mut().item_spacing.y = 0.0;
-    widgets::tool_button(
-        ui,
-        theme,
-        tool,
-        Tool::Brush,
-        icons::tool(Tool::Brush),
-        "Brush",
-    );
+    widgets::tool_button(ui, theme, tool, Tool::Brush, icons::tool(Tool::Brush));
     ui.add_space(space::SX);
-    widgets::tool_button(
-        ui,
-        theme,
-        tool,
-        Tool::Erase,
-        icons::tool(Tool::Erase),
-        "Erase",
-    );
+    widgets::tool_button(ui, theme, tool, Tool::Erase, icons::tool(Tool::Erase));
     ui.add_space(space::SX);
-    widgets::tool_button(
-        ui,
-        theme,
-        tool,
-        Tool::Paint,
-        icons::tool(Tool::Paint),
-        "Paint",
-    );
+    widgets::tool_button(ui, theme, tool, Tool::Paint, icons::tool(Tool::Paint));
     ui.add_space(space::SX);
     widgets::tool_button(
         ui,
@@ -151,7 +130,6 @@ pub fn tool_island_contents(
         tool,
         Tool::Eyedropper,
         icons::tool(Tool::Eyedropper),
-        "Pick",
     );
     ui.add_space(space::SX);
     let shape_resp = widgets::tool_button(
@@ -160,7 +138,6 @@ pub fn tool_island_contents(
         tool,
         Tool::Shape,
         icons::shape_primitive(shape_options.primitive),
-        "Shape",
     );
     // Click toggles the picker. Clicking the same rail button again
     // closes it; clicking outside closes via the released-off check
@@ -194,11 +171,11 @@ pub fn tool_island_contents(
                     ui.spacing_mut().item_spacing = gap::TIGHT;
                     ui.horizontal(|ui| {
                         let cell = swatch::TOOL;
-                        for (prim, label) in [
-                            (ShapePrimitive::Rectangle, "Rectangle"),
-                            (ShapePrimitive::Ellipse, "Ellipse"),
-                            (ShapePrimitive::Line, "Line"),
-                            (ShapePrimitive::Sphere, "Sphere"),
+                        for prim in [
+                            ShapePrimitive::Rectangle,
+                            ShapePrimitive::Ellipse,
+                            ShapePrimitive::Line,
+                            ShapePrimitive::Sphere,
                         ] {
                             let selected = shape_options.primitive == prim;
                             let (rect, r) = ui.allocate_exact_size(cell, egui::Sense::click());
@@ -218,7 +195,7 @@ pub fn tool_island_contents(
                             let icon_size = crate::ui::tokens::icon::md_square();
                             let icon_rect = egui::Rect::from_center_size(rect.center(), icon_size);
                             let tint = if selected {
-                                egui::Color32::WHITE
+                                theme.on_accent
                             } else {
                                 theme.text
                             };
@@ -226,7 +203,9 @@ pub fn tool_island_contents(
                                 .fit_to_exact_size(icon_size)
                                 .tint(tint)
                                 .paint_at(ui, icon_rect);
-                            let r = r.on_hover_text(label);
+                            let r = r.on_hover_text(
+                                crate::actions::Action::SelectShape(prim).spec().menu_label,
+                            );
                             if r.clicked() {
                                 shape_options.primitive = prim;
                                 prefs.last_shape = prim;
@@ -261,16 +240,9 @@ pub fn tool_island_contents(
     ui.ctx()
         .memory_mut(|m| m.data.insert_temp(mem_id, popup_open));
     ui.add_space(space::SX);
-    widgets::tool_button(
-        ui,
-        theme,
-        tool,
-        Tool::Select,
-        icons::tool(Tool::Select),
-        "Marquee select",
-    );
+    widgets::tool_button(ui, theme, tool, Tool::Select, icons::tool(Tool::Select));
     ui.add_space(space::SX);
-    widgets::tool_button(ui, theme, tool, Tool::Move, icons::tool(Tool::Move), "Move");
+    widgets::tool_button(ui, theme, tool, Tool::Move, icons::tool(Tool::Move));
 }
 
 #[cfg(not(target_os = "macos"))]

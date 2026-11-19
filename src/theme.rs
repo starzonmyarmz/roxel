@@ -22,6 +22,10 @@ pub struct Theme {
     pub surface_hover: egui::Color32,
     pub accent: egui::Color32,
     pub accent_dim: egui::Color32,
+    /// Text and icons drawn on an `accent` fill (selected chips, primary
+    /// buttons, the selected shape option). Holds WCAG AA (4.5:1) against
+    /// `accent` in both modes.
+    pub on_accent: egui::Color32,
     pub text: egui::Color32,
     /// Brighter than `text_dim`, dimmer than `text`. Used for chevrons and
     /// secondary glyphs that need to read clearly without competing with
@@ -55,6 +59,7 @@ impl Theme {
             surface_hover: egui::Color32::from_rgb(0x3A, 0x3B, 0x42),
             accent: egui::Color32::from_rgb(0xF4, 0x7A, 0x5C),
             accent_dim: egui::Color32::from_rgb(0x7A, 0x35, 0x25),
+            on_accent: egui::Color32::from_rgb(0x14, 0x14, 0x16),
             text: egui::Color32::from_rgb(220, 225, 235),
             text_muted: egui::Color32::from_rgb(210, 216, 228),
             text_dim: egui::Color32::from_rgb(150, 158, 172),
@@ -74,11 +79,12 @@ impl Theme {
             panel: egui::Color32::from_rgb(255, 255, 255),
             surface: egui::Color32::from_rgb(240, 242, 246),
             surface_hover: egui::Color32::from_rgb(228, 232, 240),
-            accent: egui::Color32::from_rgb(0xD1, 0x4E, 0x2A),
+            accent: egui::Color32::from_rgb(0xC8, 0x48, 0x24),
             accent_dim: egui::Color32::from_rgb(0xF8, 0xD5, 0xC9),
+            on_accent: egui::Color32::from_rgb(255, 255, 255),
             text: egui::Color32::from_rgb(32, 36, 44),
             text_muted: egui::Color32::from_rgb(80, 90, 105),
-            text_dim: egui::Color32::from_rgb(110, 120, 135),
+            text_dim: egui::Color32::from_rgb(98, 108, 122),
             border: egui::Color32::from_rgb(210, 215, 225),
             faint: egui::Color32::from_rgb(248, 249, 251),
             success: egui::Color32::from_rgb(0x2E, 0x8E, 0x4E),
@@ -226,6 +232,45 @@ mod tests {
                     mid >= min && mid <= max,
                     "hover {mid} outside [{min},{max}]"
                 );
+            }
+        }
+    }
+
+    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+        fn lin(c: u8) -> f32 {
+            let c = c as f32 / 255.0;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        let lum =
+            |c: egui::Color32| 0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b());
+        let (la, lb) = (lum(a), lum(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+    }
+
+    #[test]
+    fn contrast_matches_wcag_reference() {
+        let black = egui::Color32::BLACK;
+        let white = egui::Color32::WHITE;
+        assert!((contrast(black, white) - 21.0).abs() < 0.01);
+        assert!((contrast(white, white) - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn text_pairs_meet_wcag_aa() {
+        for t in [Theme::dark(), Theme::light()] {
+            for (name, fg, bg) in [
+                ("on_accent/accent", t.on_accent, t.accent),
+                ("text/panel", t.text, t.panel),
+                ("text_dim/panel", t.text_dim, t.panel),
+                ("text_dim/surface", t.text_dim, t.surface),
+                ("accent/panel", t.accent, t.panel),
+            ] {
+                let c = contrast(fg, bg);
+                assert!(c >= 4.5, "{:?} {name} contrast {c:.2} < 4.5", t.mode);
             }
         }
     }
@@ -454,6 +499,59 @@ mod tests {
     }
 
     #[test]
+    fn preferences_loads_without_ui_scale_field() {
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert_eq!(p.ui_scale, 100);
+        assert_eq!(p.ui_zoom(), 1.0);
+    }
+
+    #[test]
+    fn reduce_motion_defaults_off_and_zeroes_durations() {
+        let ron = "(theme: Dark, canvas_bg: MatchTheme, show_floor_grid: true, show_origin_axes: true, color_space: Hex)";
+        let p: Preferences = ron::from_str(ron).expect("parse");
+        assert!(!p.reduce_motion);
+        assert_eq!(p.motion_secs(0.12), 0.12);
+        let reduced = Preferences {
+            reduce_motion: true,
+            ..Default::default()
+        };
+        assert_eq!(reduced.motion_secs(0.12), 0.0);
+    }
+
+    #[test]
+    fn apply_motion_style_zeroes_egui_animation_time() {
+        let ctx = egui::Context::default();
+        let mut prefs = Preferences {
+            reduce_motion: true,
+            ..Default::default()
+        };
+        apply_motion_style(&ctx, &prefs);
+        assert_eq!(ctx.style().animation_time, 0.0);
+        prefs.reduce_motion = false;
+        apply_motion_style(&ctx, &prefs);
+        assert_eq!(
+            ctx.style().animation_time,
+            egui::Style::default().animation_time
+        );
+    }
+
+    #[test]
+    fn ui_zoom_clamps_to_the_offered_range() {
+        let at = |ui_scale| {
+            Preferences {
+                ui_scale,
+                ..Default::default()
+            }
+            .ui_zoom()
+        };
+        assert_eq!(at(125), 1.25);
+        assert_eq!(at(10), 0.8);
+        assert_eq!(at(900), 1.5);
+        assert!(UI_SCALES.contains(&default_ui_scale()));
+    }
+
+    #[test]
     fn preferences_roundtrip_last_shape() {
         let prefs = Preferences {
             last_shape: ShapePrimitive::Ellipse,
@@ -516,6 +614,61 @@ pub struct Preferences {
     /// Last shape primitive chosen for the Shape tool, restored on launch.
     #[serde(default)]
     pub last_shape: ShapePrimitive,
+    /// Interface scale in percent, one of [`UI_SCALES`]. Applied as the egui
+    /// context's scale factor; the 3D canvas is unaffected.
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: u16,
+    /// Snap instead of animate: egui transitions, palette swatch reflow and
+    /// camera easing (presets, Frame View, zoom).
+    #[serde(default)]
+    pub reduce_motion: bool,
+}
+
+/// UI scale choices offered in Preferences, in percent.
+pub const UI_SCALES: [u16; 6] = [80, 90, 100, 110, 125, 150];
+
+fn default_ui_scale() -> u16 {
+    100
+}
+
+impl Preferences {
+    /// egui points per logical window pixel for [`Preferences::ui_scale`],
+    /// clamped to the offered range so a hand-edited preferences.ron can't
+    /// make the UI unusable.
+    pub fn ui_zoom(&self) -> f32 {
+        let lo = UI_SCALES[0];
+        let hi = UI_SCALES[UI_SCALES.len() - 1];
+        f32::from(self.ui_scale.clamp(lo, hi)) / 100.0
+    }
+
+    /// `secs`, or zero when [`Preferences::reduce_motion`] is on.
+    pub fn motion_secs(&self, secs: f32) -> f32 {
+        if self.reduce_motion { 0.0 } else { secs }
+    }
+}
+
+/// egui's widget transition time (collapsing, fades, toggles), zeroed by
+/// reduced motion.
+pub fn apply_motion_style(ctx: &egui::Context, prefs: &Preferences) {
+    let secs = prefs.motion_secs(egui::Style::default().animation_time);
+    if ctx.style().animation_time != secs {
+        ctx.style_mut(|s| s.animation_time = secs);
+    }
+}
+
+/// Apply [`Preferences::ui_zoom`] through bevy_egui's per-context scale
+/// factor. egui's own `set_zoom_factor` doesn't stick: bevy_egui calls
+/// `set_pixels_per_point` every frame.
+pub fn apply_ui_scale_system(
+    prefs: Res<Preferences>,
+    mut contexts: Query<&mut bevy_egui::EguiContextSettings, With<bevy_egui::PrimaryEguiContext>>,
+) {
+    let zoom = prefs.ui_zoom();
+    for mut settings in &mut contexts {
+        if settings.scale_factor != zoom {
+            settings.scale_factor = zoom;
+        }
+    }
 }
 
 fn default_auto_update_check() -> bool {
@@ -552,6 +705,8 @@ impl Default for Preferences {
             auto_update_check: default_auto_update_check(),
             last_dir: None,
             last_shape: ShapePrimitive::default(),
+            ui_scale: default_ui_scale(),
+            reduce_motion: false,
         }
     }
 }
@@ -735,7 +890,7 @@ fn load_system_monospace() -> Option<Vec<u8>> {
 }
 
 pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
-    use crate::ui::tokens::{font, gap, pad, radius, shadow, stroke};
+    use crate::ui::tokens::{font, gap, pad, radius, shadow, size, space, stroke, width};
 
     let mut visuals = match theme.mode {
         ThemeMode::Dark => egui::Visuals::dark(),
@@ -774,7 +929,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     visuals.widgets.active.bg_fill = theme.accent;
     visuals.widgets.active.weak_bg_fill = theme.accent;
     visuals.widgets.active.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.accent);
-    visuals.widgets.active.fg_stroke = egui::Stroke::new(stroke::NORMAL, egui::Color32::WHITE);
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.on_accent);
     visuals.widgets.active.corner_radius = r_sm;
 
     visuals.widgets.open.bg_fill = theme.surface_hover;
@@ -797,11 +952,11 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     let mut style: egui::Style = (*ctx.style()).clone();
     style.spacing.item_spacing = gap::DEFAULT;
     style.spacing.button_padding = pad::DEFAULT;
-    style.spacing.menu_margin = egui::Margin::same(8);
-    style.spacing.tooltip_width = 240.0;
-    style.spacing.window_margin = egui::Margin::same(12);
-    style.spacing.slider_width = 160.0;
-    style.spacing.interact_size.y = 26.0;
+    style.spacing.menu_margin = egui::Margin::same(pad::MENU.x as i8);
+    style.spacing.tooltip_width = width::TOOLTIP;
+    style.spacing.window_margin = egui::Margin::same(space::MD as i8);
+    style.spacing.slider_width = width::SLIDER;
+    style.spacing.interact_size.y = size::ACTION_ROW_HEIGHT;
     style.interaction.selectable_labels = false;
     style.interaction.tooltip_delay = 0.3;
     style.interaction.show_tooltips_only_when_still = true;

@@ -94,6 +94,8 @@ pub mod space {
     /// Margin between canvas edge and a floating UI element (pill menu, tool
     /// island, status chip).
     pub const FLOAT_GAP: f32 = 16.0;
+    pub const POPOVER_TOP: f32 = 60.0; // search popovers' offset below the window top
+    pub const PANEL_INSET: f32 = 12.0; // inspector content inset from the panel edges
     /// Horizontal indent that aligns a row under `size::PREFS_LABEL`.
     /// Equals `size::PREFS_LABEL.x + XS`.
     pub const PREFS_INDENT: f32 = 76.0;
@@ -124,6 +126,7 @@ pub mod pad {
     pub const MODAL: Vec2 = Vec2::new(20.0, 16.0); // modal window / new-project inner margin
     pub const SEARCH: Vec2 = Vec2::new(14.0, 12.0); // command palette + switcher search frame
     pub const TOAST: Vec2 = Vec2::new(14.0, 10.0); // toast card inner margin
+    pub const COACHMARK: Vec2 = Vec2::new(16.0, 12.0); // onboarding card body
 }
 
 /// Icon `fit_to_exact_size` values. Square — width == height. 4-px grid.
@@ -135,7 +138,6 @@ pub mod icon {
     pub const LG: f32 = 20.0; // left tool rail
     pub const HERO: f32 = 64.0; // onboarding coachmark hero
 
-    #[allow(dead_code)] // reserved for future XS icon use
     pub const fn xs_square() -> Vec2 {
         Vec2::new(XS, XS)
     }
@@ -183,6 +185,11 @@ pub mod size {
     pub const DROPDOWN_HEIGHT: f32 = 28.0;
     pub const PREFS_LABEL: Vec2 = Vec2::new(72.0, 20.0);
     pub const CMD_PALETTE_ROW: f32 = 30.0;
+    pub const CMD_PALETTE_HEADER_ROW: f32 = 24.0; // palette switcher group header
+    pub const COLOR_AREA: f32 = 220.0; // picker saturation/brightness square
+    pub const PICKER_HANDLE: f32 = 12.0; // picker S×V handle diameter
+    pub const COACHMARK_CLOSE: f32 = 28.0; // onboarding close button diameter
+    pub const PAGE_DOT: f32 = 6.0; // onboarding pagination dot diameter
 }
 
 /// Container widths. Modals, panels, menus.
@@ -198,8 +205,9 @@ pub mod width {
     pub const PREFS_DROPDOWN: f32 = 200.0;
     /// Three-button confirm modals (unsaved changes, discard palette edits),
     /// wide enough for all three actions on one row.
-    pub const MODAL_DISCARD: f32 = 304.0;
+    pub const MODAL_CONFIRM: f32 = 304.0;
     pub const MODAL_ABOUT: f32 = 280.0;
+    pub const MODAL_SHORTCUTS: f32 = 400.0;
     /// Export-Shot tweak panel — the preview sits left, the knob column right,
     /// so the modal stays short enough to fit the app window.
     pub const MODAL_SHOT: f32 = 720.0;
@@ -208,6 +216,11 @@ pub mod width {
     /// Width of the art-direction knob column (right half of `MODAL_SHOT`).
     pub const SHOT_CONTROLS: f32 = 300.0;
     pub const COMMAND_PALETTE: f32 = 520.0;
+    pub const CATEGORY_CHIP: f32 = 56.0; // command palette category column
+    pub const TOOLTIP: f32 = 240.0;
+    pub const SLIDER: f32 = 160.0;
+    pub const FIELD_MIN: f32 = 40.0; // narrowest text field (picker channels)
+    pub const RENAME_FIELD_MIN: f32 = 60.0;
     pub const TOAST: f32 = 360.0;
     pub const COACHMARK: f32 = 256.0;
     /// Maximum width of the floating pill menu on Win/Linux. The pill sizes
@@ -234,6 +247,7 @@ pub mod motion {
 /// Container heights / max-heights.
 pub mod height {
     pub const COMMAND_PALETTE_MAX: f32 = 318.0;
+    pub const MODAL_SHORTCUTS_MAX: f32 = 480.0;
     /// Height of the floating pill menu row.
     #[allow(dead_code)] // reserved for pill-height tuning
     pub const FLOAT_MENU: f32 = 36.0;
@@ -246,6 +260,9 @@ pub mod height {
     pub const MAC_TITLEBAR_GUTTER: f32 = 28.0;
     /// Hero illustration band at the top of the onboarding coachmark card.
     pub const COACHMARK_HERO: f32 = 140.0;
+    pub const COACHMARK_BODY_EST: f32 = 140.0; // card body height used to place it before layout
+    pub const HUE_BAR: f32 = 16.0;
+    pub const SECTION_HEADER: f32 = super::font::SECTION + super::space::SX;
 }
 
 #[cfg(test)]
@@ -312,6 +329,8 @@ mod tests {
             space::MD,
             space::LG,
             space::FLOAT_GAP,
+            space::POPOVER_TOP,
+            space::PANEL_INSET,
             space::PREFS_INDENT,
         ] {
             assert_eq!(v as u32 % 2, 0, "space {v} is odd");
@@ -354,12 +373,25 @@ mod tests {
             size::ACTION_ROW_HEIGHT,
             size::DROPDOWN_HEIGHT,
             size::CMD_PALETTE_ROW,
+            size::CMD_PALETTE_HEADER_ROW,
+            size::COLOR_AREA,
+            size::PICKER_HANDLE,
+            size::COACHMARK_CLOSE,
+            size::PAGE_DOT,
+            width::CATEGORY_CHIP,
+            width::TOOLTIP,
+            width::SLIDER,
+            width::FIELD_MIN,
+            width::RENAME_FIELD_MIN,
+            height::COACHMARK_BODY_EST,
+            height::HUE_BAR,
+            height::SECTION_HEADER,
             width::TOP_BAR_MENU,
             width::SIDE_PANEL,
             width::SIDE_PANEL_MAX,
             width::MODAL_PREFS,
             width::PREFS_DROPDOWN,
-            width::MODAL_DISCARD,
+            width::MODAL_CONFIRM,
             width::MODAL_ABOUT,
             width::MODAL_SHOT,
             width::SHOT_PREVIEW,

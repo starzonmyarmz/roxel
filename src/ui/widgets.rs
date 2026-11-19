@@ -1,7 +1,7 @@
 use super::icons;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke};
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, shadow, size, space, stroke, width};
 use bevy_egui::egui;
 use roxel::color_space::ColorSpace;
 
@@ -39,9 +39,9 @@ pub fn tool_button(
     tool: &mut ToolState,
     kind: Tool,
     icon_src: egui::ImageSource<'static>,
-    label: &str,
 ) -> egui::Response {
     let active = tool.current == kind;
+    let label = kind.label();
     let button_size = size::TOOL_BUTTON;
 
     // Static three-state palette — no animation. The animated version stuttered
@@ -161,7 +161,7 @@ pub fn section<R>(
 /// Label row painted by [`section`]. Uppercase SemiBold label, no chevron,
 /// no click target — sections are always expanded.
 fn section_header(ui: &mut egui::Ui, theme: &Theme, title: &str) {
-    let row_h = font::SECTION + 6.0;
+    let row_h = height::SECTION_HEADER;
     let (rect, _resp) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), row_h),
         egui::Sense::hover(),
@@ -339,7 +339,7 @@ pub fn section_header_action(
     action: impl FnOnce(&mut egui::Ui),
 ) {
     ui.horizontal(|ui| {
-        ui.set_min_height(font::SECTION + 6.0);
+        ui.set_min_height(height::SECTION_HEADER);
         ui.label(
             egui::RichText::new(section_header_text(title))
                 .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))
@@ -356,15 +356,25 @@ pub fn section_header_action(
 pub fn section_divider(ui: &mut egui::Ui, theme: &Theme) {
     ui.add_space(space::MD);
     let sep_rect = ui
-        .allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover())
+        .allocate_exact_size(
+            egui::vec2(ui.available_width(), stroke::NORMAL),
+            egui::Sense::hover(),
+        )
         .0;
+    hline_at(ui, theme, sep_rect.center().y);
+    ui.add_space(space::MD);
+}
+
+/// Hairline divider at `y`, pixel-snapped, spanning the clip rect so it runs
+/// past the frame's inner margin to both edges. Paints only; the caller
+/// spaces around it.
+pub fn hline_at(ui: &egui::Ui, theme: &Theme, y: f32) {
     let painter = ui.painter();
     painter.hline(
         ui.clip_rect().x_range(),
-        painter.round_to_pixel_center(sep_rect.center().y),
+        painter.round_to_pixel_center(y),
         egui::Stroke::new(stroke::HAIR, theme.border),
     );
-    ui.add_space(space::MD);
 }
 
 /// Border stroke for a swatch in the given selection state. Matches
@@ -589,6 +599,56 @@ pub fn modal_window<'a>(theme: &Theme, title: &str, open: &'a mut bool) -> egui:
     .frame(modal_frame(theme, pad::MODAL))
 }
 
+/// Centred confirm sheet: heading, prompt, and a right-aligned button row.
+/// `buttons` are in reading order, left to right; the one whose value is
+/// `enter` is the accent button and answers Enter, and Esc answers `cancel`.
+/// Returns the chosen value, or `None` while still open. An anchored `Area`
+/// rather than `egui::Window` so the sheet sizes tight to its content.
+pub fn confirm_dialog<T: Copy + PartialEq>(
+    ctx: &egui::Context,
+    theme: &Theme,
+    heading: &str,
+    prompt: &str,
+    buttons: &[(&str, T)],
+    enter: T,
+    cancel: T,
+) -> Option<T> {
+    let mut clicked = None;
+    egui::Area::new(egui::Id::new("confirm_dialog").with(heading))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            modal_frame(theme, pad::MODAL).show(ui, |ui| {
+                ui.set_width(width::MODAL_CONFIRM);
+                ui.vertical(|ui| {
+                    ui.label(modal_heading(theme, heading));
+                    ui.add_space(space::XS);
+                    hint_label(ui, theme, prompt);
+                    ui.add_space(space::SM);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = space::SX;
+                        for &(label, value) in buttons.iter().rev() {
+                            if dialog_button(ui, theme, label, value == enter).clicked() {
+                                clicked = Some(value);
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    clicked.or_else(|| {
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Escape) {
+                Some(cancel)
+            } else if i.key_pressed(egui::Key::Enter) {
+                Some(enter)
+            } else {
+                None
+            }
+        })
+    })
+}
+
 /// SemiBold heading text in `theme.text` at [`font::HEADING`]. Used by the
 /// `Area`-based confirm sheets that build their own heading row (the
 /// `egui::Window` modals get theirs from [`modal_window`]).
@@ -600,7 +660,7 @@ pub fn modal_heading(theme: &Theme, title: &str) -> egui::RichText {
 }
 
 /// Toggle chip used by selection rows (Theme: System / Light / Dark). Selected
-/// = accent fill + white text + no stroke; unselected = surface + text + 0.5
+/// = accent fill + `on_accent` text + no stroke; unselected = surface + text + 0.5
 /// border. Generic over the value so future selectors (shape kind, etc.) can
 /// reuse it.
 pub fn chip_button<T: PartialEq + Copy>(
@@ -612,7 +672,7 @@ pub fn chip_button<T: PartialEq + Copy>(
 ) -> egui::Response {
     let selected = *current == value;
     let (fill, fg, chip_stroke) = if selected {
-        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+        (theme.accent, theme.on_accent, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
@@ -661,7 +721,7 @@ pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce
 }
 
 /// Compact text button for modal action rows (Create / Cancel). `primary =
-/// true` uses accent fill + white text + no stroke; `primary = false` uses
+/// true` uses accent fill + `on_accent` text + no stroke; `primary = false` uses
 /// surface + text + 0.5 border. Matches `chip_button` styling so a row of
 /// dialog buttons reads as the same family as other modal controls.
 pub fn dialog_button(
@@ -671,7 +731,7 @@ pub fn dialog_button(
     primary: bool,
 ) -> egui::Response {
     let (fill, fg, btn_stroke) = if primary {
-        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+        (theme.accent, theme.on_accent, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
@@ -803,7 +863,7 @@ fn select_row(
         egui::Color32::TRANSPARENT
     };
     let fg = if selected {
-        egui::Color32::WHITE
+        theme.on_accent
     } else {
         theme.text
     };
@@ -822,6 +882,74 @@ fn select_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_confirm(events: Vec<egui::Event>) -> Option<u8> {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let _ = ctx.run(egui::RawInput::default(), |_| {});
+        let mut out = None;
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            out = confirm_dialog(
+                ctx,
+                &Theme::dark(),
+                "Heading",
+                "Prompt",
+                &[("Discard", 0), ("Cancel", 1), ("Save", 2)],
+                2,
+                1,
+            );
+        });
+        out
+    }
+
+    fn key(key: egui::Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn confirm_dialog_answers_enter_and_esc() {
+        assert_eq!(run_confirm(vec![]), None);
+        assert_eq!(run_confirm(vec![key(egui::Key::Enter)]), Some(2));
+        assert_eq!(run_confirm(vec![key(egui::Key::Escape)]), Some(1));
+        assert_eq!(
+            run_confirm(vec![key(egui::Key::Escape), key(egui::Key::Enter)]),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn hline_at_snaps_to_a_pixel_center_across_the_clip_rect() {
+        let ctx = egui::Context::default();
+        let mut clip = egui::Rect::NOTHING;
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                clip = ui.clip_rect();
+                hline_at(ui, &Theme::dark(), 10.3);
+            });
+        });
+        let line = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                egui::Shape::LineSegment { points, .. } => Some(*points),
+                _ => None,
+            })
+            .expect("hline painted");
+        assert_eq!(line[0].y, 10.5);
+        assert_eq!(line[1].y, 10.5);
+        assert_eq!(line[0].x, clip.left());
+        assert_eq!(line[1].x, clip.right());
+    }
 
     #[test]
     fn hex_string_formats_uppercase_with_hash() {

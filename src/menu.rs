@@ -115,6 +115,7 @@ fn view_menu() -> Vec<MenuEntry> {
         Separator,
         Item(Action::ToggleFloorGrid),
         Item(Action::ToggleOriginAxes),
+        Item(Action::ToggleFocusMode),
         Separator,
         Submenu(
             "Color Format",
@@ -179,7 +180,11 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
             ),
             (
                 "Help",
-                vec![Item(Action::ShowOnboarding), Item(Action::Changelog)],
+                vec![
+                    Item(Action::ShowOnboarding),
+                    Item(Action::ShowShortcuts),
+                    Item(Action::Changelog),
+                ],
             ),
         ]
     } else {
@@ -208,6 +213,7 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
                 "Help",
                 vec![
                     Item(Action::ShowOnboarding),
+                    Item(Action::ShowShortcuts),
                     Item(Action::Changelog),
                     Separator,
                     Item(Action::CheckForUpdates),

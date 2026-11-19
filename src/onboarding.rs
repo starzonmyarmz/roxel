@@ -18,7 +18,7 @@ use crate::camera::ViewportRect;
 use crate::gizmo::GizmoRect;
 use crate::theme::{Preferences, PreferencesWindow, Theme, save_preferences};
 use crate::ui::icons;
-use crate::ui::tokens::{font, gap, height, icon, pad, radius, space, width};
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, width};
 use crate::ui::{CommandPalette, UnsavedGuard};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -44,7 +44,7 @@ pub const TOUR_STEPS: &[TourStep] = &[
     TourStep {
         anchor: AnchorId::ToolRail,
         title: "Tools",
-        body: "Brush, Erase, Paint, Pick, and Shape — keys B/E/P/I/S. Long-press Shape for rect, ellipse, line.",
+        body: "Brush, Erase, Paint, Eyedropper, Shape, Select and Move — keys B/E/P/I/S/M/V. Click Shape to choose a rectangle, ellipse, line or sphere.",
     },
     TourStep {
         anchor: AnchorId::ColorPalette,
@@ -125,12 +125,16 @@ fn resolve_anchor(
     anchors: &OnboardingAnchors,
     viewport: &ViewportRect,
     gizmo: &GizmoRect,
+    zoom: f32,
 ) -> Option<egui::Rect> {
     match id {
         AnchorId::Viewport => viewport.avail.map(rect_from_bevy),
         AnchorId::ToolRail => anchors.tool_rail,
         AnchorId::ColorPalette => anchors.color_palette,
-        AnchorId::GizmoCube => gizmo.0.map(rect_from_bevy),
+        AnchorId::GizmoCube => gizmo.0.map(|r| {
+            let r = rect_from_bevy(r);
+            egui::Rect::from_min_max(r.min / zoom, r.max / zoom)
+        }),
     }
 }
 
@@ -243,6 +247,7 @@ pub fn onboarding_overlay_system(
         &anchor_params.anchors,
         &anchor_params.viewport,
         &anchor_params.gizmo,
+        prefs.ui_zoom(),
     ) {
         Some(r) => r,
         None => {
@@ -262,8 +267,7 @@ pub fn onboarding_overlay_system(
     let is_last = step_idx + 1 == total;
 
     let card_w = width::COACHMARK;
-    let est_body_h = 140.0;
-    let card_size = egui::vec2(card_w, height::COACHMARK_HERO + est_body_h);
+    let card_size = egui::vec2(card_w, height::COACHMARK_HERO + height::COACHMARK_BODY_EST);
     let card_pos = card_position(step.anchor, anchor_rect, card_size, screen);
 
     let mut next_clicked = false;
@@ -324,7 +328,7 @@ pub fn onboarding_overlay_system(
                         .paint_at(ui, icon_rect);
 
                     // Close X overlay — top-right of hero.
-                    let close_size = egui::vec2(28.0, 28.0);
+                    let close_size = egui::Vec2::splat(size::COACHMARK_CLOSE);
                     let close_pos = egui::pos2(
                         hero_rect.max.x - close_size.x - space::SM,
                         hero_rect.min.y + space::SM,
@@ -350,7 +354,7 @@ pub fn onboarding_overlay_system(
 
                     // Body region.
                     let body_margin =
-                        egui::Margin::symmetric(pad::DIALOG.x as i8, pad::DIALOG.y as i8 + 4);
+                        egui::Margin::symmetric(pad::COACHMARK.x as i8, pad::COACHMARK.y as i8);
                     egui::Frame::NONE.inner_margin(body_margin).show(ui, |ui| {
                         ui.spacing_mut().item_spacing = gap::DEFAULT;
                         ui.label(
@@ -370,7 +374,7 @@ pub fn onboarding_overlay_system(
                         // Footer: pagination dots (left) + Next/Done link (right).
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing = gap::TIGHT;
-                            let dot_d = 6.0;
+                            let dot_d = size::PAGE_DOT;
                             let dot_size = egui::vec2(dot_d, dot_d);
                             for i in 0..total {
                                 let (rect, _) =

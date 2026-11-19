@@ -6,6 +6,14 @@ Roxel's UI is canvas-first: a single left inspector, a floating tool island, and
 
 Choose **Light**, **Dark**, or **System** (follows your OS setting).
 
+## UI scale
+
+**Preferences → Appearance → UI scale** sizes the interface from 80% to 150%: panels, menus, dialogs and text. The 3D canvas isn't scaled.
+
+## Reduce motion
+
+**Preferences → Appearance → Motion → Reduce motion** turns off interface animations: the camera jumps straight to a view preset, Frame View or zoom step instead of easing there, and palette swatches snap into place when you reorder them. The flyby camera still moves when you start it.
+
 ## Canvas appearance
 
 Independent of the UI theme, you can set:
@@ -18,4 +26,4 @@ A permanent RGB **axis triad** marks the world origin.
 
 ## Focus mode
 
-Press `` ` `` (backtick) to toggle focus mode, which hides the inspector and all floating chrome for a distraction-free canvas. Press again to bring the UI back.
+Press `` ` `` (backtick) to toggle focus mode, which hides the inspector and all floating chrome for a distraction-free canvas. Press again to bring the UI back. It is also under **View → Focus Mode** and in the command palette (`Cmd/Ctrl + K`, "focus mode").
