@@ -59,10 +59,13 @@ pub fn spawn_camera(commands: &mut Commands) {
 /// when the grid is empty so callers (UI, Cmd+0 frame, zoom limits) can
 /// fall back to the empty-world default.
 pub fn fit_view(grid: &VoxelGrid) -> Option<(Vec3, f32)> {
-    let (min, max) = grid.bounding_box()?;
+    grid.bounding_box().map(fit_bounds)
+}
+
+fn fit_bounds((min, max): (IVec3, IVec3)) -> (Vec3, f32) {
     let centroid = (min.as_vec3() + max.as_vec3() + Vec3::ONE) * 0.5;
     let extent = (max - min).as_vec3().max_element() + 1.0;
-    Some((centroid, (extent * 1.6).max(4.0)))
+    (centroid, (extent * 1.6).max(4.0))
 }
 
 /// World-space offset that lands `centroid` at the visible viewport center
@@ -311,7 +314,7 @@ mod tests {
     fn zoom_radius_lower_bound_is_fixed() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
-        let (lower, _) = zoom_radius_limits(&grid);
+        let (lower, _) = zoom_radius_limits(grid.bounding_box());
         assert!((lower - ZOOM_LOWER_LIMIT).abs() < 1e-6);
     }
 
@@ -319,7 +322,7 @@ mod tests {
     fn zoom_radius_upper_scales_with_cluster_above_floor() {
         let mut grid = VoxelGrid::default();
         grid.set(IVec3::new(10, 10, 10), Some([255, 0, 0, 255]));
-        let (_, upper) = zoom_radius_limits(&grid);
+        let (_, upper) = zoom_radius_limits(grid.bounding_box());
         let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
         let expected = (fit_radius * ZOOM_OUT_MULTIPLIER).max(ZOOM_OUT_FLOOR);
         assert!((upper - expected).abs() < 1e-3, "upper={upper}");
@@ -332,7 +335,7 @@ mod tests {
         for x in 0..40 {
             grid.set(IVec3::new(x, 0, 0), Some([255, 0, 0, 255]));
         }
-        let (_, upper) = zoom_radius_limits(&grid);
+        let (_, upper) = zoom_radius_limits(grid.bounding_box());
         let (_, fit_radius) = fit_view(&grid).expect("non-empty grid");
         assert!(fit_radius * ZOOM_OUT_MULTIPLIER > ZOOM_OUT_FLOOR);
         assert!((upper - fit_radius * ZOOM_OUT_MULTIPLIER).abs() < 1e-3);
@@ -341,7 +344,7 @@ mod tests {
     #[test]
     fn zoom_radius_limits_empty_grid_uses_floor() {
         let grid = VoxelGrid::default();
-        let (lower, upper) = zoom_radius_limits(&grid);
+        let (lower, upper) = zoom_radius_limits(grid.bounding_box());
         assert!((lower - ZOOM_LOWER_LIMIT).abs() < 1e-6);
         assert!(upper > lower);
         // Empty scene: fit fallback = EMPTY_WORLD_RADIUS (32). 2× = 64, equals
@@ -674,8 +677,10 @@ pub fn apply_zoom(radius: f32, factor: f32, lower_limit: f32, upper_limit: Optio
 /// Dynamic zoom radius limits derived from the current grid. Lower bound
 /// is fixed; upper bound scales with `fit_view` clamped to a floor so empty
 /// scenes still feel orbit-able.
-pub fn zoom_radius_limits(grid: &VoxelGrid) -> (f32, f32) {
-    let fit = fit_view(grid).map(|(_, r)| r).unwrap_or(EMPTY_WORLD_RADIUS);
+pub fn zoom_radius_limits(bounds: Option<(IVec3, IVec3)>) -> (f32, f32) {
+    let fit = bounds
+        .map(|b| fit_bounds(b).1)
+        .unwrap_or(EMPTY_WORLD_RADIUS);
     // Fixed lower bound so the user can always zoom in to individual voxels
     // regardless of scene size. Scaling this with cluster fit_radius made
     // large scenes feel locked out of close-up inspection.
@@ -700,16 +705,21 @@ pub const ZOOM_OUT_MULTIPLIER: f32 = 2.0;
 /// the spawn-camera radius reachable on a fresh project.
 pub const ZOOM_OUT_FLOOR: f32 = 64.0;
 
-pub fn update_zoom_limits_system(grid: Res<GridResource>, mut cameras: Query<&mut PanOrbitCamera>) {
-    let (lower, upper) = zoom_radius_limits(&grid);
+pub fn update_zoom_limits_system(
+    mut grid: ResMut<GridResource>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    let (lower, upper) = zoom_radius_limits(grid.bypass_change_detection().bounding_box_cached());
     for mut cam in &mut cameras {
+        let radius = cam.target_radius.clamp(lower, upper);
+        if cam.zoom_lower_limit == lower
+            && cam.zoom_upper_limit == Some(upper)
+            && cam.target_radius == radius
+        {
+            continue;
+        }
         cam.zoom_lower_limit = lower;
         cam.zoom_upper_limit = Some(upper);
-        if cam.target_radius < lower {
-            cam.target_radius = lower;
-        }
-        if cam.target_radius > upper {
-            cam.target_radius = upper;
-        }
+        cam.target_radius = radius;
     }
 }

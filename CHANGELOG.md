@@ -42,6 +42,10 @@ Release notes.
 - A failed Roxel Shot capture no longer blocks Export Shot until restart.
 - Erasing on a chunk edge previews correctly, and edits show up the same frame.
 - Once an update is found, Check for Updates becomes "Download Roxel vX.Y.Z…"; a failed check retries on next launch, and pre-release versions compare correctly.
+- Big scenes stay responsive: large edits, imports and pastes mesh in parallel and stream in over a few frames, and moving or resampling large selections no longer slows down as they grow.
+- Idle frames do less work with a selection, shape preview or brush active.
+- PNG and Roxel Shot exports save in the background instead of freezing the app.
+- glTF and OBJ exports merge same-color faces, so files are much smaller.
 
 ## [0.7.1] - 2026-06-03
 

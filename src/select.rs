@@ -66,11 +66,8 @@ impl SelectionAabb {
         })
     }
 
-    /// Count of non-empty cells inside the AABB (clipped to the grid bounds).
     pub fn voxel_count(&self, grid: &VoxelGrid) -> usize {
-        self.iter_cells()
-            .filter(|p| grid.in_bounds(*p) && grid.get(*p).is_some())
-            .count()
+        grid.count_in_box(self.min, self.max)
     }
 }
 
@@ -435,6 +432,45 @@ pub fn aabb_of_cells(cells: &[IVec3]) -> Option<SelectionAabb> {
     aabb_of_cells_iter(cells.iter().copied())
 }
 
+pub fn displayed_aabb(selection: &Selection, state: &SelectState) -> Option<SelectionAabb> {
+    selection.aabb.or_else(|| {
+        if state.phase != SelectPhase::Idle {
+            in_progress_aabb(state)
+        } else {
+            None
+        }
+    })
+}
+
+pub fn displayed_voxel_count(
+    selection: &Selection,
+    state: &SelectState,
+    grid: &VoxelGrid,
+) -> usize {
+    if selection.aabb.is_some() {
+        return selection.voxel_count(grid);
+    }
+    displayed_aabb(selection, state).map_or(0, |a| a.voxel_count(grid))
+}
+
+#[derive(Resource, Default)]
+pub struct SelectionVoxelCount(pub usize);
+
+pub fn selection_voxel_count_system(
+    selection: Res<Selection>,
+    state: Res<SelectState>,
+    grid: Res<GridResource>,
+    mut count: ResMut<SelectionVoxelCount>,
+    mut last_aabb: Local<Option<SelectionAabb>>,
+) {
+    let aabb = displayed_aabb(&selection, &state);
+    if aabb == *last_aabb && !selection.is_changed() && !grid.is_changed() {
+        return;
+    }
+    *last_aabb = aabb;
+    count.0 = displayed_voxel_count(&selection, &state, &grid);
+}
+
 /// Build an in-progress AABB from the current `SelectState` corners + signed
 /// extrude offset along the anchor axis. Returns None during `Idle`.
 ///
@@ -559,7 +595,15 @@ pub fn selection_render_system(
     time: Res<Time>,
     snapshot_active: Res<crate::snapshot::SnapshotInProgress>,
     mut gizmos: Gizmos<SelectionGizmos>,
+    mut silhouette: Local<Vec<(u8, IVec3)>>,
 ) {
+    if selection.is_changed() {
+        *silhouette = selection
+            .cells
+            .as_ref()
+            .map(silhouette_edges)
+            .unwrap_or_default();
+    }
     if snapshot_active.0 {
         return;
     }
@@ -578,10 +622,8 @@ pub fn selection_render_system(
 
     // Per-cell mask wins: trace the silhouette of the masked region so the
     // marching ants follow one merged shape instead of every voxel's cube.
-    if state.phase == SelectPhase::Idle
-        && let Some(cells) = &selection.cells
-    {
-        for (axis, anchor) in silhouette_edges(cells) {
+    if state.phase == SelectPhase::Idle && selection.cells.is_some() {
+        for &(axis, anchor) in silhouette.iter() {
             let a = Vec3::new(anchor.x as f32, anchor.y as f32, anchor.z as f32);
             let mut b = a;
             match axis {
@@ -1181,6 +1223,33 @@ mod tests {
         let aabb = selection.aabb.unwrap();
         assert_eq!(aabb.min, IVec3::new(1, 0, 0));
         assert_eq!(aabb.max, IVec3::new(3, 2, 2));
+    }
+
+    #[test]
+    fn displayed_voxel_count_prefers_the_committed_mask_over_a_drag() {
+        let mut g = VoxelGrid::default();
+        for x in 0..4 {
+            g.set(IVec3::new(x, 5, 0), Some([1, 1, 1, 255]));
+        }
+        let state = SelectState {
+            phase: SelectPhase::Extrude,
+            anchor: Some(StrokeAnchor {
+                axis: 1,
+                plane_world: 5.0,
+                target_layer: 5,
+            }),
+            corner1: Some(IVec3::new(0, 5, 0)),
+            corner2: Some(IVec3::new(2, 5, 0)),
+            normal_sign: 1,
+            thickness: 0,
+            ..Default::default()
+        };
+        let mut sel = Selection::default();
+        assert_eq!(displayed_voxel_count(&sel, &state, &g), 3);
+        sel.set_cells(HashSet::from([IVec3::new(3, 5, 0)]));
+        assert_eq!(displayed_voxel_count(&sel, &state, &g), 1);
+        sel.clear();
+        assert_eq!(displayed_voxel_count(&sel, &SelectState::default(), &g), 0);
     }
 
     #[test]

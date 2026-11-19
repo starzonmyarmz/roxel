@@ -12,10 +12,10 @@ pub struct CellDelta {
 #[derive(Default)]
 pub struct Stroke {
     pub deltas: Vec<CellDelta>,
-    // Pre-stroke value of every cell touched this stroke. Picker reads this
-    // mid-stroke so freshly placed voxels are invisible to the next pick —
-    // prevents runaway stacking. Replaces the old full-grid snapshot.
-    pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
+    // Index into `deltas` of every cell touched this stroke. The picker reads
+    // its pre-stroke `before` mid-stroke so freshly placed voxels are
+    // invisible to the next pick — prevents runaway stacking.
+    pub touched: HashMap<IVec3, usize>,
     pub touched_bounds: Option<(IVec3, IVec3)>,
     /// Monotonic id assigned in `end` when the stroke commits. Used by the
     /// document-dirty check: the editor records the id of the top-of-undo
@@ -51,13 +51,9 @@ impl History {
         let Some(stroke) = self.current.as_mut() else {
             return;
         };
-        let key = (pos.x, pos.y, pos.z);
-        if stroke.touched.contains_key(&key) {
-            // Already touched this stroke — overwrite without doubling history.
+        if let Some(&i) = stroke.touched.get(&pos) {
             grid.set(pos, after);
-            if let Some(d) = stroke.deltas.iter_mut().find(|d| d.pos == pos) {
-                d.after = after;
-            }
+            stroke.deltas[i].after = after;
             return;
         }
         let before = grid.get(pos);
@@ -65,7 +61,7 @@ impl History {
             return;
         }
         grid.set(pos, after);
-        stroke.touched.insert(key, before);
+        stroke.touched.insert(pos, stroke.deltas.len());
         stroke.touched_bounds = Some(match stroke.touched_bounds {
             Some((lo, hi)) => (lo.min(pos), hi.max(pos)),
             None => (pos, pos),
@@ -76,11 +72,9 @@ impl History {
     /// Returns the cell's pre-stroke value if it was touched in the current
     /// stroke, or `None` if not (caller should fall back to the live grid).
     pub fn pre_stroke_value(&self, p: IVec3) -> Option<Option<Color8>> {
-        self.current
-            .as_ref()?
-            .touched
-            .get(&(p.x, p.y, p.z))
-            .copied()
+        let stroke = self.current.as_ref()?;
+        let &i = stroke.touched.get(&p)?;
+        Some(stroke.deltas[i].before)
     }
 
     pub fn pre_stroke_bounds(&self) -> Option<(IVec3, IVec3)> {
@@ -106,6 +100,8 @@ impl History {
         if stroke.deltas.is_empty() {
             return;
         }
+        stroke.touched = HashMap::new();
+        stroke.touched_bounds = None;
         self.next_id += 1;
         stroke.id = self.next_id;
         self.undo.push(stroke);
@@ -228,6 +224,28 @@ mod tests {
         assert_eq!(g.get(p), Some([3, 3, 3, 255]));
         h.undo(&mut g);
         assert_eq!(g.get(p), None);
+    }
+
+    #[test]
+    fn retouching_many_cells_updates_their_deltas_in_place() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let cells: Vec<IVec3> = (0..50_000)
+            .map(|i| IVec3::new(i % 100, i / 10_000, (i / 100) % 100))
+            .collect();
+        h.begin();
+        for &p in &cells {
+            rec(&mut h, &mut g, p, Some([1, 1, 1, 255]));
+        }
+        for &p in &cells {
+            rec(&mut h, &mut g, p, Some([2, 2, 2, 255]));
+        }
+        assert_eq!(h.pre_stroke_value(cells[49_999]), Some(None));
+        h.end();
+        assert!(h.undo[0].touched.is_empty());
+        let deltas = &h.undo[0].deltas;
+        assert_eq!(deltas.len(), cells.len());
+        assert!(deltas.iter().all(|d| d.after == Some([2, 2, 2, 255])));
     }
 
     #[test]

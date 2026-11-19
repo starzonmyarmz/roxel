@@ -30,9 +30,52 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::PrimaryWindow;
 use bevy_panorbit_camera::PanOrbitCamera;
 
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
+
 use crate::GridResource;
 use crate::camera::fit_view;
 use crate::ui::Toasts;
+
+/// PNG exports being encoded and written off the main thread. Each job
+/// resolves to the toast to show: `Ok` for success, `Err` for failure.
+#[derive(Resource, Default)]
+pub struct PngWrites(Vec<Task<Result<String, String>>>);
+
+impl PngWrites {
+    pub fn spawn(&mut self, job: impl FnOnce() -> Result<String, String> + Send + 'static) {
+        self.0
+            .push(AsyncComputeTaskPool::get().spawn(async move { job() }));
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn drain_finished(&mut self) -> Vec<Result<String, String>> {
+        let mut done = Vec::new();
+        self.0
+            .retain_mut(|task| match block_on(future::poll_once(task)) {
+                Some(result) => {
+                    done.push(result);
+                    false
+                }
+                None => true,
+            });
+        done
+    }
+}
+
+pub fn poll_png_writes_system(mut writes: ResMut<PngWrites>, mut toasts: ResMut<Toasts>) {
+    if writes.0.is_empty() {
+        return;
+    }
+    for result in writes.drain_finished() {
+        match result {
+            Ok(msg) => toasts.success(msg),
+            Err(msg) => toasts.error(msg),
+        }
+    }
+}
 
 pub const PREVIEW_SIZE: u32 = 512;
 
@@ -82,6 +125,9 @@ pub fn start_snapshot_system(
     grid: Res<GridResource>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    if snap.request.0.is_none() || grid.dirty {
+        return;
+    }
     let Some(path) = snap.request.0.take() else {
         return;
     };
@@ -176,17 +222,19 @@ pub fn start_snapshot_system(
                   mut commands: Commands,
                   mut session: ResMut<SnapshotSession>,
                   mut in_progress: ResMut<SnapshotInProgress>,
-                  mut toasts: ResMut<Toasts>| {
-                match save_rgba_png(&path_for_observer, &trigger.image) {
+                  mut writes: ResMut<PngWrites>| {
+                let path = path_for_observer.clone();
+                let image = trigger.image.clone();
+                writes.spawn(move || match save_rgba_png(&path, image) {
                     Ok(()) => {
-                        let label = path_for_observer
+                        let label = path
                             .file_name()
                             .and_then(|s| s.to_str())
                             .unwrap_or("image.png");
-                        toasts.success(format!("Saved {label}"));
+                        Ok(format!("Saved {label}"))
                     }
-                    Err(e) => toasts.error(format!("Snapshot save failed: {e}")),
-                }
+                    Err(e) => Err(format!("Snapshot save failed: {e}")),
+                });
                 if let Some(cam) = session.camera.take() {
                     commands.entity(cam).despawn();
                 }
@@ -207,12 +255,42 @@ fn image_to_png_bytes(img: &Image) -> anyhow::Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
-fn save_rgba_png(path: &Path, img: &Image) -> anyhow::Result<()> {
+fn save_rgba_png(path: &Path, img: Image) -> anyhow::Result<()> {
     let dyn_img = img
-        .clone()
         .try_into_dynamic()
         .map_err(|e| anyhow::anyhow!("image format not convertible: {e:?}"))?;
     let rgba = dyn_img.into_rgba8();
     roxel::io::atomic::write_with(path, |w| rgba.write_to(w, image::ImageFormat::Png))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::tasks::TaskPool;
+
+    #[test]
+    fn png_writes_drain_each_finished_job_once() {
+        AsyncComputeTaskPool::get_or_init(TaskPool::default);
+        let mut writes = PngWrites::default();
+        writes.spawn(|| Ok("Saved a.png".into()));
+        writes.spawn(|| Err("Snapshot save failed: disk full".into()));
+        let mut results = Vec::new();
+        for _ in 0..1000 {
+            results.extend(writes.drain_finished());
+            if writes.0.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        results.sort();
+        assert_eq!(
+            results,
+            vec![
+                Ok("Saved a.png".to_string()),
+                Err("Snapshot save failed: disk full".to_string()),
+            ]
+        );
+        assert!(writes.drain_finished().is_empty());
+    }
 }

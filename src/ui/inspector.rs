@@ -78,7 +78,8 @@ pub fn inspector_panel(
     ctx: &egui::Context,
     ui_visible_on: bool,
     theme: &Theme,
-    grid: &mut VoxelGrid,
+    grid: &VoxelGrid,
+    bounds: Option<(bevy::math::IVec3, bevy::math::IVec3)>,
     history: &History,
     zoom: &ZoomReadout<'_, '_>,
     current_path: &CurrentProjectPath,
@@ -99,6 +100,7 @@ pub fn inspector_panel(
     shape_state: &ShapeState,
     selection: &Selection,
     select_state: &SelectState,
+    selection_voxels: usize,
 ) -> Option<egui::InnerResponse<()>> {
     let mac_gutter: i8 = if cfg!(target_os = "macos") {
         height::MAC_TITLEBAR_GUTTER as i8
@@ -153,7 +155,7 @@ pub fn inspector_panel(
                                         doc_name.to_string()
                                     };
                                     widgets::stat_row(ui, theme, "File", file_label);
-                                    let design_label = match grid.bounding_box_cached() {
+                                    let design_label = match bounds {
                                         Some((min, max)) => {
                                             let extent = max - min + bevy::math::IVec3::ONE;
                                             format!("{} × {} × {}", extent.x, extent.y, extent.z)
@@ -658,14 +660,9 @@ pub fn inspector_panel(
                                 }
 
                                 // Selection section — committed or in-progress.
-                                let selection_aabb = selection.aabb.or_else(|| {
-                                    if select_state.phase != crate::select::SelectPhase::Idle {
-                                        crate::select::in_progress_aabb(select_state)
-                                    } else {
-                                        None
-                                    }
-                                });
-                                if let Some(aabb) = selection_aabb {
+                                if let Some(aabb) =
+                                    crate::select::displayed_aabb(selection, select_state)
+                                {
                                     widgets::section(ui, theme, "Selection", |ui| {
                                         let extents = aabb.extents();
                                         widgets::stat_row(
@@ -677,16 +674,11 @@ pub fn inspector_panel(
                                                 extents.x, extents.y, extents.z
                                             ),
                                         );
-                                        let voxel_count = if selection.aabb.is_some() {
-                                            selection.voxel_count(grid)
-                                        } else {
-                                            aabb.voxel_count(grid)
-                                        };
                                         widgets::stat_row(
                                             ui,
                                             theme,
                                             "Voxels",
-                                            voxel_count.to_string(),
+                                            selection_voxels.to_string(),
                                         );
                                     });
                                 }

@@ -18,7 +18,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 - `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.
 - `grid::bounding_box()` — `Option<(min, max)>` inclusive.
-- `mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by gltf/svg/obj.
+- `mesh_util::greedy_quads(grid, None, None)` — the renderer's greedy mesher (same-color faces merged, chunk by chunk). glTF and OBJ export through it. SVG walks unit faces itself: its painter's sort needs per-cell quads.
 - `io::atomic::write` / `write_with` — temp file + fsync + rename. **Every file the app writes goes through it** (projects, exporters, palettes, recents, preferences, PNGs); never `fs::write`/`File::create` a user-visible file directly.
 - `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import and `.rox` load.
 - `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper. Don't add `tempfile`.
@@ -35,7 +35,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 
 ## Format notes
 
-- **`io::gltf::export`** — `.glb` (12-byte header + JSON + BIN chunks, 4-byte aligned). Indexed triangles, `COLOR_0` as u8-norm RGBA, Y-up. Primary DCC interchange — Maya/Max/Unity/Unreal/Blender/Godot all import natively.
+- **`io::gltf::export`** — `.glb` (12-byte header + JSON + BIN chunks, 4-byte aligned). Greedy quads as indexed triangles, `COLOR_0` as u8-norm RGBA, Y-up. Primary DCC interchange — Maya/Max/Unity/Unreal/Blender/Godot all import natively.
 - **`io::obj::export`** — Wavefront OBJ + accompanying MTL (one material per distinct color).
 - **`io::svg::export`** — per-cell face quads (no greedy merge) sorted by view-space z (painter's order). Same-color consecutive quads batched into one `<path>` with multi-subpaths to cut tag overhead. Viewport trimmed to projected bounds.
 - **`io::ase`** — Adobe Swatch Exchange. Binary: ASEF signature, version, block count, then blocks (group-start, group-end, color). Color payload: UTF-16BE name + model tag (RGB/GRAY/CMYK/LAB) + f32 values + type byte (global/spot/normal). Import returns `(name, Vec<[u8; 4]>)`.

@@ -52,7 +52,7 @@ pub fn chunk_coord(p: IVec3) -> IVec3 {
 }
 
 #[inline]
-fn local_idx(p: IVec3) -> usize {
+pub(crate) fn local_idx(p: IVec3) -> usize {
     let lx = p.x.rem_euclid(CHUNK_I) as usize;
     let ly = p.y.rem_euclid(CHUNK_I) as usize;
     let lz = p.z.rem_euclid(CHUNK_I) as usize;
@@ -222,6 +222,36 @@ impl VoxelGrid {
         Some((min, max))
     }
 
+    /// Occupied cells in the inclusive box `[min, max]`. Walks only the loaded
+    /// chunks the box overlaps and takes a chunk's `count` when it lies wholly
+    /// inside, so cost tracks occupied chunks rather than the box's volume.
+    pub fn count_in_box(&self, min: IVec3, max: IVec3) -> usize {
+        let (cmin, cmax) = (chunk_coord(min), chunk_coord(max));
+        let mut n = 0;
+        for (&coord, chunk) in &self.chunks {
+            if coord.cmplt(cmin).any() || coord.cmpgt(cmax).any() {
+                continue;
+            }
+            let base = coord * CHUNK_I;
+            let lo = (min - base).max(IVec3::ZERO);
+            let hi = (max - base).min(IVec3::splat(CHUNK_I - 1));
+            if lo == IVec3::ZERO && hi == IVec3::splat(CHUNK_I - 1) {
+                n += chunk.count as usize;
+                continue;
+            }
+            for x in lo.x..=hi.x {
+                for y in lo.y..=hi.y {
+                    for z in lo.z..=hi.z {
+                        if chunk.cells[local_idx(IVec3::new(x, y, z))].is_some() {
+                            n += 1;
+                        }
+                    }
+                }
+            }
+        }
+        n
+    }
+
     pub fn chunk_bounds(&self) -> Option<(IVec3, IVec3)> {
         let mut keys = self.chunks.keys();
         let first = *keys.next()?;
@@ -359,6 +389,37 @@ mod tests {
             g.chunk_bounds(),
             Some((IVec3::new(-32, 0, 0), IVec3::new(31, 63, 31)))
         );
+    }
+
+    #[test]
+    fn count_in_box_matches_a_cell_by_cell_count() {
+        let mut g = VoxelGrid::default();
+        for i in 0..200 {
+            let p = IVec3::new(i * 7 % 90 - 45, i * 3 % 70, i * 11 % 80 - 40);
+            g.set(p, Some([1, 1, 1, 255]));
+        }
+        for x in 0..CHUNK_I {
+            for y in 0..CHUNK_I {
+                g.set(IVec3::new(x, y, 0), Some([2, 2, 2, 255]));
+            }
+        }
+        let boxes = [
+            (IVec3::new(-45, 0, -40), IVec3::new(45, 70, 40)),
+            (IVec3::new(-10, -5, -10), IVec3::new(10, 20, 10)),
+            (
+                IVec3::new(0, 0, 0),
+                IVec3::new(CHUNK_I - 1, CHUNK_I - 1, CHUNK_I - 1),
+            ),
+            (IVec3::new(5, 5, 5), IVec3::new(5, 5, 5)),
+            (IVec3::new(500, 0, 500), IVec3::new(600, 10, 600)),
+        ];
+        for (min, max) in boxes {
+            let brute = g
+                .iter_occupied()
+                .filter(|(p, _)| p.cmpge(min).all() && p.cmple(max).all())
+                .count();
+            assert_eq!(g.count_in_box(min, max), brute, "box {min}..={max}");
+        }
     }
 
     #[test]

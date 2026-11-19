@@ -81,6 +81,7 @@ pub struct UiInput<'w> {
 pub struct UiState<'w> {
     pub guard: ResMut<'w, UnsavedGuard>,
     pub selection: ResMut<'w, crate::select::Selection>,
+    pub selection_voxels: Res<'w, crate::select::SelectionVoxelCount>,
     pub select_state: Res<'w, crate::select::SelectState>,
     pub shape_state: Res<'w, ShapeState>,
     pub toasts: Res<'w, Toasts>,
@@ -153,6 +154,7 @@ pub fn ui_system(
     let UiState {
         mut guard,
         selection,
+        selection_voxels,
         select_state,
         shape_state,
         toasts,
@@ -254,12 +256,14 @@ pub fn ui_system(
         onboarding_anchors.tool_rail = Some(island_resp.rect);
     }
 
+    let bounds = grid.bypass_change_detection().bounding_box_cached();
     let palette_menu = inspector::palette_menu_rows(&action_state!());
     let inspector_resp = inspector::inspector_panel(
         ctx,
         ui_visible.0,
         &theme,
-        &mut grid,
+        &grid,
+        bounds,
         &history,
         &zoom,
         &current_path,
@@ -280,6 +284,7 @@ pub fn ui_system(
         &shape_state,
         &selection,
         &select_state,
+        selection_voxels.0,
     );
     if let Some(resp) = inspector_resp {
         let rect = resp.response.rect;
