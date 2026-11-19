@@ -266,6 +266,36 @@ pub fn draw_delete_palette(ctx: &egui::Context, theme: &Theme, name: &str) -> Op
     None
 }
 
+/// About Roxel: version and copyright, with a Changelog link. Returns `true`
+/// once dismissed (Close, Esc, Enter or the window's close button).
+pub fn draw_about(ctx: &egui::Context, theme: &Theme) -> bool {
+    let mut open = true;
+    let mut close = false;
+    widgets::modal_window(theme, "About Roxel", &mut open).show(ctx, |ui| {
+        ui.set_width(width::MODAL_ABOUT);
+        ui.label(
+            egui::RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
+                .size(font::BODY)
+                .color(theme.text),
+        );
+        widgets::hint_label(ui, theme, crate::menu::COPYRIGHT);
+        ui.add_space(space::SM);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = space::SX;
+                if widgets::dialog_button(ui, theme, "Close", true).clicked() {
+                    close = true;
+                }
+                if widgets::dialog_button(ui, theme, "Changelog", false).clicked() {
+                    crate::updater::open_url(crate::menu::CHANGELOG_URL);
+                }
+            });
+        });
+    });
+    let keyed = ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
+    close || keyed || !open
+}
+
 /// A `prefs_row`-style label + content row whose content **wraps** — chips that
 /// don't fit the knob column flow onto a second line instead of being clipped.
 fn labeled_wrap(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {

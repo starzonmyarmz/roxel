@@ -181,7 +181,6 @@ pub fn startup_check_system(
     }
 }
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn open_url(url: &str) {
     let _ = open::that_detached(url);
 }

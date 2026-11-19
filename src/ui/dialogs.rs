@@ -274,9 +274,6 @@ impl RecentFiles {
         roxel::io::recent::push(&mut self.0, path);
         roxel::io::recent::save(&self.0);
     }
-    // Only the macOS native menu has a "Clear Recent" item; the Win/Linux pill
-    // does not, so this is dead code off macOS.
-    #[cfg(target_os = "macos")]
     pub fn clear(&mut self) {
         self.0.clear();
         roxel::io::recent::save(&self.0);
@@ -348,6 +345,94 @@ pub fn spawn_save(
             pending.spawn(async move { Some(DialogResult::SaveProject(path)) });
         }
         None => spawn_save_as(pending, current, start_dir),
+    }
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileShortcut {
+    New,
+    Open,
+    Save,
+    SaveAs,
+    Preferences,
+}
+
+/// The file chord pressed this frame, if any. `just` reports keys pressed
+/// this frame; `ctrl` and `shift` report held modifiers.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub fn file_shortcut(
+    ctrl: bool,
+    shift: bool,
+    just: impl Fn(KeyCode) -> bool,
+) -> Option<FileShortcut> {
+    if !ctrl {
+        return None;
+    }
+    if just(KeyCode::KeyS) {
+        return Some(if shift {
+            FileShortcut::SaveAs
+        } else {
+            FileShortcut::Save
+        });
+    }
+    if shift {
+        return None;
+    }
+    [
+        (KeyCode::KeyN, FileShortcut::New),
+        (KeyCode::KeyO, FileShortcut::Open),
+        (KeyCode::Comma, FileShortcut::Preferences),
+    ]
+    .into_iter()
+    .find(|(key, _)| just(*key))
+    .map(|(_, s)| s)
+}
+
+#[cfg(not(target_os = "macos"))]
+#[derive(SystemParam)]
+pub struct FileShortcutState<'w> {
+    pending: ResMut<'w, PendingDialog>,
+    current: Res<'w, CurrentProjectPath>,
+    prefs: Res<'w, crate::theme::Preferences>,
+    prefs_window: ResMut<'w, crate::theme::PreferencesWindow>,
+}
+
+/// Ctrl+N/O/S/Shift+S/, on Windows and Linux. macOS gets these from its
+/// native menu accelerators.
+#[cfg(not(target_os = "macos"))]
+pub fn file_shortcut_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut contexts: bevy_egui::EguiContexts,
+    modal_active: Res<super::ModalActive>,
+    mut guard: ResMut<UnsavedGuard>,
+    mut file: FileShortcutState,
+) {
+    let FileShortcutState {
+        pending,
+        current,
+        prefs,
+        prefs_window,
+    } = &mut file;
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    let Some(shortcut) = file_shortcut(ctrl, shift, |k| keys.just_pressed(k)) else {
+        return;
+    };
+    let typing = contexts
+        .ctx_mut()
+        .map(|c| c.wants_keyboard_input())
+        .unwrap_or(false);
+    let closes_prefs = shortcut == FileShortcut::Preferences && prefs_window.open;
+    if typing || (modal_active.0 && !closes_prefs) {
+        return;
+    }
+    match shortcut {
+        FileShortcut::New => guard.request(GuardedAction::New),
+        FileShortcut::Open => guard.request(GuardedAction::Open(None)),
+        FileShortcut::Save => spawn_save(pending, current, prefs.last_dir.clone()),
+        FileShortcut::SaveAs => spawn_save_as(pending, current, prefs.last_dir.clone()),
+        FileShortcut::Preferences => prefs_window.open = !prefs_window.open,
     }
 }
 
@@ -688,6 +773,30 @@ mod tests {
             DialogResult::ExportAse(p.clone(), "pal".into(), vec![]).path(),
             p.as_path()
         );
+    }
+
+    fn chord(ctrl: bool, shift: bool, key: KeyCode) -> Option<FileShortcut> {
+        file_shortcut(ctrl, shift, |k| k == key)
+    }
+
+    #[test]
+    fn file_shortcut_maps_ctrl_chords() {
+        assert_eq!(chord(true, false, KeyCode::KeyN), Some(FileShortcut::New));
+        assert_eq!(chord(true, false, KeyCode::KeyO), Some(FileShortcut::Open));
+        assert_eq!(chord(true, false, KeyCode::KeyS), Some(FileShortcut::Save));
+        assert_eq!(chord(true, true, KeyCode::KeyS), Some(FileShortcut::SaveAs));
+        assert_eq!(
+            chord(true, false, KeyCode::Comma),
+            Some(FileShortcut::Preferences)
+        );
+    }
+
+    #[test]
+    fn file_shortcut_needs_ctrl_and_ignores_other_keys() {
+        assert_eq!(chord(false, false, KeyCode::KeyS), None);
+        assert_eq!(chord(false, false, KeyCode::KeyN), None);
+        assert_eq!(chord(true, false, KeyCode::KeyK), None);
+        assert_eq!(chord(true, true, KeyCode::KeyN), None);
     }
 
     #[test]

@@ -14,21 +14,15 @@ use roxel::shapes::ShapePrimitive;
 // The menu pill is Win/Linux only (macOS uses the native menu), so its
 // contents helper and the deps it pulls in are gated to match.
 #[cfg(not(target_os = "macos"))]
-use crate::onboarding::Onboarding;
+use crate::camera::CameraPreset;
 #[cfg(not(target_os = "macos"))]
-use crate::theme::PreferencesWindow;
-#[cfg(not(target_os = "macos"))]
-use crate::ui::dialogs::{
-    self, CurrentProjectPath, DialogResult, GuardedAction, PendingDialog, UnsavedGuard,
-};
+use crate::menu::{MenuAction, recent_item_label};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::{font, icon, width};
 #[cfg(not(target_os = "macos"))]
 use roxel::color_space::ColorSpace;
 #[cfg(not(target_os = "macos"))]
-use roxel::grid::VoxelGrid;
-#[cfg(not(target_os = "macos"))]
-use roxel::history::History;
+use std::path::PathBuf;
 
 /// Frame used for every floating surface. Panel fill, rounded to
 /// [`radius::PILL`] so corners read the same on every floating element. No
@@ -298,395 +292,338 @@ pub fn tool_island_contents(
 }
 
 #[cfg(not(target_os = "macos"))]
-#[allow(clippy::too_many_arguments)]
+fn item(
+    ui: &mut egui::Ui,
+    out: &mut Vec<MenuAction>,
+    label: &str,
+    shortcut: &str,
+    enabled: bool,
+    action: MenuAction,
+) {
+    let mut button = egui::Button::new(egui::RichText::new(label).size(font::BODY));
+    if !shortcut.is_empty() {
+        button = button.shortcut_text(egui::RichText::new(shortcut).size(font::SMALL));
+    }
+    if ui.add_enabled(enabled, button).clicked() {
+        out.push(action);
+        ui.close();
+    }
+}
+
+/// What the menu pill needs to know to enable and check its items.
+#[cfg(not(target_os = "macos"))]
+pub struct PillMenuState<'a> {
+    pub prefs: &'a Preferences,
+    pub recent: &'a [PathBuf],
+    pub dialog_busy: bool,
+    pub has_undo: bool,
+    pub has_redo: bool,
+    pub has_selection: bool,
+    pub selection_idle: bool,
+    pub has_clipboard: bool,
+    pub has_voxels: bool,
+    pub update: Option<&'a crate::updater::Release>,
+    pub checking_updates: bool,
+}
+
+/// File / Edit / View / Help menus plus quick Undo/Redo, mirroring the macOS
+/// menu bar. Chosen items are pushed onto `out` for
+/// `apply_menu_actions_system`.
+#[cfg(not(target_os = "macos"))]
 pub fn pill_menu_contents(
     ui: &mut egui::Ui,
     theme: &Theme,
-    guard: &mut UnsavedGuard,
-    pending: &mut PendingDialog,
-    current_path: &CurrentProjectPath,
-    prefs: &mut Preferences,
-    history: &mut History,
-    grid: &mut VoxelGrid,
-    onboarding: &mut Onboarding,
-    prefs_window: &mut PreferencesWindow,
-    updater: &mut crate::updater::UpdateCheck,
-    shot_panel: &mut crate::shot::ShotPanel,
+    s: &PillMenuState,
+    out: &mut Vec<MenuAction>,
 ) {
-    ui.horizontal(|ui| {
-        if widgets::icon_button(ui, theme, icons::file_plus(), "New")
-            .on_hover_text("Start a new project")
-            .clicked()
-        {
-            guard.request(GuardedAction::New);
+    let check = |ui: &mut egui::Ui, on: bool, label: &str| -> bool {
+        let tint = if on {
+            theme.accent
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        let clicked = ui
+            .add(egui::Button::image_and_text(
+                egui::Image::new(icons::check())
+                    .fit_to_exact_size(icon::sm_square())
+                    .tint(tint),
+                egui::RichText::new(label).size(font::BODY),
+            ))
+            .clicked();
+        if clicked {
+            ui.close();
         }
-        let dialog_busy = pending.is_active();
-        if ui
-            .add_enabled(
-                !dialog_busy,
-                egui::Button::image_and_text(
-                    egui::Image::new(icons::folder_open())
-                        .fit_to_exact_size(icon::md_square())
-                        .tint(if dialog_busy {
-                            theme.text_dim
-                        } else {
-                            theme.text
-                        }),
-                    egui::RichText::new("Open…").size(font::BODY),
-                ),
-            )
-            .clicked()
-        {
-            guard.request(GuardedAction::Open(None));
-        }
-        let save_resp = ui.add_enabled(
-            !dialog_busy,
-            egui::Button::image_and_text(
-                egui::Image::new(icons::save())
-                    .fit_to_exact_size(icon::md_square())
-                    .tint(if dialog_busy {
-                        theme.text_dim
-                    } else {
-                        theme.text
-                    }),
-                egui::RichText::new("Save").size(font::BODY),
-            ),
-        );
-        if save_resp.clicked() {
-            dialogs::spawn_save(pending, current_path, prefs.last_dir.clone());
-        }
-        if ui
-            .add_enabled(
-                !dialog_busy,
-                egui::Button::image_and_text(
-                    egui::Image::new(icons::save())
-                        .fit_to_exact_size(icon::md_square())
-                        .tint(if dialog_busy {
-                            theme.text_dim
-                        } else {
-                            theme.text
-                        }),
-                    egui::RichText::new("Save As…").size(font::BODY),
-                ),
-            )
-            .clicked()
-        {
-            dialogs::spawn_save_as(pending, current_path, prefs.last_dir.clone());
-        }
-        ui.menu_image_text_button(
-            egui::Image::new(icons::folder_open())
-                .fit_to_exact_size(icon::md_square())
-                .tint(theme.text),
-            egui::RichText::new("Import").size(font::BODY),
-            |ui| {
-                ui.set_min_width(width::TOP_BAR_MENU);
-                let dir = prefs.last_dir.clone();
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
-                    .clicked()
-                {
-                    dialogs::spawn_import(
-                        pending,
-                        "MagicaVoxel",
-                        "vox",
-                        DialogResult::ImportVox,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Qubicle .qb…"))
-                    .clicked()
-                {
-                    dialogs::spawn_import(
-                        pending,
-                        "Qubicle",
-                        "qb",
-                        DialogResult::ImportQb,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
-                    .clicked()
-                {
-                    dialogs::spawn_import(pending, "Goxel", "gox", DialogResult::ImportGox, dir);
-                    ui.close();
-                }
-            },
-        );
-        ui.menu_image_text_button(
-            egui::Image::new(icons::download())
-                .fit_to_exact_size(icon::md_square())
-                .tint(theme.text),
-            egui::RichText::new("Export").size(font::BODY),
-            |ui| {
-                ui.set_min_width(width::TOP_BAR_MENU);
-                let dir = prefs.last_dir.clone();
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("MagicaVoxel .vox…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "MagicaVoxel",
-                        "vox",
-                        "model.vox",
-                        DialogResult::ExportVox,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Wavefront .obj…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "Wavefront OBJ",
-                        "obj",
-                        "model.obj",
-                        DialogResult::ExportObj,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("glTF .glb…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "glTF binary",
-                        "glb",
-                        "model.glb",
-                        DialogResult::ExportGltf,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Goxel .gox…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "Goxel",
-                        "gox",
-                        "model.gox",
-                        DialogResult::ExportGox,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("Transparent PNG…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "PNG image",
-                        "png",
-                        "roxel.png",
-                        DialogResult::ExportPng,
-                        dir.clone(),
-                    );
-                    ui.close();
-                }
-                // Opens the tweak panel; its "Export…" button spawns the save
-                // dialog and re-renders at full resolution. Disabled on an empty
-                // scene (nothing to frame).
-                if ui
-                    .add_enabled(grid.count() > 0, egui::Button::new("Roxel Shot (PNG)…"))
-                    .clicked()
-                {
-                    shot_panel.open_panel();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!dialog_busy, egui::Button::new("SVG…"))
-                    .clicked()
-                {
-                    dialogs::spawn_export(
-                        pending,
-                        "SVG image",
-                        "svg",
-                        "roxel.svg",
-                        DialogResult::ExportSvg,
-                        dir,
-                    );
-                    ui.close();
-                }
-            },
-        );
+        clicked
+    };
+    let title = |label: &str| egui::RichText::new(label).size(font::BODY);
+    let idle = !s.dialog_busy;
 
-        ui.add_space(space::XS);
-        ui.menu_image_text_button(
-            egui::Image::new(icons::eye())
-                .fit_to_exact_size(icon::md_square())
-                .tint(theme.text),
-            egui::RichText::new("View").size(font::BODY),
-            |ui| {
+    ui.menu_button(title("File"), |ui| {
+        ui.set_min_width(width::TOP_BAR_MENU);
+        item(ui, out, "New…", "Ctrl+N", true, MenuAction::NewProject);
+        item(ui, out, "Open…", "Ctrl+O", idle, MenuAction::OpenProject);
+        ui.add_enabled_ui(!s.recent.is_empty(), |ui| {
+            ui.menu_button(title("Open Recent"), |ui| {
                 ui.set_min_width(width::TOP_BAR_MENU);
-                let toggle = |ui: &mut egui::Ui, on: &mut bool, label: &str| -> bool {
-                    let tint = if *on {
-                        theme.accent
-                    } else {
-                        egui::Color32::TRANSPARENT
-                    };
-                    if ui
-                        .add(egui::Button::image_and_text(
-                            egui::Image::new(icons::check())
-                                .fit_to_exact_size(icon::sm_square())
-                                .tint(tint),
-                            egui::RichText::new(label).size(font::BODY),
-                        ))
-                        .clicked()
-                    {
-                        *on = !*on;
-                        ui.close();
-                        return true;
-                    }
-                    false
-                };
-                let mut changed = toggle(ui, &mut prefs.show_floor_grid, "Floor Grid");
-                changed |= toggle(ui, &mut prefs.show_origin_axes, "Origin Axes");
-                if changed {
-                    crate::theme::save_preferences(prefs);
+                for (i, path) in s.recent.iter().enumerate() {
+                    item(
+                        ui,
+                        out,
+                        &recent_item_label(i, path),
+                        "",
+                        true,
+                        MenuAction::OpenRecent(i),
+                    );
                 }
-            },
+                ui.separator();
+                item(ui, out, "Clear Menu", "", true, MenuAction::ClearRecent);
+            });
+        });
+        item(ui, out, "Save", "Ctrl+S", idle, MenuAction::SaveProject);
+        item(
+            ui,
+            out,
+            "Save As…",
+            "Ctrl+Shift+S",
+            idle,
+            MenuAction::SaveProjectAs,
         );
-        ui.add_space(space::XS);
-        ui.menu_image_text_button(
-            egui::Image::new(icons::paint_bucket())
-                .fit_to_exact_size(icon::md_square())
-                .tint(theme.text),
-            egui::RichText::new("Color Format").size(font::BODY),
-            |ui| {
-                ui.set_min_width(width::TOP_BAR_MENU);
-                let mut changed = false;
-                for space in ColorSpace::ALL {
-                    let on = space == prefs.color_space;
-                    let tint = if on {
-                        theme.accent
-                    } else {
-                        egui::Color32::TRANSPARENT
-                    };
-                    if ui
-                        .add(egui::Button::image_and_text(
-                            egui::Image::new(icons::check())
-                                .fit_to_exact_size(icon::sm_square())
-                                .tint(tint),
-                            egui::RichText::new(space.label()).size(font::BODY),
-                        ))
-                        .clicked()
-                    {
-                        prefs.color_space = space;
-                        changed = true;
-                        ui.close();
-                    }
-                }
-                if changed {
-                    crate::theme::save_preferences(prefs);
-                }
-            },
+        ui.separator();
+        ui.menu_button(title("Import"), |ui| {
+            ui.set_min_width(width::TOP_BAR_MENU);
+            item(
+                ui,
+                out,
+                "MagicaVoxel (.vox)…",
+                "",
+                idle,
+                MenuAction::ImportVox,
+            );
+            item(ui, out, "Qubicle (.qb)…", "", idle, MenuAction::ImportQb);
+            item(ui, out, "Goxel (.gox)…", "", idle, MenuAction::ImportGox);
+        });
+        ui.menu_button(title("Export"), |ui| {
+            ui.set_min_width(width::TOP_BAR_MENU);
+            item(
+                ui,
+                out,
+                "MagicaVoxel (.vox)…",
+                "",
+                idle,
+                MenuAction::ExportVox,
+            );
+            item(ui, out, "Goxel (.gox)…", "", idle, MenuAction::ExportGox);
+            item(
+                ui,
+                out,
+                "Wavefront (.obj)…",
+                "",
+                idle,
+                MenuAction::ExportObj,
+            );
+            item(ui, out, "glTF (.glb)…", "", idle, MenuAction::ExportGltf);
+            item(ui, out, "Transparent PNG…", "", idle, MenuAction::ExportPng);
+            item(
+                ui,
+                out,
+                "Roxel Shot (PNG)…",
+                "",
+                s.has_voxels,
+                MenuAction::ExportShot,
+            );
+            item(ui, out, "SVG…", "", idle, MenuAction::ExportSvg);
+        });
+        ui.separator();
+        item(
+            ui,
+            out,
+            "Command Palette…",
+            "Ctrl+K",
+            true,
+            MenuAction::ShowCommandPalette,
         );
+        item(
+            ui,
+            out,
+            "Preferences…",
+            "Ctrl+,",
+            true,
+            MenuAction::Preferences,
+        );
+        ui.separator();
+        let quit = if cfg!(windows) { "Exit" } else { "Quit" };
+        item(ui, out, quit, "", true, MenuAction::Quit);
+    });
 
-        ui.add_space(space::SM);
-        widgets::vertical_rule(ui, theme);
-        ui.add_space(space::XS);
+    ui.menu_button(title("Edit"), |ui| {
+        ui.set_min_width(width::TOP_BAR_MENU);
+        item(ui, out, "Undo", "Ctrl+Z", s.has_undo, MenuAction::Undo);
+        item(
+            ui,
+            out,
+            "Redo",
+            "Ctrl+Shift+Z",
+            s.has_redo,
+            MenuAction::Redo,
+        );
+        ui.separator();
+        let sel = s.has_selection;
+        item(
+            ui,
+            out,
+            "Fill Selection",
+            "F",
+            sel,
+            MenuAction::FillSelection,
+        );
+        item(
+            ui,
+            out,
+            "Delete Selection Contents",
+            "Backspace",
+            sel && s.selection_idle,
+            MenuAction::DeleteSelectionContents,
+        );
+        item(
+            ui,
+            out,
+            "Clear Selection",
+            "",
+            sel,
+            MenuAction::ClearSelection,
+        );
+        ui.separator();
+        item(ui, out, "Cut", "Ctrl+X", sel, MenuAction::Cut);
+        item(ui, out, "Copy", "Ctrl+C", sel, MenuAction::Copy);
+        item(
+            ui,
+            out,
+            "Paste",
+            "Ctrl+V",
+            s.has_clipboard,
+            MenuAction::Paste,
+        );
+        ui.separator();
+        item(
+            ui,
+            out,
+            "Double Density",
+            "",
+            s.has_voxels,
+            MenuAction::DoubleDensity,
+        );
+        item(
+            ui,
+            out,
+            "Halve Density",
+            "",
+            s.has_voxels,
+            MenuAction::HalveDensity,
+        );
+    });
 
-        let undo_enabled = !history.undo.is_empty();
-        if ui
-            .add_enabled(
-                undo_enabled,
-                egui::Button::image_and_text(
-                    egui::Image::new(icons::undo())
-                        .fit_to_exact_size(icon::md_square())
-                        .tint(if undo_enabled {
-                            theme.text
-                        } else {
-                            theme.text_dim
-                        }),
-                    egui::RichText::new("Undo").size(font::BODY),
-                ),
-            )
-            .on_hover_text("Cmd+Z / Ctrl+Z")
-            .clicked()
-        {
-            history.undo(grid);
-        }
-        let redo_enabled = !history.redo.is_empty();
-        if ui
-            .add_enabled(
-                redo_enabled,
-                egui::Button::image_and_text(
-                    egui::Image::new(icons::redo())
-                        .fit_to_exact_size(icon::md_square())
-                        .tint(if redo_enabled {
-                            theme.text
-                        } else {
-                            theme.text_dim
-                        }),
-                    egui::RichText::new("Redo").size(font::BODY),
-                ),
-            )
-            .on_hover_text("Cmd+Shift+Z / Ctrl+Shift+Z")
-            .clicked()
-        {
-            history.redo(grid);
-        }
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .add(
-                    egui::Button::new(egui::RichText::new("?").size(font::BODY))
-                        .min_size(egui::vec2(24.0, 24.0)),
-                )
-                .on_hover_text("Show onboarding tour")
-                .clicked()
-            {
-                onboarding.start();
+    ui.menu_button(title("View"), |ui| {
+        ui.set_min_width(width::TOP_BAR_MENU);
+        ui.menu_button(title("Camera"), |ui| {
+            ui.set_min_width(width::TOP_BAR_MENU);
+            item(ui, out, "Frame View", "Ctrl+0", true, MenuAction::FrameView);
+            ui.separator();
+            for (preset, shortcut) in [
+                (CameraPreset::Front, "Ctrl+1"),
+                (CameraPreset::Back, "Ctrl+Shift+1"),
+                (CameraPreset::Right, "Ctrl+3"),
+                (CameraPreset::Left, "Ctrl+Shift+3"),
+                (CameraPreset::Top, "Ctrl+7"),
+            ] {
+                item(
+                    ui,
+                    out,
+                    preset.label(),
+                    shortcut,
+                    true,
+                    MenuAction::ViewPreset(preset),
+                );
             }
-            if ui
-                .add(egui::Button::new(
-                    egui::RichText::new("Preferences…").size(font::BODY),
-                ))
-                .on_hover_text("Appearance and other settings")
-                .clicked()
-            {
-                prefs_window.open = !prefs_window.open;
-            }
-            if let Some(rel) = updater.available() {
-                let url = rel.html_url.clone();
-                let label = format!("Update {} available", rel.tag);
-                let resp = ui.add(egui::Button::image_and_text(
-                    egui::Image::new(icons::arrow_up())
-                        .fit_to_exact_size(icon::md_square())
-                        .tint(theme.accent),
-                    egui::RichText::new(label)
-                        .size(font::BODY)
-                        .color(theme.accent),
-                ));
-                if resp.on_hover_text("Open the release page").clicked() {
-                    crate::updater::open_url(&url);
-                }
-            } else {
-                let busy = updater.is_checking();
-                if ui
-                    .add_enabled(
-                        !busy,
-                        egui::Button::new(
-                            egui::RichText::new("Check for Updates…").size(font::BODY),
-                        ),
-                    )
-                    .on_hover_text("Look for a newer Roxel release on GitHub")
-                    .clicked()
-                {
-                    crate::updater::start_check(updater, true);
+            ui.separator();
+            item(
+                ui,
+                out,
+                CameraPreset::Iso.label(),
+                "Ctrl+5",
+                true,
+                MenuAction::ViewPreset(CameraPreset::Iso),
+            );
+        });
+        ui.separator();
+        if check(ui, s.prefs.show_floor_grid, "Floor Grid") {
+            out.push(MenuAction::ToggleFloorGrid);
+        }
+        if check(ui, s.prefs.show_origin_axes, "Origin Axes") {
+            out.push(MenuAction::ToggleOriginAxes);
+        }
+        ui.separator();
+        ui.menu_button(title("Color Format"), |ui| {
+            ui.set_min_width(width::TOP_BAR_MENU);
+            for space in ColorSpace::ALL {
+                if check(ui, space == s.prefs.color_space, space.label()) {
+                    out.push(MenuAction::SetColorSpace(space));
                 }
             }
         });
     });
+
+    ui.menu_button(title("Help"), |ui| {
+        ui.set_min_width(width::TOP_BAR_MENU);
+        item(
+            ui,
+            out,
+            "Show Onboarding Tour…",
+            "",
+            true,
+            MenuAction::ShowOnboarding,
+        );
+        item(ui, out, "Changelog", "", true, MenuAction::Changelog);
+        ui.separator();
+        item(
+            ui,
+            out,
+            "Check for Updates…",
+            "",
+            !s.checking_updates,
+            MenuAction::CheckForUpdates,
+        );
+        item(ui, out, "About Roxel", "", true, MenuAction::About);
+    });
+
+    ui.add_space(space::SM);
+    widgets::vertical_rule(ui, theme);
+    ui.add_space(space::XS);
+
+    if widgets::icon_only_button(ui, theme, icons::undo(), s.has_undo)
+        .on_hover_text("Undo (Ctrl+Z)")
+        .clicked()
+    {
+        out.push(MenuAction::Undo);
+    }
+    if widgets::icon_only_button(ui, theme, icons::redo(), s.has_redo)
+        .on_hover_text("Redo (Ctrl+Shift+Z)")
+        .clicked()
+    {
+        out.push(MenuAction::Redo);
+    }
+
+    if let Some(rel) = s.update {
+        ui.add_space(space::SM);
+        let resp = ui.add(egui::Button::image_and_text(
+            egui::Image::new(icons::arrow_up())
+                .fit_to_exact_size(icon::md_square())
+                .tint(theme.accent),
+            egui::RichText::new(format!("Update {} available", rel.tag))
+                .size(font::BODY)
+                .color(theme.accent),
+        ));
+        if resp.on_hover_text("Open the release page").clicked() {
+            crate::updater::open_url(&rel.html_url);
+        }
+    }
 }

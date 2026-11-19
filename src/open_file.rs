@@ -1,5 +1,6 @@
-//! Open `.rox` files handed to us by the OS when the user double-clicks a
-//! project in Finder.
+//! Open `.rox` files handed to us by the OS: a double-clicked project in
+//! Finder on macOS, or a path in `argv` (Windows/Linux file associations,
+//! `roxel scene.rox` from a shell).
 //!
 //! On macOS a double-clicked document is **not** passed in `argv` for `.app`
 //! bundles — LaunchServices delivers it as a `kAEOpenDocuments` Apple Event.
@@ -15,12 +16,12 @@
 //! and the toast are handled uniformly.
 
 use bevy::prelude::*;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// Paths macOS asked us to open, waiting for [`poll_open_files_system`].
-/// Cross-platform so the system and its test build everywhere; only the macOS
-/// Apple Event handler ever fills it.
+/// Paths the OS asked us to open, waiting for [`poll_open_files_system`].
+/// Filled from `argv` at startup and, on macOS, by the Apple Event handler.
 static OPEN_QUEUE: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 
 /// Take everything queued, leaving the queue empty. Pure helper so the drain
@@ -30,12 +31,29 @@ fn drain(queue: &Mutex<Vec<PathBuf>>) -> Vec<PathBuf> {
     std::mem::take(&mut *guard)
 }
 
-/// Register the OS-level "open document" hook. No-op off macOS (Windows/Linux
-/// pass the path in `argv`, which this app does not yet consume). Call once,
-/// on the main thread, before the Bevy event loop starts.
+/// Queue the file named in `argv`, if any, and register the macOS "open
+/// document" hook. Call once, on the main thread, before the Bevy event loop
+/// starts.
 pub fn install() {
+    if let Some(path) = path_from_args(std::env::args_os()) {
+        OPEN_QUEUE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(path);
+    }
     #[cfg(target_os = "macos")]
     macos::install();
+}
+
+/// The file to open from a process's arguments: the last one after the
+/// program name that isn't a flag. Flags are skipped because older macOS
+/// passes `-psn_…` to apps launched from Finder.
+fn path_from_args(args: impl IntoIterator<Item = OsString>) -> Option<PathBuf> {
+    args.into_iter()
+        .skip(1)
+        .filter(|a| !a.is_empty() && !a.to_string_lossy().starts_with('-'))
+        .last()
+        .map(PathBuf::from)
 }
 
 /// Open any file the OS asked us to open. Single-window app, so if several were
@@ -172,6 +190,29 @@ mod tests {
     fn drain_empty_queue_is_empty() {
         let q: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
         assert!(drain(&q).is_empty());
+    }
+
+    fn args(list: &[&str]) -> Vec<OsString> {
+        list.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn path_from_args_skips_program_name() {
+        assert_eq!(path_from_args(args(&["roxel"])), None);
+        assert_eq!(path_from_args(args(&[])), None);
+        assert_eq!(
+            path_from_args(args(&["roxel", "C:\\scenes\\house.rox"])),
+            Some(PathBuf::from("C:\\scenes\\house.rox"))
+        );
+    }
+
+    #[test]
+    fn path_from_args_ignores_flags_and_takes_last() {
+        assert_eq!(path_from_args(args(&["roxel", "-psn_0_12345"])), None);
+        assert_eq!(
+            path_from_args(args(&["roxel", "-psn_0_1", "/a.rox", "/b.rox"])),
+            Some(PathBuf::from("/b.rox"))
+        );
     }
 
     #[test]

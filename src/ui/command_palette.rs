@@ -359,7 +359,7 @@ pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
         "Redo",
         Category::Edit,
         "history",
-        Some("⌘⇧Z"),
+        Some("⇧⌘Z"),
         state.has_redo,
         CommandAction::Redo,
     ));
@@ -1060,7 +1060,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     // Shortcut (right) — per-key chips (text or Lucide icons), surface fill.
     if let Some(sc) = entry.shortcut {
         let chip_h = icon::XS + space::SM; // 20, matches footer chip
-        let tokens = tokenize_shortcut(sc);
+        let tokens = tokenize_shortcut(sc, cfg!(target_os = "macos"));
         let gap = space::XXS;
         let widths: Vec<f32> = tokens
             .iter()
@@ -1139,22 +1139,32 @@ enum ShortcutToken {
     Shift,
 }
 
-/// Split a shortcut string into per-key tokens for chip rendering. Multi-char
-/// names like "Esc" stay whole; modifier glyphs (`⌘` → `Command` icon,
-/// `⇧` → `Shift` icon) and alphanumeric/punctuation keys become individual
-/// chips.
-fn tokenize_shortcut(s: &str) -> Vec<ShortcutToken> {
-    match s {
-        "Esc" => vec![ShortcutToken::Text("Esc".into())],
-        _ => s
-            .chars()
-            .map(|c| match c {
-                '⌘' => ShortcutToken::Command,
-                '⇧' => ShortcutToken::Shift,
-                c => ShortcutToken::Text(c.to_string()),
-            })
-            .collect(),
+/// Split a shortcut string, written in macOS notation, into per-key tokens
+/// for chip rendering. Multi-char names like "Esc" stay whole. Off macOS, `⌘`
+/// becomes a "Ctrl" chip placed first (Ctrl, Shift, key) and `⌫` reads
+/// "Backspace".
+fn tokenize_shortcut(s: &str, mac: bool) -> Vec<ShortcutToken> {
+    if s == "Esc" {
+        return vec![ShortcutToken::Text("Esc".into())];
     }
+    let mut tokens: Vec<ShortcutToken> = s
+        .chars()
+        .map(|c| match c {
+            '⌘' if mac => ShortcutToken::Command,
+            '⌘' => ShortcutToken::Text("Ctrl".into()),
+            '⇧' => ShortcutToken::Shift,
+            '⌫' if !mac => ShortcutToken::Text("Backspace".into()),
+            c => ShortcutToken::Text(c.to_string()),
+        })
+        .collect();
+    if !mac {
+        tokens.sort_by_key(|t| match t {
+            ShortcutToken::Text(s) if s == "Ctrl" => 0,
+            ShortcutToken::Shift => 1,
+            _ => 2,
+        });
+    }
+    tokens
 }
 
 impl ShortcutToken {
@@ -1704,15 +1714,15 @@ mod tests {
     #[test]
     fn tokenize_shortcut_splits_per_char_but_keeps_esc_whole() {
         assert_eq!(
-            tokenize_shortcut("Esc"),
+            tokenize_shortcut("Esc", true),
             vec![ShortcutToken::Text("Esc".into())]
         );
         assert_eq!(
-            tokenize_shortcut("⌘N"),
+            tokenize_shortcut("⌘N", true),
             vec![ShortcutToken::Command, ShortcutToken::Text("N".into())]
         );
         assert_eq!(
-            tokenize_shortcut("⇧⌘S"),
+            tokenize_shortcut("⇧⌘S", true),
             vec![
                 ShortcutToken::Shift,
                 ShortcutToken::Command,
@@ -1720,9 +1730,38 @@ mod tests {
             ]
         );
         assert_eq!(
-            tokenize_shortcut("B"),
+            tokenize_shortcut("B", true),
             vec![ShortcutToken::Text("B".into())]
         );
+    }
+
+    #[test]
+    fn tokenize_shortcut_off_mac_uses_ctrl_first() {
+        let text = |s: &str| ShortcutToken::Text(s.into());
+        assert_eq!(
+            tokenize_shortcut("⌘N", false),
+            vec![text("Ctrl"), text("N")]
+        );
+        assert_eq!(
+            tokenize_shortcut("⇧⌘S", false),
+            vec![text("Ctrl"), ShortcutToken::Shift, text("S")]
+        );
+        assert_eq!(tokenize_shortcut("⌫", false), vec![text("Backspace")]);
+        assert_eq!(tokenize_shortcut("Esc", false), vec![text("Esc")]);
+    }
+
+    #[test]
+    fn catalog_shortcuts_contain_no_ctrl_spelling() {
+        // Shortcuts are written once in macOS notation; tokenize_shortcut
+        // translates them per platform.
+        let palettes = vec![pal("p", true)];
+        let (_shape, _prefs, state) = sample_state(&palettes);
+        for e in build_catalog(&state) {
+            if let Some(sc) = e.shortcut {
+                assert!(!sc.contains("Ctrl"), "{}: {sc}", e.label);
+                assert!(!sc.contains("⌘⇧"), "{}: write ⇧⌘, not ⌘⇧", e.label);
+            }
+        }
     }
 
     #[test]

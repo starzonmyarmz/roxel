@@ -105,21 +105,6 @@ pub fn tool_button(
     resp.on_hover_text(format!("{label}  ({shortcut})"))
 }
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn icon_button(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    icon: egui::ImageSource<'static>,
-    label: &str,
-) -> egui::Response {
-    ui.add(egui::Button::image_and_text(
-        egui::Image::new(icon)
-            .fit_to_exact_size(icon::md_square())
-            .tint(theme.text),
-        egui::RichText::new(label).size(font::BODY),
-    ))
-}
-
 pub fn icon_only_button(
     ui: &mut egui::Ui,
     theme: &Theme,

@@ -16,14 +16,13 @@ mod widgets;
 pub use command_palette::{
     CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
 };
+#[cfg(not(target_os = "macos"))]
+pub use dialogs::file_shortcut_system;
 pub use dialogs::{
     CurrentProjectPath, DialogResult, DocStatus, GuardedAction, PendingDialog, PendingImport,
     RecentFiles, SavePreviewState, UnsavedGuard, poll_dialogs_system, process_save_preview_system,
     spawn_open,
 };
-// Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
-// reaches these through the `dialogs` module path directly.
-#[cfg(target_os = "macos")]
 pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{
     DeleteConfirm, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
@@ -32,7 +31,7 @@ pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
 use crate::gizmo::{GizmoDrag, GizmoRect};
-use crate::onboarding::{Onboarding, OnboardingAnchors};
+use crate::onboarding::OnboardingAnchors;
 use crate::theme::{Preferences, PreferencesWindow, Theme, apply_egui_style};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, ShapeState, ToolState};
 use crate::ui::tokens::stroke;
@@ -90,12 +89,14 @@ pub struct UiState<'w> {
     pub doc: Res<'w, DocStatus>,
     pub flyby: Res<'w, crate::camera::FlybyState>,
     pub color_edit: ResMut<'w, roxel::color_space::ColorEditBuffer>,
-    pub updater: ResMut<'w, crate::updater::UpdateCheck>,
+    pub updater: Res<'w, crate::updater::UpdateCheck>,
     pub clipboard: Res<'w, crate::clipboard::Clipboard>,
-    pub onboarding: ResMut<'w, Onboarding>,
     pub onboarding_anchors: ResMut<'w, OnboardingAnchors>,
     pub ui_visible: Res<'w, UiVisible>,
     pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
+    pub menu_queue: ResMut<'w, crate::menu::MenuQueue>,
+    pub recent_files: Res<'w, RecentFiles>,
+    pub about: ResMut<'w, crate::menu::AboutWindow>,
 }
 
 #[derive(SystemParam)]
@@ -121,8 +122,8 @@ pub struct UiBundles<'w, 's> {
 
 pub fn ui_system(
     mut contexts: EguiContexts,
-    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut grid: ResMut<GridResource>,
-    #[cfg_attr(target_os = "macos", allow(unused_mut))] mut history: ResMut<History>,
+    mut grid: ResMut<GridResource>,
+    history: Res<History>,
     core: UiCore,
     bundles: UiBundles,
 ) -> Result {
@@ -160,13 +161,14 @@ pub fn ui_system(
         doc,
         flyby,
         mut color_edit,
-        mut updater,
+        updater,
         clipboard,
-        #[cfg_attr(target_os = "macos", allow(unused_variables))]
-        mut onboarding,
         mut onboarding_anchors,
         ui_visible,
         mut shot_panel,
+        mut menu_queue,
+        recent_files,
+        mut about,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -197,6 +199,7 @@ pub fn ui_system(
         || discard.pending.is_some()
         || delete.pending.is_some()
         || shot_panel.open
+        || about.0
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
@@ -205,21 +208,21 @@ pub fn ui_system(
     // Win/Linux the pill sits at top-center and is gated by the user pref.
     #[cfg(not(target_os = "macos"))]
     if ui_visible.0 && prefs.show_floating_menu_bar && !modal_open {
+        let state = floating::PillMenuState {
+            prefs: &prefs,
+            recent: &recent_files.0,
+            dialog_busy: pending.is_active(),
+            has_undo: !history.undo.is_empty(),
+            has_redo: !history.redo.is_empty(),
+            has_selection: selection.aabb.is_some(),
+            selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
+            has_clipboard: clipboard.has_stamp(),
+            has_voxels: grid.count() > 0,
+            update: updater.available(),
+            checking_updates: updater.is_checking(),
+        };
         floating::pill_menu(ctx, &theme, |ui| {
-            floating::pill_menu_contents(
-                ui,
-                &theme,
-                &mut guard,
-                &mut pending,
-                &current_path,
-                &mut prefs,
-                &mut history,
-                &mut grid,
-                &mut onboarding,
-                &mut prefs_window,
-                &mut updater,
-                &mut shot_panel,
-            );
+            floating::pill_menu_contents(ui, &theme, &state, &mut menu_queue.0);
         });
     }
 
@@ -394,6 +397,10 @@ pub fn ui_system(
             &prefs.last_dir,
             prefs.color_space,
         );
+    }
+
+    if about.0 && modals::draw_about(ctx, &theme) {
+        about.0 = false;
     }
 
     if cmd_palette.open {

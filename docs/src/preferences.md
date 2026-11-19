@@ -1,6 +1,6 @@
 # Preferences & Themes
 
-Roxel's UI is canvas-first: a single left inspector, a floating tool island, and — on Windows / Linux — a top-center menu pill. Everything is hideable so the model takes the whole screen.
+Roxel's UI is canvas-first: a single left inspector, a floating tool island, and — on Windows / Linux — a top-center menu pill with the same File, Edit, View and Help menus as the macOS menu bar. Everything is hideable so the model takes the whole screen.
 
 ## Themes
 
