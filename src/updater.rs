@@ -107,7 +107,6 @@ impl UpdateCheck {
     pub fn is_checking(&self) -> bool {
         matches!(self.0, UpdateState::Checking { .. })
     }
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub fn available(&self) -> Option<&Release> {
         if let UpdateState::Available(r) = &self.0 {
             Some(r)

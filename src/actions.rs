@@ -460,6 +460,8 @@ pub struct ActionState<'a> {
     pub dialog_busy: bool,
     pub flyby_active: bool,
     pub checking_updates: bool,
+    /// Tag of a newer release found by the update check.
+    pub update_tag: Option<&'a str>,
     pub palettes: &'a [Palette],
     pub palette_choice: usize,
     pub active_colors: &'a [Color8],
@@ -505,6 +507,7 @@ impl ActionStateParams<'_> {
             dialog_busy: self.pending.is_active(),
             flyby_active: self.flyby.active,
             checking_updates: self.updater.is_checking(),
+            update_tag: self.updater.available().map(|r| r.tag.as_str()),
             palettes: &self.palettes.0,
             palette_choice: choice,
             active_colors: crate::ui::display_colors(&self.palettes, &self.working, choice),
@@ -1032,6 +1035,7 @@ impl Action {
             Action::ToggleFloorGrid if s.prefs.show_floor_grid => "Hide floor grid".into(),
             Action::ToggleOriginAxes if s.prefs.show_origin_axes => "Hide origin axes".into(),
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
+            Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
             _ => self.spec().label.into(),
         }
     }
@@ -1040,6 +1044,7 @@ impl Action {
     pub fn menu_label(self, s: &ActionState) -> Cow<'static, str> {
         match self {
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
+            Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
             _ => self.spec().menu_label.into(),
         }
     }
@@ -1182,6 +1187,12 @@ const QUIT_MENU_LABEL: &str = if cfg!(target_os = "macos") {
 } else {
     "Quit"
 };
+
+/// Check for Updates' label once a newer release is known: it opens that
+/// release instead of checking again.
+fn download_label(s: &ActionState) -> Cow<'static, str> {
+    format!("Download Roxel {}…", s.update_tag.unwrap_or_default()).into()
+}
 
 fn file_name(p: &Path) -> &str {
     p.file_name()
@@ -1596,7 +1607,10 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
         }
         Action::ShowOnboarding => app.onboarding.start(),
         Action::Changelog => crate::updater::open_url(CHANGELOG_URL),
-        Action::CheckForUpdates => crate::updater::start_check(&mut app.updater, true),
+        Action::CheckForUpdates => match app.updater.available() {
+            Some(rel) => crate::updater::open_url(&rel.html_url),
+            None => crate::updater::start_check(&mut app.updater, true),
+        },
         Action::About => app.about.0 = true,
     }
 }
@@ -1628,6 +1642,7 @@ mod tests {
             dialog_busy: false,
             flyby_active: false,
             checking_updates: false,
+            update_tag: None,
             palettes,
             palette_choice: 0,
             active_colors: &[],
@@ -1735,6 +1750,20 @@ mod tests {
         assert_eq!(Action::ToggleFlyby.label(&s), "Start flyby camera");
         s.flyby_active = true;
         assert_eq!(Action::ToggleFlyby.label(&s), "Stop flyby camera");
+    }
+
+    #[test]
+    fn check_for_updates_offers_the_download_once_one_is_found() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        assert_eq!(Action::CheckForUpdates.menu_label(&s), "Check for Updates…");
+        s.update_tag = Some("v1.2.0");
+        assert_eq!(Action::CheckForUpdates.label(&s), "Download Roxel v1.2.0…");
+        assert_eq!(
+            Action::CheckForUpdates.menu_label(&s),
+            "Download Roxel v1.2.0…"
+        );
     }
 
     #[test]

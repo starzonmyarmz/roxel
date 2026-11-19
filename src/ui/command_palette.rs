@@ -577,6 +577,7 @@ mod tests {
             dialog_busy: false,
             flyby_active: false,
             checking_updates: false,
+            update_tag: None,
             palettes,
             palette_choice: 0,
             active_colors: &[],
