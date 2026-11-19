@@ -213,6 +213,6 @@ fn save_rgba_png(path: &Path, img: &Image) -> anyhow::Result<()> {
         .try_into_dynamic()
         .map_err(|e| anyhow::anyhow!("image format not convertible: {e:?}"))?;
     let rgba = dyn_img.into_rgba8();
-    rgba.save_with_format(path, image::ImageFormat::Png)?;
+    roxel::io::atomic::write_with(path, |w| rgba.write_to(w, image::ImageFormat::Png))?;
     Ok(())
 }

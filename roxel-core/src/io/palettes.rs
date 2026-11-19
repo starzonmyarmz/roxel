@@ -51,7 +51,7 @@ pub fn save_to(p: &Path, palettes: &[Palette]) -> std::io::Result<()> {
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(p, encode(palettes))
+    super::atomic::write(p, encode(palettes))
 }
 
 pub fn load() -> Vec<Palette> {

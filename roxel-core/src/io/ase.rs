@@ -29,7 +29,7 @@ pub fn export(path: &Path, name: &str, colors: &[[u8; 4]]) -> Result<()> {
     }
     write_group_end(&mut buf);
 
-    fs::write(path, buf)?;
+    super::atomic::write(path, buf)?;
     Ok(())
 }
 

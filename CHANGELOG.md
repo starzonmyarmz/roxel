@@ -12,6 +12,8 @@ Release notes.
 
 ## [Unreleased]
 
+- Saves and exports write to a temp file and rename, so a crash mid-save can't truncate the file.
+
 ## [0.7.1] - 2026-06-03
 
 - fix(ui): use theme color tokens in floating save button tint

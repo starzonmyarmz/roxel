@@ -33,7 +33,7 @@ pub fn save_to(p: &Path, paths: &[PathBuf]) -> std::io::Result<()> {
     };
     let body =
         ron::ser::to_string_pretty(&stored, ron::ser::PrettyConfig::default()).unwrap_or_default();
-    std::fs::write(p, body)
+    super::atomic::write(p, body)
 }
 
 pub fn load() -> Vec<PathBuf> {

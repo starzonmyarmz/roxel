@@ -19,6 +19,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 - `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.
 - `grid::bounding_box()` — `Option<(min, max)>` inclusive.
 - `mesh::for_each_exposed_face(grid, |cell, face, rgba| ...)` — per-face quad iteration with occlusion culling. Shared by gltf/svg/obj.
+- `io::atomic::write` / `write_with` — temp file + fsync + rename. **Every file the app writes goes through it** (projects, exporters, palettes, recents, preferences, PNGs); never `fs::write`/`File::create` a user-visible file directly.
 - `io::reader::LeReader` — bounds-checked LE binary reader. Shared by qb/gox import.
 - `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper. Don't add `tempfile`.
 
