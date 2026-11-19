@@ -1,40 +1,19 @@
-use super::dialogs::GuardedAction;
-use super::dialogs::{DialogResult, PendingDialog, spawn_export, spawn_import};
-use crate::GridResource;
-use crate::camera::{
-    CameraPreset, PendingViewPreset, ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom, fit_view,
-};
-use crate::select;
-use crate::theme::{Preferences, PreferencesWindow, Theme, ThemePref};
-use crate::tools::{CurrentColor, ShapeOptions, Tool, ToolState};
-use crate::ui::palette::{
-    DiscardConfirm, Palette, PaletteChoice, Palettes, WorkingPalette, display_colors, edit_colors,
-    next_palette_name, request_select, save_as_new,
-};
+use crate::actions::{Action, ActionState, Category, Chord, KeyToken, Platform};
+use crate::theme::Theme;
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, size, space, stroke, width};
 use crate::ui::{icons, widgets};
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
-use bevy_panorbit_camera::PanOrbitCamera;
-use roxel::grid::Color8;
-use roxel::history::History;
-use roxel::io;
-use roxel::shapes::ShapePrimitive;
-
-const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CHANGELOG.md";
 
 /// Resource backing the Cmd+K command palette. Holds open/close state, the
-/// search query, the current selection index in the filtered list, a one-shot
-/// `just_opened` flag that drives auto-focus on the search input, and a
-/// `pending` slot that the dispatch system drains each frame.
+/// search query, the current selection index in the filtered list, and a
+/// one-shot `just_opened` flag that drives auto-focus on the search input.
 #[derive(Resource, Default)]
 pub struct CommandPalette {
     pub open: bool,
     pub search: String,
     pub selected: usize,
     pub just_opened: bool,
-    pub pending: Option<CommandAction>,
 }
 
 impl CommandPalette {
@@ -46,92 +25,14 @@ impl CommandPalette {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Category {
-    File,
-    Edit,
-    Tools,
-    Shape,
-    View,
-    Palette,
-    Preferences,
-    Help,
-}
-
-impl Category {
-    fn label(self) -> &'static str {
-        match self {
-            Category::File => "File",
-            Category::Edit => "Edit",
-            Category::Tools => "Tool",
-            Category::Shape => "Shape",
-            Category::View => "View",
-            Category::Palette => "Palette",
-            Category::Preferences => "Pref",
-            Category::Help => "Help",
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum CommandAction {
-    NewProject,
-    OpenProject,
-    SaveProject,
-    SaveProjectAs,
-    ImportVox,
-    ImportQb,
-    ImportGox,
-    ExportVox,
-    ExportObj,
-    ExportGltf,
-    ExportPng,
-    ExportShot,
-    ExportSvg,
-    ExportGox,
-
-    Undo,
-    Redo,
-    DeleteSelectionContents,
-    ClearSelection,
-    CopySelection,
-    CutSelection,
-    Paste,
-    DoubleDensity,
-    HalveDensity,
-
-    SelectTool(Tool),
-    SelectShape(ShapePrimitive),
-
-    FrameView,
-    ViewPreset(CameraPreset),
-    ZoomIn,
-    ZoomOut,
-    ToggleFlyby,
-    OpenPreferences,
-    OpenChangelog,
-
-    SelectPalette(usize),
-    AddCurrentColorToPalette,
-    NewPalette,
-    DuplicatePalette,
-    DeletePalette,
-    ImportAse,
-    ExportAse,
-
-    SetThemePref(ThemePref),
-    ToggleShowFloorGrid,
-    ToggleShowOriginAxes,
-}
-
 #[derive(Clone)]
 pub struct CatalogEntry {
     pub label: String,
     pub category: Category,
-    pub keywords: String,
-    pub shortcut: Option<&'static str>,
+    pub keywords: &'static str,
+    pub shortcut: Option<Chord>,
     pub enabled: bool,
-    pub action: CommandAction,
+    pub action: Action,
 }
 
 // -------- Fuzzy matcher (pure) --------
@@ -202,506 +103,21 @@ fn matches_entry(entry: &CatalogEntry, query: &str) -> Option<i32> {
 
 // -------- Catalog builder --------
 
-/// Snapshot of the world state the catalog needs to compute `enabled` for
-/// state-dependent actions. Borrowed-only so the builder is a pure function
-/// over inputs (testable without a Bevy app).
-pub struct CatalogState<'a> {
-    pub tool: Tool,
-    pub shape: &'a ShapeOptions,
-    pub has_undo: bool,
-    pub has_redo: bool,
-    pub has_selection: bool,
-    pub has_clipboard: bool,
-    pub has_voxels: bool,
-    pub dialog_busy: bool,
-    pub palettes: &'a [Palette],
-    pub palette_choice: usize,
-    pub current_color: Color8,
-    pub prefs: &'a Preferences,
-    pub flyby_active: bool,
-}
-
-pub fn build_catalog(state: &CatalogState) -> Vec<CatalogEntry> {
-    let mut out: Vec<CatalogEntry> = Vec::with_capacity(80);
-
-    let dialog_ok = !state.dialog_busy;
-    let active_palette = state.palettes.get(state.palette_choice);
-    let active_is_builtin = active_palette.map(|p| p.builtin).unwrap_or(true);
-    let has_user_palette = state.palettes.iter().any(|p| !p.builtin);
-    let active_has_color = active_palette
-        .map(|p| p.colors.contains(&state.current_color))
-        .unwrap_or(true);
-
-    // File
-    out.push(entry(
-        "New project…",
-        Category::File,
-        "create empty",
-        Some("⌘N"),
-        true,
-        CommandAction::NewProject,
-    ));
-    out.push(entry(
-        "Open project…",
-        Category::File,
-        "roxel load file",
-        Some("⌘O"),
-        dialog_ok,
-        CommandAction::OpenProject,
-    ));
-    out.push(entry(
-        "Save project",
-        Category::File,
-        "roxel write file",
-        Some("⌘S"),
-        dialog_ok,
-        CommandAction::SaveProject,
-    ));
-    out.push(entry(
-        "Save project as…",
-        Category::File,
-        "roxel write file save as",
-        Some("⇧⌘S"),
-        dialog_ok,
-        CommandAction::SaveProjectAs,
-    ));
-    out.push(entry(
-        "Import MagicaVoxel (.vox)…",
-        Category::File,
-        "load import vox",
-        None,
-        dialog_ok,
-        CommandAction::ImportVox,
-    ));
-    out.push(entry(
-        "Import Qubicle (.qb)…",
-        Category::File,
-        "load import qubicle qb",
-        None,
-        dialog_ok,
-        CommandAction::ImportQb,
-    ));
-    out.push(entry(
-        "Import Goxel (.gox)…",
-        Category::File,
-        "load import goxel gox",
-        None,
-        dialog_ok,
-        CommandAction::ImportGox,
-    ));
-    out.push(entry(
-        "Export MagicaVoxel (.vox)…",
-        Category::File,
-        "save write vox",
-        None,
-        dialog_ok,
-        CommandAction::ExportVox,
-    ));
-    out.push(entry(
-        "Export Wavefront (.obj)…",
-        Category::File,
-        "save write obj wavefront mesh",
-        None,
-        dialog_ok,
-        CommandAction::ExportObj,
-    ));
-    out.push(entry(
-        "Export glTF (.glb)…",
-        Category::File,
-        "save write gltf glb mesh",
-        None,
-        dialog_ok,
-        CommandAction::ExportGltf,
-    ));
-    out.push(entry(
-        "Export Goxel (.gox)…",
-        Category::File,
-        "save write goxel gox",
-        None,
-        dialog_ok,
-        CommandAction::ExportGox,
-    ));
-    out.push(entry(
-        "Export Transparent PNG…",
-        Category::File,
-        "save write png screenshot image",
-        None,
-        dialog_ok,
-        CommandAction::ExportPng,
-    ));
-    out.push(entry(
-        "Export Shot…",
-        Category::File,
-        "save write png image share social shot dribbble render poster",
-        None,
-        dialog_ok,
-        CommandAction::ExportShot,
-    ));
-    out.push(entry(
-        "Export SVG…",
-        Category::File,
-        "save write svg vector image",
-        None,
-        dialog_ok,
-        CommandAction::ExportSvg,
-    ));
-
-    // Edit
-    out.push(entry(
-        "Undo",
-        Category::Edit,
-        "history",
-        Some("⌘Z"),
-        state.has_undo,
-        CommandAction::Undo,
-    ));
-    out.push(entry(
-        "Redo",
-        Category::Edit,
-        "history",
-        Some("⇧⌘Z"),
-        state.has_redo,
-        CommandAction::Redo,
-    ));
-    out.push(entry(
-        "Delete selection contents",
-        Category::Edit,
-        "clear remove voxels",
-        Some("⌫"),
-        state.has_selection,
-        CommandAction::DeleteSelectionContents,
-    ));
-    out.push(entry(
-        "Clear selection",
-        Category::Edit,
-        "deselect",
-        Some("Esc"),
-        state.has_selection,
-        CommandAction::ClearSelection,
-    ));
-    out.push(entry(
-        "Copy",
-        Category::Edit,
-        "copy clipboard duplicate",
-        Some("⌘C"),
-        state.has_selection,
-        CommandAction::CopySelection,
-    ));
-    out.push(entry(
-        "Cut",
-        Category::Edit,
-        "cut clipboard",
-        Some("⌘X"),
-        state.has_selection,
-        CommandAction::CutSelection,
-    ));
-    out.push(entry(
-        "Paste",
-        Category::Edit,
-        "paste clipboard insert",
-        Some("⌘V"),
-        state.has_clipboard,
-        CommandAction::Paste,
-    ));
-    out.push(entry(
-        "Double density",
-        Category::Edit,
-        "resample upscale 2x detail subdivide",
-        None,
-        state.has_voxels,
-        CommandAction::DoubleDensity,
-    ));
-    out.push(entry(
-        "Halve density",
-        Category::Edit,
-        "resample downscale half simplify merge",
-        None,
-        state.has_voxels,
-        CommandAction::HalveDensity,
-    ));
-
-    // Tools
-    for (kind, label, sc, kw) in [
-        (Tool::Brush, "Switch to Brush", "B", "paint place draw"),
-        (Tool::Erase, "Switch to Erase", "E", "delete remove"),
-        (
-            Tool::Paint,
-            "Switch to Paint",
-            "P",
-            "recolor bucket flood fill region selection",
-        ),
-        (
-            Tool::Eyedropper,
-            "Switch to Eyedropper",
-            "I",
-            "pick sample color",
-        ),
-        (
-            Tool::Shape,
-            "Switch to Shape",
-            "S",
-            "rectangle ellipse line",
-        ),
-        (Tool::Select, "Switch to Select", "M", "marquee region"),
-        (Tool::Move, "Switch to Move", "V", "translate nudge"),
-    ] {
-        out.push(entry(
-            label,
-            Category::Tools,
-            kw,
-            Some(sc),
-            state.tool != kind,
-            CommandAction::SelectTool(kind),
-        ));
-    }
-
-    // Shape
-    out.push(entry(
-        "Shape: Rectangle",
-        Category::Shape,
-        "rect square box",
-        None,
-        state.shape.primitive != ShapePrimitive::Rectangle,
-        CommandAction::SelectShape(ShapePrimitive::Rectangle),
-    ));
-    out.push(entry(
-        "Shape: Ellipse",
-        Category::Shape,
-        "circle oval",
-        None,
-        state.shape.primitive != ShapePrimitive::Ellipse,
-        CommandAction::SelectShape(ShapePrimitive::Ellipse),
-    ));
-    out.push(entry(
-        "Shape: Line",
-        Category::Shape,
-        "stroke",
-        None,
-        state.shape.primitive != ShapePrimitive::Line,
-        CommandAction::SelectShape(ShapePrimitive::Line),
-    ));
-    out.push(entry(
-        "Shape: Sphere",
-        Category::Shape,
-        "ball ellipsoid globe round",
-        None,
-        state.shape.primitive != ShapePrimitive::Sphere,
-        CommandAction::SelectShape(ShapePrimitive::Sphere),
-    ));
-
-    // View
-    out.push(entry(
-        "Frame view (fit to content)",
-        Category::View,
-        "zoom fit center reframe",
-        Some("⌘0"),
-        true,
-        CommandAction::FrameView,
-    ));
-    for (preset, shortcut, keywords) in [
-        (CameraPreset::Front, "⌘1", "view angle camera +z forward"),
-        (CameraPreset::Back, "⇧⌘1", "view angle camera -z behind"),
-        (CameraPreset::Right, "⌘3", "view angle camera +x side"),
-        (CameraPreset::Left, "⇧⌘3", "view angle camera -x side"),
-        (CameraPreset::Top, "⌘7", "view angle camera down plan"),
-        (
-            CameraPreset::Iso,
-            "⌘5",
-            "view angle camera isometric default",
-        ),
-    ] {
-        out.push(entry(
-            &format!("{} view", preset.label()),
-            Category::View,
-            keywords,
-            Some(shortcut),
-            true,
-            CommandAction::ViewPreset(preset),
-        ));
-    }
-    out.push(entry(
-        "Zoom in",
-        Category::View,
-        "camera closer",
-        Some("⌘="),
-        true,
-        CommandAction::ZoomIn,
-    ));
-    out.push(entry(
-        "Zoom out",
-        Category::View,
-        "camera farther",
-        Some("⌘-"),
-        true,
-        CommandAction::ZoomOut,
-    ));
-    out.push(entry(
-        if state.flyby_active {
-            "Stop flyby camera"
-        } else {
-            "Start flyby camera"
-        },
-        Category::View,
-        "drone tour cinematic auto orbit preview",
-        if state.flyby_active {
-            Some("Esc")
-        } else {
-            None
-        },
-        true,
-        CommandAction::ToggleFlyby,
-    ));
-    out.push(entry(
-        "Open Preferences…",
-        Category::View,
-        "settings options config",
-        Some("⌘,"),
-        true,
-        CommandAction::OpenPreferences,
-    ));
-
-    // Palette
-    out.push(entry(
-        "Add current color to palette",
-        Category::Palette,
-        "swatch insert",
-        None,
-        !active_is_builtin && !active_has_color,
-        CommandAction::AddCurrentColorToPalette,
-    ));
-    out.push(entry(
-        "New palette",
-        Category::Palette,
-        "create empty",
-        None,
-        true,
-        CommandAction::NewPalette,
-    ));
-    out.push(entry(
-        "Duplicate palette",
-        Category::Palette,
-        "copy clone",
-        None,
-        active_palette.is_some(),
-        CommandAction::DuplicatePalette,
-    ));
-    out.push(entry(
-        "Delete palette",
-        Category::Palette,
-        "remove trash",
-        None,
-        !active_is_builtin && has_user_palette,
-        CommandAction::DeletePalette,
-    ));
-    out.push(entry(
-        "Import .ase palette…",
-        Category::Palette,
-        "adobe swatch exchange load",
-        None,
-        dialog_ok,
-        CommandAction::ImportAse,
-    ));
-    out.push(entry(
-        "Export .ase palette…",
-        Category::Palette,
-        "adobe swatch exchange save",
-        None,
-        dialog_ok && active_palette.is_some(),
-        CommandAction::ExportAse,
-    ));
-    for (i, p) in state.palettes.iter().enumerate() {
-        if i == state.palette_choice {
-            continue;
-        }
-        out.push(entry(
-            &format!("Switch to palette: {}", p.name),
-            Category::Palette,
-            if p.builtin { "built-in" } else { "user" },
-            None,
-            true,
-            CommandAction::SelectPalette(i),
-        ));
-    }
-
-    // Preferences
-    out.push(entry(
-        "Theme: System",
-        Category::Preferences,
-        "appearance auto os",
-        None,
-        state.prefs.theme != ThemePref::System,
-        CommandAction::SetThemePref(ThemePref::System),
-    ));
-    out.push(entry(
-        "Theme: Light",
-        Category::Preferences,
-        "appearance",
-        None,
-        state.prefs.theme != ThemePref::Light,
-        CommandAction::SetThemePref(ThemePref::Light),
-    ));
-    out.push(entry(
-        "Theme: Dark",
-        Category::Preferences,
-        "appearance",
-        None,
-        state.prefs.theme != ThemePref::Dark,
-        CommandAction::SetThemePref(ThemePref::Dark),
-    ));
-    out.push(entry(
-        if state.prefs.show_floor_grid {
-            "Hide floor grid"
-        } else {
-            "Show floor grid"
-        },
-        Category::Preferences,
-        "voxel cell lines on floor toggle",
-        None,
-        true,
-        CommandAction::ToggleShowFloorGrid,
-    ));
-    out.push(entry(
-        if state.prefs.show_origin_axes {
-            "Hide origin axes"
-        } else {
-            "Show origin axes"
-        },
-        Category::Preferences,
-        "red green blue center point triad toggle",
-        None,
-        true,
-        CommandAction::ToggleShowOriginAxes,
-    ));
-
-    // Help
-    out.push(entry(
-        "Open Changelog",
-        Category::Help,
-        "release notes github",
-        None,
-        true,
-        CommandAction::OpenChangelog,
-    ));
-
-    out
-}
-
-fn entry(
-    label: &str,
-    category: Category,
-    keywords: &str,
-    shortcut: Option<&'static str>,
-    enabled: bool,
-    action: CommandAction,
-) -> CatalogEntry {
-    CatalogEntry {
-        label: label.to_string(),
-        category,
-        keywords: keywords.to_string(),
-        shortcut,
-        enabled,
-        action,
-    }
+pub fn build_catalog(state: &ActionState) -> Vec<CatalogEntry> {
+    Action::all(state)
+        .into_iter()
+        .map(|action| {
+            let spec = action.spec();
+            CatalogEntry {
+                label: action.label(state).into_owned(),
+                category: spec.category,
+                keywords: action.keywords(state),
+                shortcut: spec.shortcut,
+                enabled: action.enabled(state),
+                action,
+            }
+        })
+        .collect()
 }
 
 /// Filter + rank `entries` by `query`. Returns indices into `entries` in
@@ -759,16 +175,15 @@ pub fn command_palette_shortcut_system(
 // -------- Renderer (called from ui_system) --------
 
 /// Render the centered command-palette modal and handle keyboard navigation
-/// inside it. Returns nothing; sets `palette.pending` when the user runs a
-/// command, which the dispatcher consumes next frame.
+/// inside it. Returns the command the user ran, if any.
 pub fn draw(
     ctx: &egui::Context,
     theme: &Theme,
     palette: &mut CommandPalette,
     catalog: &[CatalogEntry],
-) {
+) -> Option<Action> {
     if !palette.open {
-        return;
+        return None;
     }
     // Pre-consume arrow/enter/esc keys so the search TextEdit doesn't read
     // them this frame. This keeps the text caret stable while the user is
@@ -783,7 +198,7 @@ pub fn draw(
 
     let prev_search = palette.search.clone();
     let mut close_after = false;
-    let mut pending: Option<CommandAction> = None;
+    let mut pending: Option<Action> = None;
 
     let order = rank(catalog, &palette.search);
     // Clamp selection inside the filtered list.
@@ -809,7 +224,7 @@ pub fn draw(
         && let Some(&idx) = order.get(palette.selected)
         && catalog[idx].enabled
     {
-        pending = Some(catalog[idx].action.clone());
+        pending = Some(catalog[idx].action);
         close_after = true;
     }
 
@@ -881,7 +296,7 @@ pub fn draw(
                             let entry = &catalog[idx];
                             let selected = visual_idx == palette.selected;
                             if draw_row(ui, theme, entry, selected) && entry.enabled {
-                                pending = Some(entry.action.clone());
+                                pending = Some(entry.action);
                                 close_after = true;
                             }
                         }
@@ -921,12 +336,10 @@ pub fn draw(
             palette.selected = first;
         }
     }
-    if let Some(action) = pending {
-        palette.pending = Some(action);
-    }
     if close_after {
         palette.open = false;
     }
+    pending
 }
 
 fn draw_footer_hint(ui: &mut egui::Ui, theme: &Theme) {
@@ -1060,7 +473,11 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     // Shortcut (right) — per-key chips (text or Lucide icons), surface fill.
     if let Some(sc) = entry.shortcut {
         let chip_h = icon::XS + space::SM; // 20, matches footer chip
-        let tokens = tokenize_shortcut(sc, cfg!(target_os = "macos"));
+        let tokens: Vec<ShortcutToken> = sc
+            .tokens(Platform::CURRENT)
+            .into_iter()
+            .map(ShortcutToken::from)
+            .collect();
         let gap = space::XXS;
         let widths: Vec<f32> = tokens
             .iter()
@@ -1139,32 +556,15 @@ enum ShortcutToken {
     Shift,
 }
 
-/// Split a shortcut string, written in macOS notation, into per-key tokens
-/// for chip rendering. Multi-char names like "Esc" stay whole. Off macOS, `⌘`
-/// becomes a "Ctrl" chip placed first (Ctrl, Shift, key) and `⌫` reads
-/// "Backspace".
-fn tokenize_shortcut(s: &str, mac: bool) -> Vec<ShortcutToken> {
-    if s == "Esc" {
-        return vec![ShortcutToken::Text("Esc".into())];
+impl From<KeyToken> for ShortcutToken {
+    fn from(t: KeyToken) -> Self {
+        match t {
+            KeyToken::Command => ShortcutToken::Command,
+            KeyToken::Shift => ShortcutToken::Shift,
+            KeyToken::Control => ShortcutToken::Text("Ctrl".into()),
+            KeyToken::Key(k) => ShortcutToken::Text(k.into_owned()),
+        }
     }
-    let mut tokens: Vec<ShortcutToken> = s
-        .chars()
-        .map(|c| match c {
-            '⌘' if mac => ShortcutToken::Command,
-            '⌘' => ShortcutToken::Text("Ctrl".into()),
-            '⇧' => ShortcutToken::Shift,
-            '⌫' if !mac => ShortcutToken::Text("Backspace".into()),
-            c => ShortcutToken::Text(c.to_string()),
-        })
-        .collect();
-    if !mac {
-        tokens.sort_by_key(|t| match t {
-            ShortcutToken::Text(s) if s == "Ctrl" => 0,
-            ShortcutToken::Shift => 1,
-            _ => 2,
-        });
-    }
-    tokens
 }
 
 impl ShortcutToken {
@@ -1177,342 +577,34 @@ impl ShortcutToken {
     }
 }
 
-// -------- Dispatch --------
-
-#[derive(SystemParam)]
-pub struct DispatchParams<'w> {
-    palette: ResMut<'w, CommandPalette>,
-    pending: ResMut<'w, PendingDialog>,
-    history: ResMut<'w, History>,
-    grid: ResMut<'w, GridResource>,
-    guard: ResMut<'w, super::dialogs::UnsavedGuard>,
-    prefs_window: ResMut<'w, PreferencesWindow>,
-    tool: ResMut<'w, ToolState>,
-    shape: ResMut<'w, ShapeOptions>,
-    selection: ResMut<'w, select::Selection>,
-    palette_choice: ResMut<'w, PaletteChoice>,
-    palettes: ResMut<'w, Palettes>,
-    working: ResMut<'w, WorkingPalette>,
-    discard: ResMut<'w, DiscardConfirm>,
-    delete: ResMut<'w, super::palette::DeleteConfirm>,
-    color: ResMut<'w, CurrentColor>,
-    prefs: ResMut<'w, Preferences>,
-    current_path: Res<'w, super::dialogs::CurrentProjectPath>,
-    flyby: ResMut<'w, crate::camera::FlybyState>,
-    toasts: ResMut<'w, super::Toasts>,
-    view_preset: ResMut<'w, PendingViewPreset>,
-    clipboard: ResMut<'w, crate::clipboard::Clipboard>,
-    shot_panel: ResMut<'w, crate::shot::ShotPanel>,
-}
-
-pub fn dispatch_command_palette_system(
-    mut p: DispatchParams,
-    mut cameras: Query<&mut PanOrbitCamera>,
-) {
-    let Some(action) = p.palette.pending.take() else {
-        return;
-    };
-    match action {
-        CommandAction::NewProject => p.guard.request(GuardedAction::New),
-        CommandAction::OpenProject => p.guard.request(GuardedAction::Open(None)),
-        CommandAction::SaveProject => {
-            super::dialogs::spawn_save(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
-        }
-        CommandAction::SaveProjectAs => {
-            super::dialogs::spawn_save_as(&mut p.pending, &p.current_path, p.prefs.last_dir.clone())
-        }
-        CommandAction::ImportVox => spawn_import(
-            &mut p.pending,
-            "MagicaVoxel",
-            "vox",
-            DialogResult::ImportVox,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ImportQb => spawn_import(
-            &mut p.pending,
-            "Qubicle",
-            "qb",
-            DialogResult::ImportQb,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ImportGox => spawn_import(
-            &mut p.pending,
-            "Goxel",
-            "gox",
-            DialogResult::ImportGox,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ExportVox => spawn_export(
-            &mut p.pending,
-            "MagicaVoxel",
-            "vox",
-            "model.vox",
-            DialogResult::ExportVox,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ExportObj => spawn_export(
-            &mut p.pending,
-            "Wavefront OBJ",
-            "obj",
-            "model.obj",
-            DialogResult::ExportObj,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ExportGltf => spawn_export(
-            &mut p.pending,
-            "glTF binary",
-            "glb",
-            "model.glb",
-            DialogResult::ExportGltf,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ExportPng => spawn_export(
-            &mut p.pending,
-            "PNG image",
-            "png",
-            "roxel.png",
-            DialogResult::ExportPng,
-            p.prefs.last_dir.clone(),
-        ),
-        // Opens the tweak panel (live preview + knobs); the panel's "Export…"
-        // button spawns the save dialog and re-renders at full resolution.
-        CommandAction::ExportShot => {
-            if p.grid.count() == 0 {
-                p.toasts.error("Nothing to export — the scene is empty");
-            } else {
-                p.shot_panel.open_panel();
-            }
-        }
-        CommandAction::ExportSvg => spawn_export(
-            &mut p.pending,
-            "SVG image",
-            "svg",
-            "roxel.svg",
-            DialogResult::ExportSvg,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::ExportGox => spawn_export(
-            &mut p.pending,
-            "Goxel",
-            "gox",
-            "model.gox",
-            DialogResult::ExportGox,
-            p.prefs.last_dir.clone(),
-        ),
-        CommandAction::Undo => p.history.undo(&mut p.grid),
-        CommandAction::Redo => p.history.redo(&mut p.grid),
-        CommandAction::DeleteSelectionContents => {
-            if p.selection.aabb.is_some() {
-                select::clear_selection(&mut p.grid, &mut p.history, &p.selection);
-            }
-        }
-        CommandAction::ClearSelection => p.selection.clear(),
-        CommandAction::CopySelection => {
-            if let Some(stamp) = crate::clipboard::copy_selection(&p.grid, &p.selection) {
-                let n = stamp.voxel_count();
-                p.clipboard.stamp = Some(stamp);
-                p.toasts.info(format!("Copied {n} voxels"));
-            }
-        }
-        CommandAction::CutSelection => {
-            if let Some(stamp) =
-                crate::clipboard::cut_selection(&mut p.grid, &mut p.history, &p.selection)
-            {
-                let n = stamp.voxel_count();
-                p.clipboard.stamp = Some(stamp);
-                p.toasts.info(format!("Cut {n} voxels"));
-            }
-        }
-        CommandAction::Paste => {
-            if let Some(stamp) = p.clipboard.stamp.clone() {
-                crate::clipboard::execute_paste(
-                    &mut p.grid,
-                    &mut p.history,
-                    &mut p.selection,
-                    &mut p.toasts,
-                    &stamp,
-                    None,
-                );
-            }
-        }
-        CommandAction::DoubleDensity => crate::resample::apply_resample(
-            &mut p.grid,
-            &mut p.history,
-            &mut p.toasts,
-            crate::resample::ResampleOp::Double,
-        ),
-        CommandAction::HalveDensity => crate::resample::apply_resample(
-            &mut p.grid,
-            &mut p.history,
-            &mut p.toasts,
-            crate::resample::ResampleOp::Halve,
-        ),
-        CommandAction::SelectTool(t) => {
-            if p.tool.current != t {
-                p.tool.previous = p.tool.current;
-                p.tool.current = t;
-            }
-        }
-        CommandAction::SelectShape(prim) => {
-            p.shape.primitive = prim;
-            p.prefs.last_shape = prim;
-            crate::theme::save_preferences(&p.prefs);
-        }
-        CommandAction::FrameView => {
-            let (centroid, radius) =
-                fit_view(&p.grid).unwrap_or((Vec3::ZERO, crate::camera::EMPTY_WORLD_RADIUS));
-            for mut cam in &mut cameras {
-                cam.target_focus = centroid;
-                cam.target_radius = radius;
-            }
-        }
-        CommandAction::ViewPreset(preset) => {
-            p.view_preset.0 = Some(preset);
-        }
-        CommandAction::ZoomIn => {
-            for mut cam in &mut cameras {
-                cam.target_radius = apply_zoom(
-                    cam.target_radius,
-                    ZOOM_STEP_IN,
-                    cam.zoom_lower_limit,
-                    cam.zoom_upper_limit,
-                );
-            }
-        }
-        CommandAction::ZoomOut => {
-            for mut cam in &mut cameras {
-                cam.target_radius = apply_zoom(
-                    cam.target_radius,
-                    ZOOM_STEP_OUT,
-                    cam.zoom_lower_limit,
-                    cam.zoom_upper_limit,
-                );
-            }
-        }
-        CommandAction::ToggleFlyby => {
-            p.flyby.active = !p.flyby.active;
-            if p.flyby.active {
-                p.toasts.info("Flyby active — Esc to exit");
-            }
-        }
-        CommandAction::OpenPreferences => p.prefs_window.open = true,
-        CommandAction::OpenChangelog => crate::updater::open_url(CHANGELOG_URL),
-        CommandAction::SelectPalette(i) => {
-            if i < p.palettes.0.len() {
-                request_select(i, &mut p.palette_choice, &mut p.working, &mut p.discard);
-            }
-        }
-        CommandAction::AddCurrentColorToPalette => {
-            let i = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
-            if !display_colors(&p.palettes, &p.working, i).contains(&p.color.0) {
-                let persist = {
-                    let (colors, persist) = edit_colors(&mut p.palettes, &mut p.working, i);
-                    colors.push(p.color.0);
-                    persist
-                };
-                if persist {
-                    io::palettes::save(&p.palettes.0);
-                }
-            }
-        }
-        CommandAction::NewPalette => {
-            p.working.clear();
-            let name = next_palette_name(&p.palettes.0);
-            p.palettes.0.push(Palette {
-                name,
-                colors: Vec::new(),
-                builtin: false,
-            });
-            p.palette_choice.0 = p.palettes.0.len() - 1;
-            io::palettes::save(&p.palettes.0);
-        }
-        CommandAction::DuplicatePalette => {
-            p.palette_choice.0 = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
-            save_as_new(&mut p.palettes, &mut p.palette_choice, &mut p.working);
-            io::palettes::save(&p.palettes.0);
-        }
-        CommandAction::DeletePalette => p.delete.request(&p.palettes, p.palette_choice.0),
-        CommandAction::ImportAse => {
-            if !p.pending.is_active() {
-                let start_dir = p.prefs.last_dir.clone();
-                p.pending.spawn(async move {
-                    super::dialogs::new_dialog(&start_dir)
-                        .add_filter("Adobe Swatch Exchange", &["ase"])
-                        .pick_file()
-                        .await
-                        .map(|f| DialogResult::ImportAse(f.path().to_path_buf()))
-                });
-            }
-        }
-        CommandAction::ExportAse => {
-            if p.pending.is_active() {
-                return;
-            }
-            let i = p.palette_choice.0.min(p.palettes.0.len().saturating_sub(1));
-            let Some(current) = p.palettes.0.get(i) else {
-                return;
-            };
-            let export_name = current.name.clone();
-            let export_colors = display_colors(&p.palettes, &p.working, i).to_vec();
-            let default_filename = format!(
-                "{}.ase",
-                crate::ui::palette::sanitize_filename(&export_name)
-            );
-            let start_dir = p.prefs.last_dir.clone();
-            p.pending.spawn(async move {
-                super::dialogs::new_dialog(&start_dir)
-                    .add_filter("Adobe Swatch Exchange", &["ase"])
-                    .set_file_name(&default_filename)
-                    .save_file()
-                    .await
-                    .map(|f| {
-                        DialogResult::ExportAse(f.path().to_path_buf(), export_name, export_colors)
-                    })
-            });
-        }
-        CommandAction::SetThemePref(t) => {
-            p.prefs.theme = t;
-            crate::theme::save_preferences(&p.prefs);
-        }
-        CommandAction::ToggleShowFloorGrid => {
-            p.prefs.show_floor_grid = !p.prefs.show_floor_grid;
-            crate::theme::save_preferences(&p.prefs);
-        }
-        CommandAction::ToggleShowOriginAxes => {
-            p.prefs.show_origin_axes = !p.prefs.show_origin_axes;
-            crate::theme::save_preferences(&p.prefs);
-        }
-    }
-}
-
 // -------- Tests --------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::Preferences;
+    use crate::tools::Tool;
+    use crate::ui::palette::Palette;
+    use roxel::shapes::ShapePrimitive;
 
-    fn sample_state(palettes: &[Palette]) -> (ShapeOptions, Preferences, CatalogState<'_>) {
-        let shape = ShapeOptions::default();
-        let prefs = Preferences::default();
-        (shape, prefs, dummy(palettes))
-    }
-
-    fn dummy(palettes: &[Palette]) -> CatalogState<'_> {
-        // Caller holds shape/prefs; this helper is unused outside sample_state.
-        CatalogState {
+    fn state<'a>(palettes: &'a [Palette], prefs: &'a Preferences) -> ActionState<'a> {
+        ActionState {
             tool: Tool::Brush,
-            shape: Box::leak(Box::new(ShapeOptions::default())),
-            has_undo: true,
+            shape: ShapePrimitive::Rectangle,
+            has_undo: false,
             has_redo: false,
             has_selection: false,
+            selection_idle: true,
             has_clipboard: false,
             has_voxels: false,
             dialog_busy: false,
+            flyby_active: false,
             palettes,
             palette_choice: 0,
+            active_colors: &[],
             current_color: [10, 20, 30, 255],
-            prefs: Box::leak(Box::new(Preferences::default())),
-            flyby_active: false,
+            prefs,
+            recent: &[],
         }
     }
 
@@ -1566,27 +658,11 @@ mod tests {
     #[test]
     fn catalog_disables_undo_when_history_empty() {
         let palettes = vec![pal("p1", true)];
-        let shape = ShapeOptions::default();
         let prefs = Preferences::default();
-        let state = CatalogState {
-            tool: Tool::Brush,
-            shape: &shape,
-            has_undo: false,
-            has_redo: false,
-            has_selection: false,
-            has_clipboard: false,
-            has_voxels: false,
-            dialog_busy: false,
-            palettes: &palettes,
-            palette_choice: 0,
-            current_color: [10, 20, 30, 255],
-            prefs: &prefs,
-            flyby_active: false,
-        };
-        let cat = build_catalog(&state);
+        let cat = build_catalog(&state(&palettes, &prefs));
         let undo = cat
             .iter()
-            .find(|e| matches!(e.action, CommandAction::Undo))
+            .find(|e| e.action == Action::Undo)
             .expect("undo entry");
         assert!(!undo.enabled);
     }
@@ -1594,27 +670,11 @@ mod tests {
     #[test]
     fn catalog_lists_other_palettes_as_switch_entries() {
         let palettes = vec![pal("Alpha", true), pal("Beta", false), pal("Gamma", false)];
-        let shape = ShapeOptions::default();
         let prefs = Preferences::default();
-        let state = CatalogState {
-            tool: Tool::Brush,
-            shape: &shape,
-            has_undo: false,
-            has_redo: false,
-            has_selection: false,
-            has_clipboard: false,
-            has_voxels: false,
-            dialog_busy: false,
-            palettes: &palettes,
-            palette_choice: 0,
-            current_color: [10, 20, 30, 255],
-            prefs: &prefs,
-            flyby_active: false,
-        };
-        let cat = build_catalog(&state);
+        let cat = build_catalog(&state(&palettes, &prefs));
         let switches: Vec<_> = cat
             .iter()
-            .filter(|e| matches!(e.action, CommandAction::SelectPalette(_)))
+            .filter(|e| matches!(e.action, Action::SelectPalette(_)))
             .collect();
         // Two other palettes (active palette is skipped).
         assert_eq!(switches.len(), 2);
@@ -1624,50 +684,26 @@ mod tests {
     }
 
     #[test]
-    fn catalog_has_no_color_pick_entries() {
-        let palettes = vec![pal("Alpha", true), pal("Beta", false)];
-        let shape = ShapeOptions::default();
+    fn catalog_lists_recent_files() {
+        let palettes = vec![pal("p1", true)];
         let prefs = Preferences::default();
-        let state = CatalogState {
-            tool: Tool::Brush,
-            shape: &shape,
-            has_undo: false,
-            has_redo: false,
-            has_selection: false,
-            has_clipboard: false,
-            has_voxels: false,
-            dialog_busy: false,
-            palettes: &palettes,
-            palette_choice: 0,
-            current_color: [10, 20, 30, 255],
-            prefs: &prefs,
-            flyby_active: false,
-        };
-        let cat = build_catalog(&state);
-        assert!(cat.iter().all(|e| !e.label.starts_with("Pick color")));
+        let recent = vec![std::path::PathBuf::from("/tmp/castle.rox")];
+        let mut s = state(&palettes, &prefs);
+        s.recent = &recent;
+        let cat = build_catalog(&s);
+        let entry = cat
+            .iter()
+            .find(|e| e.action == Action::OpenRecent(0))
+            .expect("recent entry");
+        assert_eq!(entry.label, "Open recent: castle.rox");
+        assert!(entry.enabled);
     }
 
     #[test]
     fn rank_orders_better_matches_first() {
         let palettes = vec![pal("p1", true)];
-        let shape = ShapeOptions::default();
         let prefs = Preferences::default();
-        let state = CatalogState {
-            tool: Tool::Brush,
-            shape: &shape,
-            has_undo: true,
-            has_redo: true,
-            has_selection: false,
-            has_clipboard: false,
-            has_voxels: false,
-            dialog_busy: false,
-            palettes: &palettes,
-            palette_choice: 0,
-            current_color: [10, 20, 30, 255],
-            prefs: &prefs,
-            flyby_active: false,
-        };
-        let cat = build_catalog(&state);
+        let cat = build_catalog(&state(&palettes, &prefs));
         let order = rank(&cat, "frame");
         let first = &cat[order[0]];
         assert!(first.label.starts_with("Frame view"), "got {}", first.label);
@@ -1676,28 +712,12 @@ mod tests {
     #[test]
     fn rank_keeps_disabled_in_results_but_below_enabled() {
         let palettes = vec![pal("p1", true)];
-        let shape = ShapeOptions::default();
         let prefs = Preferences::default();
-        let state = CatalogState {
-            tool: Tool::Brush,
-            shape: &shape,
-            has_undo: false,
-            has_redo: false,
-            has_selection: false,
-            has_clipboard: false,
-            has_voxels: false,
-            dialog_busy: false,
-            palettes: &palettes,
-            palette_choice: 0,
-            current_color: [10, 20, 30, 255],
-            prefs: &prefs,
-            flyby_active: false,
-        };
-        let cat = build_catalog(&state);
+        let cat = build_catalog(&state(&palettes, &prefs));
         let order = rank(&cat, "undo");
         let undo_pos = order
             .iter()
-            .position(|&i| matches!(cat[i].action, CommandAction::Undo))
+            .position(|&i| cat[i].action == Action::Undo)
             .expect("Undo entry should appear in results");
         // The Undo entry stays disabled (no history) but is still in the list.
         assert!(!cat[order[undo_pos]].enabled);
@@ -1712,64 +732,19 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_shortcut_splits_per_char_but_keeps_esc_whole() {
+    fn shortcut_tokens_map_to_chips() {
         assert_eq!(
-            tokenize_shortcut("Esc", true),
-            vec![ShortcutToken::Text("Esc".into())]
+            ShortcutToken::from(KeyToken::Control),
+            ShortcutToken::Text("Ctrl".into())
         );
         assert_eq!(
-            tokenize_shortcut("⌘N", true),
-            vec![ShortcutToken::Command, ShortcutToken::Text("N".into())]
+            ShortcutToken::from(KeyToken::Key("N".into())),
+            ShortcutToken::Text("N".into())
         );
+        assert_eq!(ShortcutToken::from(KeyToken::Shift), ShortcutToken::Shift);
         assert_eq!(
-            tokenize_shortcut("⇧⌘S", true),
-            vec![
-                ShortcutToken::Shift,
-                ShortcutToken::Command,
-                ShortcutToken::Text("S".into())
-            ]
+            ShortcutToken::from(KeyToken::Command),
+            ShortcutToken::Command
         );
-        assert_eq!(
-            tokenize_shortcut("B", true),
-            vec![ShortcutToken::Text("B".into())]
-        );
-    }
-
-    #[test]
-    fn tokenize_shortcut_off_mac_uses_ctrl_first() {
-        let text = |s: &str| ShortcutToken::Text(s.into());
-        assert_eq!(
-            tokenize_shortcut("⌘N", false),
-            vec![text("Ctrl"), text("N")]
-        );
-        assert_eq!(
-            tokenize_shortcut("⇧⌘S", false),
-            vec![text("Ctrl"), ShortcutToken::Shift, text("S")]
-        );
-        assert_eq!(tokenize_shortcut("⌫", false), vec![text("Backspace")]);
-        assert_eq!(tokenize_shortcut("Esc", false), vec![text("Esc")]);
-    }
-
-    #[test]
-    fn catalog_shortcuts_contain_no_ctrl_spelling() {
-        // Shortcuts are written once in macOS notation; tokenize_shortcut
-        // translates them per platform.
-        let palettes = vec![pal("p", true)];
-        let (_shape, _prefs, state) = sample_state(&palettes);
-        for e in build_catalog(&state) {
-            if let Some(sc) = e.shortcut {
-                assert!(!sc.contains("Ctrl"), "{}: {sc}", e.label);
-                assert!(!sc.contains("⌘⇧"), "{}: write ⇧⌘, not ⌘⇧", e.label);
-            }
-        }
-    }
-
-    #[test]
-    fn unused_sample_state_helper_compiles() {
-        // Kept so a future test can quickly grab a default state without
-        // re-typing every field. Calling once exercises the path.
-        let palettes = vec![pal("p", true)];
-        let (_shape, _prefs, state) = sample_state(&palettes);
-        assert_eq!(state.tool, Tool::Brush);
     }
 }

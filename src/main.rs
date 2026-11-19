@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod actions;
 mod camera;
 mod clipboard;
 mod gizmo;
@@ -80,8 +81,8 @@ use crate::ui::{
     CommandPalette, CurrentProjectPath, DialogResult, DiscardConfirm, DocStatus, GuardedAction,
     PaletteChoice, PaletteSwitcher, Palettes, PendingDialog, PendingImport, RecentFiles,
     SavePreviewState, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
-    command_palette_shortcut_system, dispatch_command_palette_system, poll_dialogs_system,
-    process_save_preview_system, tab_toggle_system, toast_lifetime_system, ui_system,
+    command_palette_shortcut_system, poll_dialogs_system, process_save_preview_system,
+    tab_toggle_system, toast_lifetime_system, ui_system,
 };
 use bevy_panorbit_camera::PanOrbitCamera;
 use roxel::grid::{
@@ -199,6 +200,14 @@ fn main() {
         .init_gizmo_group::<crate::preview::PreviewGizmos>()
         .init_gizmo_group::<crate::select::SelectionGizmos>();
 
+    app.init_resource::<crate::actions::ActionQueue>()
+        .add_systems(
+            Update,
+            crate::actions::apply_actions_system
+                .before(resolve_unsaved_guard_system)
+                .before(apply_pending_view_preset_system)
+                .before(frame_view_system),
+        );
     app.init_resource::<crate::menu::MenuQueue>()
         .init_resource::<crate::menu::AboutWindow>()
         .add_systems(Update, crate::menu::apply_menu_actions_system);
@@ -286,7 +295,6 @@ fn main() {
             draw_origin_system,
             perf_warn_system,
             command_palette_shortcut_system,
-            dispatch_command_palette_system,
             apply_recenter_system,
             update_zoom_limits_system,
             flyby_system,

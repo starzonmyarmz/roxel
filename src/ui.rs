@@ -1,4 +1,5 @@
 use crate::GridResource;
+use crate::actions::{ActionQueue, ActionState, Origin};
 mod color_picker;
 mod command_palette;
 mod dialogs;
@@ -13,9 +14,7 @@ pub mod tokens;
 mod visibility;
 mod widgets;
 
-pub use command_palette::{
-    CommandPalette, command_palette_shortcut_system, dispatch_command_palette_system,
-};
+pub use command_palette::{CommandPalette, command_palette_shortcut_system};
 #[cfg(not(target_os = "macos"))]
 pub use dialogs::file_shortcut_system;
 pub use dialogs::{
@@ -23,9 +22,10 @@ pub use dialogs::{
     RecentFiles, SavePreviewState, UnsavedGuard, poll_dialogs_system, process_save_preview_system,
     spawn_open,
 };
-pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
+pub use dialogs::{spawn_export, spawn_export_ase, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{
-    DeleteConfirm, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
+    DeleteConfirm, DiscardConfirm, Palette, PaletteChoice, PaletteSwitcher, Palettes,
+    WorkingPalette, display_colors, edit_colors, next_palette_name, request_select, save_as_new,
 };
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
@@ -95,6 +95,7 @@ pub struct UiState<'w> {
     pub ui_visible: Res<'w, UiVisible>,
     pub shot_panel: ResMut<'w, crate::shot::ShotPanel>,
     pub menu_queue: ResMut<'w, crate::menu::MenuQueue>,
+    pub actions: ResMut<'w, ActionQueue>,
     pub recent_files: Res<'w, RecentFiles>,
     pub about: ResMut<'w, crate::menu::AboutWindow>,
 }
@@ -167,6 +168,7 @@ pub fn ui_system(
         ui_visible,
         mut shot_panel,
         mut menu_queue,
+        mut actions,
         recent_files,
         mut about,
     } = ui_state;
@@ -404,23 +406,29 @@ pub fn ui_system(
     }
 
     if cmd_palette.open {
-        let state = command_palette::CatalogState {
+        let choice = palette_choice.0.min(palettes.0.len().saturating_sub(1));
+        let state = ActionState {
             tool: tool.current,
-            shape: &shape_options,
+            shape: shape_options.primitive,
             has_undo: !history.undo.is_empty(),
             has_redo: !history.redo.is_empty(),
             has_selection: selection.aabb.is_some(),
+            selection_idle: select_state.phase == crate::select::SelectPhase::Idle,
             has_clipboard: clipboard.has_stamp(),
             has_voxels: grid.count() > 0,
             dialog_busy: pending.is_active(),
+            flyby_active: flyby.active,
             palettes: &palettes.0,
             palette_choice: palette_choice.0,
+            active_colors: palette::display_colors(&palettes, &working, choice),
             current_color: color.0,
             prefs: &prefs,
-            flyby_active: flyby.active,
+            recent: &recent_files.0,
         };
         let catalog = command_palette::build_catalog(&state);
-        command_palette::draw(ctx, &theme, &mut cmd_palette, &catalog);
+        if let Some(action) = command_palette::draw(ctx, &theme, &mut cmd_palette, &catalog) {
+            actions.push(action, Origin::Ui);
+        }
     }
 
     toast::draw_toasts(ctx, &theme, &toasts);

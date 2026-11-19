@@ -129,7 +129,6 @@ pub fn tool_island_contents(
         Tool::Brush,
         icons::tool(Tool::Brush),
         "Brush",
-        "B",
     );
     ui.add_space(space::SX);
     widgets::tool_button(
@@ -139,7 +138,6 @@ pub fn tool_island_contents(
         Tool::Erase,
         icons::tool(Tool::Erase),
         "Erase",
-        "E",
     );
     ui.add_space(space::SX);
     widgets::tool_button(
@@ -149,7 +147,6 @@ pub fn tool_island_contents(
         Tool::Paint,
         icons::tool(Tool::Paint),
         "Paint",
-        "P",
     );
     ui.add_space(space::SX);
     widgets::tool_button(
@@ -159,7 +156,6 @@ pub fn tool_island_contents(
         Tool::Eyedropper,
         icons::tool(Tool::Eyedropper),
         "Pick",
-        "I",
     );
     ui.add_space(space::SX);
     let shape_resp = widgets::tool_button(
@@ -169,7 +165,6 @@ pub fn tool_island_contents(
         Tool::Shape,
         icons::shape_primitive(shape_options.primitive),
         "Shape",
-        "S",
     );
     // Click toggles the picker. Clicking the same rail button again
     // closes it; clicking outside closes via the released-off check
@@ -277,18 +272,9 @@ pub fn tool_island_contents(
         Tool::Select,
         icons::tool(Tool::Select),
         "Marquee select",
-        "M",
     );
     ui.add_space(space::SX);
-    widgets::tool_button(
-        ui,
-        theme,
-        tool,
-        Tool::Move,
-        icons::tool(Tool::Move),
-        "Move",
-        "V",
-    );
+    widgets::tool_button(ui, theme, tool, Tool::Move, icons::tool(Tool::Move), "Move");
 }
 
 #[cfg(not(target_os = "macos"))]

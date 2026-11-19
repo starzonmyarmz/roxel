@@ -260,6 +260,27 @@ pub fn spawn_export(
     });
 }
 
+/// Spawn the "Export .ase…" save dialog for palette `name` with `colors`.
+pub fn spawn_export_ase(
+    pending: &mut PendingDialog,
+    name: String,
+    colors: Vec<[u8; 4]>,
+    start_dir: Option<PathBuf>,
+) {
+    if pending.is_active() {
+        return;
+    }
+    let default_filename = format!("{}.ase", super::palette::sanitize_filename(&name));
+    pending.spawn(async move {
+        new_dialog(&start_dir)
+            .add_filter("Adobe Swatch Exchange", &["ase"])
+            .set_file_name(&default_filename)
+            .save_file()
+            .await
+            .map(|f| DialogResult::ExportAse(f.path().to_path_buf(), name, colors))
+    });
+}
+
 /// Most-recent-first list of `.rox` paths the user has opened or saved.
 /// Capped at [`roxel::io::recent::MAX_RECENT`]; persisted to
 /// `dirs::config_dir()/roxel/recent.ron` whenever an entry is pushed.

@@ -185,6 +185,15 @@ pub struct CursorView<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
 }
 
+impl CursorView<'_, '_> {
+    /// The empty cell in front of the voxel under the cursor, if any.
+    pub fn paste_target(&self, grid: &VoxelGrid) -> Option<IVec3> {
+        cursor_ray(&self.cameras, &self.windows)
+            .and_then(|(o, d)| pick(grid, o, d))
+            .map(|h| h.cell + h.normal)
+    }
+}
+
 pub fn clipboard_key_system(
     mut contexts: bevy_egui::EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
