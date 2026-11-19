@@ -16,7 +16,7 @@ If your project has unsaved changes, Roxel asks before anything replaces it — 
 | `.qb`  | Qubicle        |
 | `.gox` | Goxel          |
 
-An imported model is added to the current scene at its original coordinates. The whole import is one step you can undo. If a file can't be read, nothing in your scene changes.
+An imported model is added to the current scene at its original coordinates. A MagicaVoxel scene with several models comes in whole, each model placed and rotated as in MagicaVoxel; hidden models and layers are skipped. The whole import is one step you can undo. If a file can't be read, nothing in your scene changes.
 
 ## Exporting models
 
