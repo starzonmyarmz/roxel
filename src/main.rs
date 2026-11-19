@@ -152,6 +152,7 @@ fn main() {
         .init_resource::<MoveDragState>()
         .init_resource::<crate::select::Selection>()
         .init_resource::<crate::select::SelectState>()
+        .init_resource::<crate::select::SelectionVoxelCount>()
         .init_resource::<crate::clipboard::Clipboard>()
         .init_resource::<PreviewHide>()
         .init_resource::<PendingDialog>()
@@ -255,6 +256,7 @@ fn main() {
             brush_preview_system.before(regenerate_mesh_system),
             shape_preview_system.before(regenerate_mesh_system),
             crate::select::selection_render_system.before(regenerate_mesh_system),
+            crate::select::selection_voxel_count_system.after(regenerate_mesh_system),
             start_snapshot_system
                 .before(brush_preview_system)
                 .before(shape_preview_system)
