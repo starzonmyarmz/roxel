@@ -66,7 +66,7 @@ const CHANGELOG_URL: &str = "https://github.com/starzonmyarmz/roxel/blob/main/CH
 #[derive(Resource, Default)]
 pub struct MenuQueue(pub Vec<MenuAction>);
 
-fn recent_item_label(index: usize, path: &std::path::Path) -> String {
+pub fn recent_item_label(index: usize, path: &std::path::Path) -> String {
     let name = path
         .file_name()
         .and_then(|s| s.to_str())

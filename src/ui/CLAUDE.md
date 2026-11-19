@@ -8,7 +8,7 @@ egui surface and styling: anchored panel + floating surfaces, design tokens, the
 
 - **Left inspector** (`SidePanel::left`) — one **Color** section (hero swatch → picker popup, hex readout, recent colors as an unlabeled strip), palette section (swatch grid ending in a `+` "add current colour" cell; click selects, drag reorders — while dragging, the swatch lifts to a cursor ghost and the rest animate aside to open empty space at the drop target — right-click removes; the `…` overflow menu sits on the **Palette** title row via `widgets::section_header_action` — switch palette / new / duplicate-or-save-as / rename / delete + `.ase` import-export; no inline dropdown), shape options, scene stats. **Switching palettes opens a Cmd+K-style popover** (`ui/palette_switcher.rs`), not a sidebar dropdown. "Status" top section (Size/Voxels/Zoom) always visible. The color-space format (Hex/RGB/…) is **not** in the panel — it lives in the **View → Color Format** menu (native menu on macOS, floating menu pill on Win/Linux); the picker popup reads `prefs.color_space`.
 - **Floating tool island** (`ui/floating.rs::tool_island`) — right-center pivot. Icon-only — no captions. Shape picker opens to the left (`Align2::RIGHT_TOP`).
-- **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center, Win/Linux only, gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu. Carries File / Import / Export, then a **View** menu (Floor Grid + Origin Axes checkable toggles — leading check icon tinted accent when on) and a **Color Format** menu. The View toggles mutate `prefs` and call `save_preferences` inline (the pill has no batch prefs-diff save).
+- **Floating menu pill** (`ui/floating.rs::pill_menu`) — top-center, Win/Linux only, gated on `prefs.show_floating_menu_bar`. macOS uses the native `muda` menu. Mirrors the macOS menu bar as **File / Edit / View / Help** dropdowns (Open Recent, Import, Export, Camera and Color Format are submenus; Floor Grid / Origin Axes / color formats are check items — leading check icon tinted accent when on), then icon-only Undo/Redo and the update badge. Items don't act directly: `pill_menu_contents` reads a `PillMenuState` snapshot for enabled/checked state and pushes `menu::MenuAction`s onto `MenuQueue`, which `menu::apply_menu_actions_system` runs on every platform — the same path as the native menu, so behavior can't drift between them.
 
 Both floating surfaces share `pill_frame` + `floating_area`. `space::FLOAT_GAP` is canvas-edge inset.
 
@@ -39,7 +39,7 @@ Helpers in `src/ui/widgets.rs`:
 
 ## Icons
 
-`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket` (Paint — the merged recolor/flood/fill tool), `pipette`, `shapes`, `box_select`, `move_tool`, `file_plus`, `folder_open`, `save`, `download`, `undo`, `redo`, `plus`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `ellipsis`, `corner_down_left`, `square`, `circle`, `slash`, `globe` (Sphere shape), `eye` (View pill menu). Plus dispatchers `shape_primitive(p)` and `tool(t)`.
+`ui/icons.rs` — Lucide SVGs embedded via `egui::include_image!()` (compile-time). One function per asset: `brush`, `eraser`, `paint_bucket` (Paint — the merged recolor/flood/fill tool), `pipette`, `shapes`, `box_select`, `move_tool`, `undo`, `redo`, `plus`, `check`, `x`, `arrow_up`, `arrow_down`, `chevron_down`, `ellipsis`, `corner_down_left`, `square`, `circle`, `slash`, `globe` (Sphere shape). Plus dispatchers `shape_primitive(p)` and `tool(t)`.
 
 Buttons render icons **only** — never Unicode glyphs or emoji. Add a new function (and SVG to `assets/icons/`) before reaching for text.
 
@@ -91,4 +91,4 @@ For real bold use `FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())`, not `.strong
 
 The state machine and tour steps live in `src/onboarding.rs` (see `src/CLAUDE.md`), but anchor capture happens **here**: each anchored widget calls `anchors.set(AnchorId::*, rect)` while painting inside `ui_system`. The overlay reads `OnboardingAnchors` the following frame.
 
-`?` trigger lives in `ui/floating.rs::pill_menu` for Win/Linux; macOS triggers from the native Help menu (`menu.rs`).
+The tour is relaunched from Help → Show Onboarding Tour… (native menu on macOS, the pill's Help menu on Win/Linux).

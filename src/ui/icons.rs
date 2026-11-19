@@ -24,22 +24,6 @@ pub fn move_tool() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/move.svg")
 }
 #[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn file_plus() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/file-plus.svg")
-}
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn folder_open() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/folder-open.svg")
-}
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn save() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/save.svg")
-}
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn download() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/download.svg")
-}
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn undo() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/undo.svg")
 }
@@ -91,10 +75,6 @@ pub fn globe() -> egui::ImageSource<'static> {
 }
 pub fn search() -> egui::ImageSource<'static> {
     egui::include_image!("../../assets/icons/search.svg")
-}
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn eye() -> egui::ImageSource<'static> {
-    egui::include_image!("../../assets/icons/eye.svg")
 }
 
 pub fn shape_primitive(p: ShapePrimitive) -> egui::ImageSource<'static> {

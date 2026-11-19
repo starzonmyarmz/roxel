@@ -160,7 +160,7 @@ The macOS handler (`define_class!` NSObject, objc2) registers itself as the `odo
 
 `onboarding.rs` — first-launch coachmark tour. `Onboarding { active, step, anchors_ready, pending_persist, autostart_fired }`. `TOUR_STEPS` is a `&[TourStep]` const with 4 entries: `Viewport`, `ToolRail`, `ColorPalette`, `GizmoCube` (`AnchorId`). `OnboardingAnchors` captures widget rects per frame inside `ui_system`; `Viewport` and `GizmoCube` reuse `ViewportRect` / `GizmoRect` to avoid duplicate plumbing.
 
-Cards do NOT highlight anchored widgets or draw arrows — proximity to the anchor is the only spatial cue. Dismissal persists via `preferences.onboarding_seen`. Relaunchable from the macOS Help submenu and the `?` button in the non-mac top bar. Modal pauses during dialogs.
+Cards do NOT highlight anchored widgets or draw arrows — proximity to the anchor is the only spatial cue. Dismissal persists via `preferences.onboarding_seen`. Relaunchable from Help → Show Onboarding Tour… (native menu on macOS, menu pill on Win/Linux). Modal pauses during dialogs.
 
 Systems: `onboarding_autostart_system` (fires once when prefs say unseen) and `onboarding_overlay_system` (draws cards in `EguiPrimaryContextPass`).
 
