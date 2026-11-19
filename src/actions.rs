@@ -1144,8 +1144,16 @@ impl Action {
     /// focus: AppKit would otherwise take its key before the field sees it.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn clashes_with_typing(self) -> bool {
-        matches!(self, Action::SelectAll | Action::ClearSelection)
-            || self.shortcut().is_some_and(|c| !c.cmd)
+        matches!(
+            self,
+            Action::SelectAll
+                | Action::ClearSelection
+                | Action::Undo
+                | Action::Redo
+                | Action::Cut
+                | Action::Copy
+                | Action::Paste
+        ) || self.shortcut().is_some_and(|c| !c.cmd)
     }
 
     /// Shown as a check item in menus.
@@ -1884,10 +1892,19 @@ mod tests {
     }
 
     #[test]
-    fn plain_keys_and_select_chords_clash_with_typing() {
+    fn plain_keys_and_text_editing_chords_clash_with_typing() {
         assert!(Action::FillSelection.clashes_with_typing());
         assert!(Action::SelectAll.clashes_with_typing());
         assert!(Action::ClearSelection.clashes_with_typing());
+        for a in [
+            Action::Undo,
+            Action::Redo,
+            Action::Cut,
+            Action::Copy,
+            Action::Paste,
+        ] {
+            assert!(a.clashes_with_typing(), "{a:?}");
+        }
         assert!(!Action::SaveProject.clashes_with_typing());
     }
 
