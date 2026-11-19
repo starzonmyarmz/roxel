@@ -1,6 +1,6 @@
 # src/
 
-Core data flow, tools, camera, rendering, app systems. egui surface lives in `src/ui/`, file I/O in `src/io/`.
+Core data flow, tools, camera, rendering, app systems. egui surface lives in `src/ui/`, file I/O in `roxel-core/src/io/`.
 
 ## Data flow
 

@@ -54,7 +54,7 @@ Buttons render icons **only** — never Unicode glyphs or emoji. Add a new funct
 
 **Palette switcher.** `PaletteSwitcher` resource (open/search/selected/just_opened) backs the Cmd+K-style switcher popover drawn by `ui/palette_switcher.rs::draw` (both it and the command palette draw through `ui/search_popover.rs::show` — centred-top window, surface-framed search that keeps focus, hidden-scrollbar list or empty hint, ↑↓/↵/Esc footer; `SearchNav::consume` takes the nav keys before the field sees them). Opened via `open_fresh()` from the inspector's `…` menu (skips the click-outside-close guard on the just-opened frame, else the opening click dismisses it). Lists user palettes then a "Built-in" group — group headers spaced apart for distinct bands — each row with a narrow, tall (`swatch::PREVIEW_SM` = 12×20) preview showing as many colours as fit the right ~60% of the row. `draw` returns the chosen global index, routed through `request_select` by `ui_system` so a dirty built-in still confirms. Reuses `command_palette::fuzzy_match` for filtering.
 
-User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating operations must call `io::palettes::save(...)` — no autosave; built-in scratch edits are never saved.
+User palettes persist via `io::palettes` (see `roxel-core/src/io/CLAUDE.md`). Mutating operations must call `io::palettes::save(...)` — no autosave; built-in scratch edits are never saved.
 
 ## Toast notifications
 

@@ -1,4 +1,4 @@
-# src/io/
+# roxel-core/src/io/
 
 File import/export and persisted resources. Every supported format lives here.
 
@@ -26,7 +26,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 ## Coordinate handling
 
 - **Axis remap**: `.vox` and `.gox` are Z-up → swap `(x, y_roxel, z_roxel) ↔ (x_vox, z_vox, y_vox)` on import + export. `.qb` is Y-up natively. `.gox` BL16 written as raw 16³ RGBA; PNG-encoded BL16 rejected with clear error.
-- **AABB-shift on export** for unsigned-coord formats (`.vox`, `.qb`): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
+- **AABB-shift on `.vox` export** (unsigned coords): translate emitted voxels by `-grid.bounding_box().min` so model min lands at (0,0,0). `.vox` refuses export when any axis extent > 256 (u8 cap) — user gets a toast. Mesh formats (`.obj`/`.gltf`/`.svg`) and `.gox` handle negative coords natively.
 - Format importers `grid.set` each voxel at the source coord into the scratch grid they're handed (never the live scene). No resize step, no `snap_to_allowed_size`. `apply_import_system` just consumes the `PendingImport` flag. Cmd+0 to re-frame.
 
 **`io::vox::import` walks the scene graph** (`place_models` / `collect_instances`): every visible `nSHP` instance is placed through its accumulated `nTRN` frame-0 transform (`Xform`: signed-permutation `_r` + `_t`, rotating about the model center in doubled coordinates), hidden nodes/layers skipped, depth-capped against cycles. `_r` is parsed by `parse_rotation`, not dot_vox's `Frame::orientation` (that one panics on an invalid byte). The whole import is shifted so the lowest model-box corner lands at the origin, which keeps a lone untransformed model at its raw voxel coords. Files without a scene graph place each model untransformed.
@@ -45,18 +45,3 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 `io::palettes` persists user palettes (built-ins filtered out) to `{config_dir}/roxel/palettes.ron`. Mutations must call `io::palettes::save(...)` — no autosave. **A file that won't parse is never overwritten:** `load` renames it to `palettes.ron.corrupt-<unix secs>` (`LoadIssue::MovedAside`); if it can't be read or renamed, `save` is turned off for the session (`LoadIssue::SaveDisabled`). `main` toasts `LoadIssue::message()` at startup.
 
 `io::recent` persists recent `.rox` paths (cap `MAX_RECENT = 10`) to `{config_dir}/roxel/recent.ron`. `RecentFiles` resource (`ui/dialogs.rs`) is hydrated on startup; `poll_dialogs_system` pushes after successful open/save. Drives in-app Open Recent submenu (`ui.rs`) and macOS native File menu (`menu.rs`).
-
-## macOS menu bar
-
-`menu.rs` (`#[cfg(target_os = "macos")]`) installs the native `muda` menu. Four chained Update systems:
-
-- `install_menu_system` — one-shot.
-- `poll_menu_events_system` — drains `MenuEvent` → `MenuQueue`.
-- `apply_menu_actions_system` — translates queue entries into `PendingDialog`/`History`/`NewProject` writes.
-- `update_recent_menu_system` — rebuilds Open Recent when `RecentFiles` changes.
-
-`update_menu_enabled_system` greys undo/redo when stacks are empty. Open Recent reuses `MAX_RECENT` pre-allocated `MenuItem`s (muda doesn't support clean runtime creation).
-
-**Plain-key (no-modifier) accelerators must be gated on egui focus.** Fill (`F`) and Delete (`⌫`) selection carry native key-equivalents so the menu shows the right-aligned shortcut. AppKit routes a key-equivalent *before* the key reaches the winit view and is blind to egui text focus, so `update_menu_enabled_system` disables those items whenever `ctx.wants_keyboard_input()` (else the hex field couldn't type "f", etc.) — a disabled item won't fire its equivalent. A disabled item also lets the focus-aware `selection_key_action_system` (Win/Linux path) own the key instead. Delete additionally gates on the Select drag being idle. Esc-bound ops (Clear selection) are deliberately *not* accelerated — Esc is overloaded (modals, flyby, drag-cancel) and stays owned by `tool_input_system`.
-
-Menu mirrors `ui.rs` File/Edit — wire new dialog actions into both unless they are mac-only.
