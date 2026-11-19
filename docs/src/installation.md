@@ -43,7 +43,7 @@ Roxel is a Rust project. With a recent stable toolchain installed:
 cargo run --release
 ```
 
-The dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for dependencies to keep iteration fast.
+A plain `cargo run` builds Roxel at `opt-level = 1` and leaves dependencies unoptimized, so it runs noticeably slower than `--release`.
 
 ### Packaging a macOS `.app`
 

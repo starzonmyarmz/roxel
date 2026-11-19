@@ -4,23 +4,28 @@
 
 A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use, and nice to look at.
 
-![Roxel editing a 64³ diorama scene](.github/assets/screenshot.jpg)
+**[Read the docs](https://starzonmyarmz.github.io/roxel/)** for a walkthrough, every tool and shortcut, and the supported file formats.
+
+![Roxel editing a diorama scene](.github/assets/screenshot.jpg)
 
 ## Features
 
 - Brush, erase, recolor, eyedrop, shape, select, and move tools on an open-world 3D voxel grid — paint anywhere on X / Z and as high as memory allows; the floor at y = 0 is the only hard boundary
-- Shape tool: rectangle, ellipse, line — 2D on the active build plane or extruded into a 3D box / cylinder / line; long-press the shape rail button for a primitive picker, hold Shift while dragging the footprint to lock aspect (square / circle / 45° line)
-- Select tool: drag a 3D AABB on a face plane, then bulk delete / recolor inside it
+- Shape tool: rectangle, ellipse, line, sphere — 2D on the active build plane or extruded into a 3D box / cylinder / line / ellipsoid; press S again to cycle or long-press the shape button for a picker, hold Shift while dragging the footprint to lock aspect (square / circle / 45° line)
+- Paint tool: recolor voxels by click or drag, or double-click to flood-fill a connected same-color region
+- Select tool: drag a 3D AABB on a face plane or double-click a same-color region, then bulk delete / recolor / copy / cut / paste
 - Move tool: drag a selected voxel along the picked face plane or arrow-key nudge; click a bare voxel with no selection to move just that voxel
+- Double or halve the scene's voxel density
 - Shift+click line draw between the last placed voxel and the cursor
 - Built-in palettes (Sweetie 16, PICO-8, DawnBringer 16/32, Endesga 32, NA16, Basic) plus user palettes with add/new/duplicate/rename/delete and drag-to-reorder
 - Orbit / pan / zoom camera with isometric default angle
 - Save / load compact `.rox` project files, with a 10-entry Open Recent menu
 - Import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox`
-- Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`
+- Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`, plus a lit, framed Roxel Shot PNG for sharing
 - Import / export Adobe Swatch Exchange `.ase` palettes
 - In-app toast notifications for save / load / import / export results
-- Light / Dark / System themes with separate canvas and floor color preferences, plus optional Minecraft-style floor grid lines and a permanent RGB axis triad at world origin
+- Light / Dark / System themes with a custom canvas color, plus a floor dot grid and an RGB axis triad at the world origin, each toggled from the View menu
+- Color readouts and inputs in Hex, RGB, HSL, HSB or OKLCH
 - Canvas-first UI: a single left inspector with floating tool island and (on Win/Linux) a top-center menu pill, all hideable for focus mode
 
 ## Install
@@ -47,36 +52,21 @@ Roxel checks GitHub for a new release on launch, at most once a day. The request
 cargo run --release
 ```
 
-Dev profile uses `opt-level = 1` for the crate and `opt-level = 3` for deps to keep iteration fast.
+The dev profile (`cargo run`) builds Roxel at `opt-level = 1` and leaves dependencies unoptimized. `cargo run --features dev` links Bevy dynamically for faster rebuilds.
 
 ## Controls
 
-| Key                      | Action                                                         |
-| ------------------------ | -------------------------------------------------------------- |
-| `B`                      | Brush                                                          |
-| `E`                      | Erase                                                          |
-| `P`                      | Paint (recolor existing voxel)                                 |
-| `I`                      | Eyedropper                                                     |
-| `S`                      | Shape (rect / ellipse / line; 2D or extruded)                  |
-| `M`                      | Select (drag a 3D AABB on a face plane)                        |
-| `V`                      | Move (drag a selected voxel; click bare voxel for ad-hoc move) |
-| `Alt` (hold)             | Temporary eyedropper; releases back to previous tool           |
-| `Shift` + click          | Draw a 3D line from the last placed voxel to the cursor        |
-| `←` / `→` / `↑` / `↓`    | Nudge selection 1 voxel on X / Z (Move tool)                   |
-| `Shift` + `↑` / `↓`      | Nudge selection 1 voxel on Y (Move tool)                       |
-| `Shift` + drag           | Lock Move drag to the same horizontal plane                    |
-| `Backspace` / `Delete`   | Clear voxels inside the active selection                       |
-| `Space` + left-drag      | Pan (Figma/Photoshop style)                                    |
-| `Z` + left-click         | Zoom in 2× toward target                                       |
-| `Alt` + `Z` + left-click | Zoom out 2×                                                    |
-| `Cmd/Ctrl + =`           | Zoom in 2×                                                     |
-| `Cmd/Ctrl + -`           | Zoom out 2×                                                    |
-| `Cmd/Ctrl + 0`           | Frame view on the voxel cluster (panel-aware)                  |
-| `Cmd/Ctrl + Z`           | Undo                                                           |
-| `Cmd/Ctrl + Shift + Z`   | Redo                                                           |
-| `` ` ``                  | Focus mode — toggle inspector + floating chrome                |
+Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom. `Cmd/Ctrl + K` opens the command palette, which lists every command with its shortcut.
 
-Left mouse drag in the viewport applies the current tool. Right mouse drag orbits the camera. Scroll to zoom.
+| Key                         | Action                                               |
+| --------------------------- | ---------------------------------------------------- |
+| `B` `E` `P` `I` `S` `M` `V` | Brush, Erase, Paint, Eyedropper, Shape, Select, Move |
+| `Alt` (hold)                | Temporary eyedropper                                 |
+| `Space` + left-drag         | Pan                                                  |
+| `Cmd/Ctrl + 0`              | Frame view on the model                              |
+| `Cmd/Ctrl + Z`              | Undo (`Cmd/Ctrl + Shift + Z` to redo)                |
+
+See [Keyboard Shortcuts](https://starzonmyarmz.github.io/roxel/keyboard-shortcuts.html) for the full list.
 
 ## Packaging a macOS .app
 

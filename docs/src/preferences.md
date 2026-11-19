@@ -14,15 +14,24 @@ Choose **Light**, **Dark**, or **System** (follows your OS setting).
 
 **Preferences → Appearance → Motion → Reduce motion** turns off interface animations: the camera jumps straight to a view preset, Frame View or zoom step instead of easing there, and palette swatches snap into place when you reorder them. The flyby camera still moves when you start it.
 
-## Canvas appearance
+## Canvas color
 
-Independent of the UI theme, you can set:
+**Preferences → Canvas → Background** sets the viewport background: **Match theme**, or **Custom** with a color you pick.
 
-- **Canvas color** — the viewport background
-- **Floor color** — the ground plane at `y = 0`
-- **Floor grid lines** — optional Minecraft-style grid on the floor
+On Windows and Linux, **Preferences → Visibility → Show floating menu bar** hides the menu pill at the top of the window. Its menus are still in the command palette.
 
-A permanent RGB **axis triad** marks the world origin.
+## Floor grid and origin axes
+
+Two toggles in the **View** menu change what's drawn on the canvas:
+
+- **Floor Grid** — a dot at every voxel cell on the floor at `y = 0`, with a soft vignette
+- **Origin Axes** — an RGB axis triad at the world origin. It fades out as you build around the origin.
+
+Both are on by default, and Roxel remembers them between sessions.
+
+## Color format
+
+**View → Color Format** picks how colors read out and how you type them in the color picker: **Hex**, **RGB**, **HSL**, **HSB** or **OKLCH**. Every color field in Roxel follows it, including the custom canvas color and the Export Shot background. The command palette has the same options ("color format").
 
 ## Updates
 

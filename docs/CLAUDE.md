@@ -18,7 +18,7 @@ When a change adds, removes, or alters **user-facing behavior**, update the matc
 | Import/export format, `.rox` save/load, Open Recent       | `src/import-export.md`       |
 | Built-in palette list or palette management ops           | `src/palettes.md`            |
 | `.ase` palette import/export                              | `src/palettes.md` + `import-export.md` |
-| Theme, canvas/floor color, grid lines, axis triad, focus  | `src/preferences.md`         |
+| Theme, canvas color, floor grid, axis triad, color format, focus | `src/preferences.md`  |
 | First-run flow, install/packaging, platform launch quirks | `src/installation.md`        |
 | Onboarding-level overview, marquee feature                | `src/introduction.md` + `getting-started.md` |
 | A new feature area with no home above                     | new `src/<page>.md` + `SUMMARY.md` entry |

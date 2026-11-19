@@ -40,12 +40,12 @@ Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml
 
 ## Architecture
 
-Single-window Bevy 0.18 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. One binary (`src/main.rs`), no lib crate, no workspace.
+Single-window Bevy 0.18 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Two-crate workspace: the `roxel` binary (`src/main.rs`) and the `roxel-core` lib (grid, history, shapes, mesher, palettes and every file format, imported as `roxel::`).
 
 Documentation is split by subdirectory so context windows stay small — Claude Code lazy-loads each subdir's `CLAUDE.md` only when reading files in or under that directory. Open the relevant one before editing:
 
 - **`src/CLAUDE.md`** — core data flow (`VoxelGrid`, chunks, `History`, mesher, picking, preview), tools, camera, gizmo, canvas chrome, lighting, color space, snapshot, onboarding, updater, command-palette dispatch. Also `.rox` project format and new-project flow.
-- **`src/io/CLAUDE.md`** — file I/O: async dialog rule, axis remaps, AABB-shift, format specifics (`.vox`/`.qb`/`.gox`/`.obj`/`.gltf`/`.svg`/`.ase`), shared helpers, persisted resources (`palettes.ron`, `recent.ron`), macOS native menu.
+- **`roxel-core/src/io/CLAUDE.md`** — file I/O: async dialog rule, axis remaps, AABB-shift, format specifics (`.vox`/`.qb`/`.gox`/`.obj`/`.gltf`/`.svg`/`.ase`), shared helpers, persisted resources (`palettes.ron`, `recent.ron`).
 - **`src/ui/CLAUDE.md`** — egui surface: panels and floating surfaces, design tokens, widget helpers, theme + preferences, fonts, icons, toasts, focus mode, mac titlebar, command-palette draw, onboarding overlay.
 - **`docs/CLAUDE.md`** — user-facing docs: page map, which feature changes touch which page, the keep-current rule. Read when adding/altering user-facing behavior.
 
