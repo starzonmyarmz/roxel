@@ -135,19 +135,12 @@ jobs:
   publish-itch:
     needs: build
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - artifact: Roxel-macos.zip
-            channel: macos
-          - artifact: Roxel-windows.zip
-            channel: windows
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.artifact }}
+          pattern: Roxel-*
           path: dist
+          merge-multiple: true
       - name: Install butler
         env:
           BUTLER_VERSION: 15.32.0
@@ -156,9 +149,24 @@ jobs:
           unzip -q butler.zip
           chmod +x butler
           ./butler -V
-      - name: Push to itch.io
+      - name: Push each build to its itch.io channel
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ./butler push "dist/${{ matrix.artifact }}" "starzonmyarmz/roxel:${{ matrix.channel }}" --userversion "$VERSION"
+          set -uo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          shopt -s nullglob
+          builds=(dist/Roxel-*.zip)
+          if (( ${#builds[@]} == 0 )); then
+            echo "::error::no Roxel-*.zip builds to push"
+            exit 1
+          fi
+          failed=0
+          for build in "${builds[@]}"; do
+            channel="$(basename "$build" .zip)"
+            channel="${channel#Roxel-}"
+            echo "::group::${channel}"
+            ./butler push "$build" "starzonmyarmz/roxel:${channel}" --userversion "$version" --if-changed || failed=1
+            echo "::endgroup::"
+          done
+          exit "$failed"
