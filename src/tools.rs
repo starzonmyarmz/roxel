@@ -1,5 +1,5 @@
 use crate::GridResource;
-use crate::picking::{Hit, cursor_ray, pick, pick_with};
+use crate::picking::{Hit, cursor_ray, pick, pick_with, union_bounds};
 use crate::select::{
     DOUBLE_CLICK_SECS, SelectPhase, SelectState, Selection, SelectionAabb, clear_selection,
     connected_same_color, fill_region, recolor_selection,
@@ -1151,7 +1151,8 @@ pub fn tool_input_system(
                 None => grid_ref.get(p),
             }
         };
-        match (tool.current, pick_with(read, origin, dir)) {
+        let bounds = union_bounds(grid_ref.chunk_bounds(), history_ref.pre_stroke_bounds());
+        match (tool.current, pick_with(read, bounds, origin, dir)) {
             (Tool::Brush, Some(hit)) if hit.hit_voxel => hit.cell + hit.normal,
             (Tool::Erase | Tool::Paint, Some(hit)) if hit.hit_voxel => hit.cell,
             _ => anchored,

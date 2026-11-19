@@ -222,6 +222,15 @@ impl VoxelGrid {
         Some((min, max))
     }
 
+    /// Inclusive cell bounds of every allocated chunk: a loose hull of the
+    /// occupied cells that costs one pass over the chunk keys, not the cells.
+    pub fn chunk_bounds(&self) -> Option<(IVec3, IVec3)> {
+        let mut keys = self.chunks.keys();
+        let first = *keys.next()?;
+        let (min, max) = keys.fold((first, first), |(lo, hi), &c| (lo.min(c), hi.max(c)));
+        Some((min * CHUNK_I, (max + IVec3::ONE) * CHUNK_I - IVec3::ONE))
+    }
+
     /// Memoized [`bounding_box`](Self::bounding_box) for per-frame callers (the
     /// inspector "Size" row). Recomputes only when occupancy changed since the
     /// last call; otherwise returns the cached hull without walking the grid.
@@ -340,6 +349,18 @@ mod tests {
     fn bounding_box_none_when_empty() {
         let g = VoxelGrid::default();
         assert!(g.bounding_box().is_none());
+    }
+
+    #[test]
+    fn chunk_bounds_cover_whole_chunks() {
+        let mut g = VoxelGrid::default();
+        assert_eq!(g.chunk_bounds(), None);
+        g.set(IVec3::new(1, 2, 3), Some([1, 1, 1, 255]));
+        g.set(IVec3::new(-1, 40, 3), Some([1, 1, 1, 255]));
+        assert_eq!(
+            g.chunk_bounds(),
+            Some((IVec3::new(-32, 0, 0), IVec3::new(31, 63, 31)))
+        );
     }
 
     #[test]

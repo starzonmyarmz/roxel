@@ -16,6 +16,9 @@ pub struct Stroke {
     // mid-stroke so freshly placed voxels are invisible to the next pick —
     // prevents runaway stacking. Replaces the old full-grid snapshot.
     pub touched: HashMap<(i32, i32, i32), Option<Color8>>,
+    /// Inclusive hull of `touched`, so the picker's ray budget still reaches
+    /// cells erased this stroke after their chunk dropped.
+    pub touched_bounds: Option<(IVec3, IVec3)>,
     /// Monotonic id assigned in `end` when the stroke commits. Used by the
     /// document-dirty check: the editor records the id of the top-of-undo
     /// stroke at save time, so undoing back to that exact state reads clean.
@@ -67,6 +70,10 @@ impl History {
         }
         grid.set(pos, after);
         stroke.touched.insert(key, before);
+        stroke.touched_bounds = Some(match stroke.touched_bounds {
+            Some((lo, hi)) => (lo.min(pos), hi.max(pos)),
+            None => (pos, pos),
+        });
         stroke.deltas.push(CellDelta { pos, before, after });
     }
 
@@ -78,6 +85,11 @@ impl History {
             .touched
             .get(&(p.x, p.y, p.z))
             .copied()
+    }
+
+    /// Hull of the cells the open stroke has touched.
+    pub fn pre_stroke_bounds(&self) -> Option<(IVec3, IVec3)> {
+        self.current.as_ref()?.touched_bounds
     }
 
     /// Roll the current stroke back to its pre-stroke state and discard it.
@@ -159,6 +171,22 @@ mod tests {
         assert_eq!(g.get(p), None);
         h.redo(&mut g);
         assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn pre_stroke_bounds_hull_the_touched_cells() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        assert_eq!(h.pre_stroke_bounds(), None);
+        h.begin();
+        rec(&mut h, &mut g, IVec3::new(4, 0, -2), Some([1, 1, 1, 255]));
+        rec(&mut h, &mut g, IVec3::new(-3, 5, 1), Some([1, 1, 1, 255]));
+        assert_eq!(
+            h.pre_stroke_bounds(),
+            Some((IVec3::new(-3, 0, -2), IVec3::new(4, 5, 1)))
+        );
+        h.end();
+        assert_eq!(h.pre_stroke_bounds(), None);
     }
 
     #[test]

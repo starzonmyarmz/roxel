@@ -22,7 +22,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Picking
 
-`picking.rs` — DDA voxel raycaster fed by `cursor_ray`. Caps at `MAX_DDA_STEPS = 1024` (open-air ray terminates in empty world). Falls back to y=0 floor plane (unbounded X/Z) on miss so brushing on empty space works.
+`picking.rs` — DDA voxel raycaster fed by `cursor_ray`. Steps until the ray can no longer reach `bounds` (`step_budget`: L1 distance from the start cell to the far corner of `grid.chunk_bounds()`, unioned with `History::pre_stroke_bounds()` on the stroke path), so it scales with camera distance, an empty world takes zero steps, and `MAX_DDA_STEPS = 65536` bounds a pathological hull. Falls back to y=0 floor plane (unbounded X/Z) on miss so brushing on empty space works.
 
 ## Tools and input
 
