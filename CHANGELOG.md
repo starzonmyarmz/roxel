@@ -12,6 +12,8 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- The docs cover every shortcut and the newer tools, Export Shot and settings, and no longer mention the removed floor color.
+
 ## [0.14.2] - 2026-11-19
 
 - Crashes are written to `crash.log` in Roxel's settings folder, so packaged builds leave a report to attach to an issue.
