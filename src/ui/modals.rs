@@ -229,6 +229,43 @@ pub fn draw_discard(
     }
 }
 
+/// Confirm before deleting a user palette. Cancel is the default (Enter or
+/// Esc); only a click on Delete deletes. Returns `Some(true)` to delete,
+/// `Some(false)` to cancel, `None` while still open.
+pub fn draw_delete_palette(ctx: &egui::Context, theme: &Theme, name: &str) -> Option<bool> {
+    let mut open = true;
+    let mut clicked = None;
+    widgets::modal_window(theme, "Delete palette?", &mut open).show(ctx, |ui| {
+        ui.set_width(width::MODAL_DISCARD);
+        widgets::hint_label(
+            ui,
+            theme,
+            &format!("Delete “{name}”? This can’t be undone."),
+        );
+        ui.add_space(space::SM);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = space::SX;
+                if widgets::dialog_button(ui, theme, "Cancel", true).clicked() {
+                    clicked = Some(false);
+                }
+                if widgets::dialog_button(ui, theme, "Delete", false).clicked() {
+                    clicked = Some(true);
+                }
+            });
+        });
+    });
+    if clicked.is_some() {
+        return clicked;
+    }
+    let dismiss =
+        ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
+    if dismiss || !open {
+        return Some(false);
+    }
+    None
+}
+
 /// A `prefs_row`-style label + content row whose content **wraps** — chips that
 /// don't fit the knob column flow onto a second line instead of being clipped.
 fn labeled_wrap(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce(&mut egui::Ui)) {

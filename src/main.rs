@@ -162,6 +162,7 @@ fn main() {
         .init_resource::<PaletteChoice>()
         .init_resource::<WorkingPalette>()
         .init_resource::<DiscardConfirm>()
+        .init_resource::<crate::ui::DeleteConfirm>()
         .init_resource::<PaletteSwitcher>()
         .insert_resource(palettes)
         .init_resource::<crate::shot::ShotRequest>()

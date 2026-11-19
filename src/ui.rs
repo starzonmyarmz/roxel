@@ -25,7 +25,9 @@ pub use dialogs::{
 // reaches these through the `dialogs` module path directly.
 #[cfg(target_os = "macos")]
 pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
-pub use palette::{DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette};
+pub use palette::{
+    DeleteConfirm, DiscardConfirm, PaletteChoice, PaletteSwitcher, Palettes, WorkingPalette,
+};
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::{UiVisible, tab_toggle_system};
 
@@ -176,6 +178,7 @@ pub fn ui_system(
         rename: mut palette_rename,
         mut working,
         mut discard,
+        mut delete,
         mut switcher,
     } = palette_params;
     let PrefsParams {
@@ -192,6 +195,7 @@ pub fn ui_system(
         || guard.confirming.is_some()
         || switcher.open
         || discard.pending.is_some()
+        || delete.pending.is_some()
         || shot_panel.open
         || cmd_palette.open;
     modal_active.0 = modal_open;
@@ -246,6 +250,7 @@ pub fn ui_system(
         &mut palette_choice,
         &mut palette_rename,
         &mut working,
+        &mut delete,
         &mut switcher,
         &mut pending,
         &tool,
@@ -337,6 +342,30 @@ pub fn ui_system(
     // Command-palette-style palette switcher (opened from the … menu).
     if let Some(target) = palette_switcher::draw(ctx, &theme, &mut switcher, &palettes.0) {
         palette::request_select(target, &mut palette_choice, &mut working, &mut discard);
+    }
+
+    if let Some(idx) = delete.pending {
+        let name = palettes
+            .0
+            .get(idx)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        match modals::draw_delete_palette(ctx, &theme, &name) {
+            Some(true) => {
+                delete.pending = None;
+                if palette::delete_palette(
+                    &mut palettes,
+                    &mut palette_choice,
+                    &mut working,
+                    &mut palette_rename,
+                    idx,
+                ) {
+                    roxel::io::palettes::save(&palettes.0);
+                }
+            }
+            Some(false) => delete.pending = None,
+            None => {}
+        }
     }
 
     // Discard-edits confirm: switching away from a dirty built-in stages a

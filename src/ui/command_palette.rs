@@ -1184,6 +1184,7 @@ pub struct DispatchParams<'w> {
     palettes: ResMut<'w, Palettes>,
     working: ResMut<'w, WorkingPalette>,
     discard: ResMut<'w, DiscardConfirm>,
+    delete: ResMut<'w, super::palette::DeleteConfirm>,
     color: ResMut<'w, CurrentColor>,
     prefs: ResMut<'w, Preferences>,
     current_path: Res<'w, super::dialogs::CurrentProjectPath>,
@@ -1420,16 +1421,7 @@ pub fn dispatch_command_palette_system(
             save_as_new(&mut p.palettes, &mut p.palette_choice, &mut p.working);
             io::palettes::save(&p.palettes.0);
         }
-        CommandAction::DeletePalette => {
-            let i = p.palette_choice.0;
-            if i < p.palettes.0.len() && !p.palettes.0[i].builtin {
-                p.palettes.0.remove(i);
-                if p.palette_choice.0 >= p.palettes.0.len() {
-                    p.palette_choice.0 = p.palettes.0.len().saturating_sub(1);
-                }
-                io::palettes::save(&p.palettes.0);
-            }
-        }
+        CommandAction::DeletePalette => p.delete.request(&p.palettes, p.palette_choice.0),
         CommandAction::ImportAse => {
             if !p.pending.is_active() {
                 let start_dir = p.prefs.last_dir.clone();
