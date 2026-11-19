@@ -137,7 +137,7 @@ pub fn draw(
 
 fn header_row(ui: &mut egui::Ui, theme: &Theme, label: &str) {
     let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), size::CMD_PALETTE_ROW * 0.8),
+        egui::vec2(ui.available_width(), size::CMD_PALETTE_HEADER_ROW),
         egui::Sense::hover(),
     );
     ui.painter().text(
@@ -174,7 +174,7 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
     );
     ui.painter().galley(
         egui::pos2(
-            rect.left() + 10.0,
+            rect.left() + space::FIELD_PAD_X,
             rect.center().y - name_galley.size().y * 0.5,
         ),
         name_galley,
@@ -188,7 +188,7 @@ fn palette_row(ui: &mut egui::Ui, theme: &Theme, pal: &Palette, selected: bool) 
     let step = sw + space::XXS;
     let max_count = ((full * 0.6) / step).floor().max(0.0) as usize;
     let count = pal.colors.len().min(max_count);
-    let mut x = rect.right() - 10.0 - count as f32 * step + space::XXS;
+    let mut x = rect.right() - space::FIELD_PAD_X - count as f32 * step + space::XXS;
     let y = rect.center().y - sh * 0.5;
     for c in pal.colors.iter().take(count) {
         let col = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 255);

@@ -2,7 +2,7 @@ use crate::actions::{Action, ActionState, Category, Chord, KeyToken, Platform};
 use crate::theme::Theme;
 use crate::ui::icons;
 use crate::ui::search_popover::{self, SearchNav, SearchPopover};
-use crate::ui::tokens::{font, icon, radius, size, space};
+use crate::ui::tokens::{font, icon, radius, size, space, width};
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -280,7 +280,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
     let chip_color = theme.text;
 
     // Category chip (left).
-    let chip_x = rect.left() + 10.0;
+    let chip_x = rect.left() + space::FIELD_PAD_X;
     let chip_text = entry.category.label();
     let chip_galley = ui.painter().layout_no_wrap(
         chip_text.to_string(),
@@ -292,7 +292,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
         .galley(egui::pos2(chip_x, chip_y), chip_galley.clone(), dim);
 
     // Label.
-    let label_x = chip_x + 56.0;
+    let label_x = chip_x + width::CATEGORY_CHIP;
     let label_galley = ui.painter().layout_no_wrap(
         entry.label.clone(),
         egui::FontId::proportional(font::BODY),
@@ -326,7 +326,7 @@ fn draw_row(ui: &mut egui::Ui, theme: &Theme, entry: &CatalogEntry, selected: bo
             })
             .collect();
         let total: f32 = widths.iter().sum::<f32>() + gap * (tokens.len().saturating_sub(1)) as f32;
-        let mut x = rect.right() - 10.0 - total;
+        let mut x = rect.right() - space::FIELD_PAD_X - total;
         let y = rect.center().y - chip_h * 0.5;
         for tok in &tokens {
             let w = match tok {

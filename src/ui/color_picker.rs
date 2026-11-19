@@ -8,7 +8,7 @@
 //! picker honours `Preferences.color_space`.
 
 use crate::theme::Theme;
-use crate::ui::tokens::{gap, space, stroke};
+use crate::ui::tokens::{gap, height, size, space, stroke, width};
 use crate::ui::widgets;
 use bevy_egui::egui;
 use roxel::color_space::{ColorEditBuffer, ColorSpace};
@@ -79,7 +79,7 @@ pub fn space_color_picker_rgb(
     };
 
     let mut changed = false;
-    let area_size = 220.0;
+    let area_size = size::COLOR_AREA;
 
     // ---------- Editable field row ----------
     // Repopulate when the live color or active space drifts from the buffer so
@@ -106,7 +106,7 @@ pub fn space_color_picker_rgb(
         _ => {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
-                let w = ((area_size - 8.0) / 3.0).max(40.0);
+                let w = ((area_size - 2.0 * gap::TIGHT.x) / 3.0).max(width::FIELD_MIN);
                 for i in 0..3 {
                     let resp = ui.add(
                         egui::TextEdit::singleline(&mut color_edit.fields[i])
@@ -209,16 +209,16 @@ pub fn space_color_picker_rgb(
         let dot = hsb_to_rgb(hue_norm * 360.0, s_norm * 100.0, v_norm * 100.0);
         ui.painter().circle(
             egui::pos2(mx, my),
-            5.5,
+            size::PICKER_HANDLE / 2.0,
             egui::Color32::from_rgb(dot[0], dot[1], dot[2]),
-            egui::Stroke::new(2.0, egui::Color32::WHITE),
+            egui::Stroke::new(stroke::ACCENT, egui::Color32::WHITE),
         );
     }
 
     ui.add_space(space::XS);
 
     // ---------- Hue bar ----------
-    let bar_h = 16.0;
+    let bar_h = height::HUE_BAR;
     let (hue_rect, hue_resp) =
         ui.allocate_at_least(egui::vec2(area_size, bar_h), egui::Sense::click_and_drag());
     if let Some(mpos) = hue_resp.interact_pointer_pos() {
@@ -262,7 +262,7 @@ pub fn space_color_picker_rgb(
                 egui::pos2(mx - r, hue_rect.bottom()),
             ],
             egui::Color32::WHITE,
-            egui::Stroke::new(1.0, egui::Color32::BLACK),
+            egui::Stroke::new(stroke::NORMAL, egui::Color32::BLACK),
         ));
     }
 

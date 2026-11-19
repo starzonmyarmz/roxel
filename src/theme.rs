@@ -890,7 +890,7 @@ fn load_system_monospace() -> Option<Vec<u8>> {
 }
 
 pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
-    use crate::ui::tokens::{font, gap, pad, radius, shadow, stroke};
+    use crate::ui::tokens::{font, gap, pad, radius, shadow, size, space, stroke, width};
 
     let mut visuals = match theme.mode {
         ThemeMode::Dark => egui::Visuals::dark(),
@@ -952,11 +952,11 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     let mut style: egui::Style = (*ctx.style()).clone();
     style.spacing.item_spacing = gap::DEFAULT;
     style.spacing.button_padding = pad::DEFAULT;
-    style.spacing.menu_margin = egui::Margin::same(8);
-    style.spacing.tooltip_width = 240.0;
-    style.spacing.window_margin = egui::Margin::same(12);
-    style.spacing.slider_width = 160.0;
-    style.spacing.interact_size.y = 26.0;
+    style.spacing.menu_margin = egui::Margin::same(pad::MENU.x as i8);
+    style.spacing.tooltip_width = width::TOOLTIP;
+    style.spacing.window_margin = egui::Margin::same(space::MD as i8);
+    style.spacing.slider_width = width::SLIDER;
+    style.spacing.interact_size.y = size::ACTION_ROW_HEIGHT;
     style.interaction.selectable_labels = false;
     style.interaction.tooltip_delay = 0.3;
     style.interaction.show_tooltips_only_when_still = true;

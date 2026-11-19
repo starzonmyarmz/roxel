@@ -1,7 +1,7 @@
 use super::icons;
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
-use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke, width};
+use crate::ui::tokens::{font, gap, height, icon, pad, radius, shadow, size, space, stroke, width};
 use bevy_egui::egui;
 use roxel::color_space::ColorSpace;
 
@@ -161,7 +161,7 @@ pub fn section<R>(
 /// Label row painted by [`section`]. Uppercase SemiBold label, no chevron,
 /// no click target — sections are always expanded.
 fn section_header(ui: &mut egui::Ui, theme: &Theme, title: &str) {
-    let row_h = font::SECTION + 6.0;
+    let row_h = height::SECTION_HEADER;
     let (rect, _resp) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), row_h),
         egui::Sense::hover(),
@@ -339,7 +339,7 @@ pub fn section_header_action(
     action: impl FnOnce(&mut egui::Ui),
 ) {
     ui.horizontal(|ui| {
-        ui.set_min_height(font::SECTION + 6.0);
+        ui.set_min_height(height::SECTION_HEADER);
         ui.label(
             egui::RichText::new(section_header_text(title))
                 .family(egui::FontFamily::Name(INTER_SEMIBOLD_FAMILY.into()))

@@ -9,7 +9,7 @@ use crate::tools::{
 };
 use crate::ui::dialogs::{CurrentProjectPath, DocStatus};
 use crate::ui::palette::{self, PaletteChoice, PaletteRenameState, Palettes, WorkingPalette};
-use crate::ui::tokens::{font, gap, height, motion, radius, space, stroke, swatch, width};
+use crate::ui::tokens::{font, gap, height, motion, radius, size, space, stroke, swatch, width};
 use crate::ui::{ZoomReadout, color_picker, icons, widgets};
 use bevy_egui::egui;
 use roxel::color_space::ColorEditBuffer;
@@ -123,10 +123,10 @@ pub fn inspector_panel(
                     egui::Frame::default()
                         .fill(theme.panel)
                         .inner_margin(egui::Margin {
-                            left: 12,
+                            left: space::PANEL_INSET as i8,
                             right: 0,
                             top: inspector_top,
-                            bottom: 12,
+                            bottom: space::PANEL_INSET as i8,
                         }),
                 )
                 .show(ctx, |ui| {
@@ -134,10 +134,8 @@ pub fn inspector_panel(
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             let inner_frame = egui::Frame::default().inner_margin(egui::Margin {
-                                left: 0,
-                                right: 12,
-                                top: 0,
-                                bottom: 0,
+                                right: space::PANEL_INSET as i8,
+                                ..egui::Margin::ZERO
                             });
                             inner_frame.show(ui, |ui| {
                                 // Status section (design size, voxel count, zoom)
@@ -277,9 +275,6 @@ pub fn inspector_panel(
                                         palette_choice.0.min(palettes.0.len().saturating_sub(1));
                                     palette_choice.0 = active_idx;
 
-                                    // Buffer so the rename field doesn't overflow and grow the panel.
-                                    let row_w = (ui.available_width() - 2.0).max(80.0);
-
                                     widgets::section_header_action(ui, theme, "Palette", |ui| {
                                         let menu_resp = widgets::icon_only_button(
                                             ui,
@@ -324,7 +319,7 @@ pub fn inspector_panel(
                                             ui.spacing_mut().item_spacing.x = gap::TIGHT.x;
                                             let resp = ui.add(
                                                 egui::TextEdit::singleline(&mut palette_rename.buf)
-                                                    .desired_width((row_w - 76.0).max(60.0)),
+                                                    .desired_width(rename_field_width(ui)),
                                             );
                                             if !resp.has_focus() && !resp.lost_focus() {
                                                 resp.request_focus();
@@ -565,7 +560,7 @@ pub fn inspector_panel(
                                         let ghost =
                                             egui::Rect::from_center_size(ghost_center, cell);
                                         ui.painter().rect_filled(
-                                            ghost.translate(egui::vec2(0.0, 2.0)),
+                                            ghost.translate(egui::vec2(0.0, space::XXS)),
                                             egui::CornerRadius::same(radius::XS),
                                             egui::Color32::from_black_alpha(70),
                                         );
@@ -689,6 +684,13 @@ pub fn inspector_panel(
     } else {
         None
     }
+}
+
+/// Rename field width: what's left of the row after the Save and Cancel icon
+/// buttons, less a hair so the panel never grows to fit it.
+fn rename_field_width(ui: &egui::Ui) -> f32 {
+    let buttons = 2.0 * (size::ICON_BUTTON.x + gap::TIGHT.x);
+    (ui.available_width() - buttons - space::XXS).max(width::RENAME_FIELD_MIN)
 }
 
 #[cfg(test)]
