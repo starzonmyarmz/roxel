@@ -83,6 +83,21 @@ pub enum Tool {
     Move,
 }
 
+impl Tool {
+    /// The tool's name everywhere it's shown: tooltips, menus, the tour.
+    pub fn label(self) -> &'static str {
+        match self {
+            Tool::Brush => "Brush",
+            Tool::Erase => "Erase",
+            Tool::Paint => "Paint",
+            Tool::Eyedropper => "Eyedropper",
+            Tool::Shape => "Shape",
+            Tool::Select => "Select",
+            Tool::Move => "Move",
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct ToolState {
     pub current: Tool,

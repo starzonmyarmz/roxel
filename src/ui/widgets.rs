@@ -39,9 +39,9 @@ pub fn tool_button(
     tool: &mut ToolState,
     kind: Tool,
     icon_src: egui::ImageSource<'static>,
-    label: &str,
 ) -> egui::Response {
     let active = tool.current == kind;
+    let label = kind.label();
     let button_size = size::TOOL_BUTTON;
 
     // Static three-state palette — no animation. The animated version stuttered

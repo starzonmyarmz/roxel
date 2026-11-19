@@ -44,7 +44,7 @@ pub const TOUR_STEPS: &[TourStep] = &[
     TourStep {
         anchor: AnchorId::ToolRail,
         title: "Tools",
-        body: "Brush, Erase, Paint, Pick, and Shape — keys B/E/P/I/S. Long-press Shape for rect, ellipse, line.",
+        body: "Brush, Erase, Paint, Eyedropper, Shape, Select and Move — keys B/E/P/I/S/M/V. Click Shape to choose a rectangle, ellipse, line or sphere.",
     },
     TourStep {
         anchor: AnchorId::ColorPalette,

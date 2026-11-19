@@ -766,31 +766,26 @@ impl Action {
             ),
 
             Action::SelectTool(tool) => {
-                let (label, menu_label, keywords, key) = match tool {
-                    Tool::Brush => ("Switch to Brush", "Brush", "paint place draw", K::KeyB),
-                    Tool::Erase => ("Switch to Erase", "Erase", "delete remove", K::KeyE),
+                let (label, keywords, key) = match tool {
+                    Tool::Brush => ("Switch to Brush", "paint place draw", K::KeyB),
+                    Tool::Erase => ("Switch to Erase", "delete remove", K::KeyE),
                     Tool::Paint => (
                         "Switch to Paint",
-                        "Paint",
                         "recolor bucket flood fill region selection",
                         K::KeyP,
                     ),
-                    Tool::Eyedropper => (
-                        "Switch to Eyedropper",
-                        "Eyedropper",
-                        "pick sample color",
-                        K::KeyI,
-                    ),
-                    Tool::Shape => (
-                        "Switch to Shape",
-                        "Shape",
-                        "rectangle ellipse line",
-                        K::KeyS,
-                    ),
-                    Tool::Select => ("Switch to Select", "Select", "marquee region", K::KeyM),
-                    Tool::Move => ("Switch to Move", "Move", "translate nudge", K::KeyV),
+                    Tool::Eyedropper => ("Switch to Eyedropper", "pick sample color", K::KeyI),
+                    Tool::Shape => ("Switch to Shape", "rectangle ellipse line", K::KeyS),
+                    Tool::Select => ("Switch to Select", "marquee region", K::KeyM),
+                    Tool::Move => ("Switch to Move", "translate nudge", K::KeyV),
                 };
-                spec(label, menu_label, C::Tools, keywords, Some(Chord::key(key)))
+                spec(
+                    label,
+                    tool.label(),
+                    C::Tools,
+                    keywords,
+                    Some(Chord::key(key)),
+                )
             }
             Action::SelectShape(prim) => {
                 let (label, menu_label, keywords) = match prim {
@@ -1692,6 +1687,23 @@ mod tests {
                 KeyToken::Key("S".into())
             ]
         );
+    }
+
+    #[test]
+    fn tool_actions_use_the_tool_name() {
+        for tool in [
+            Tool::Brush,
+            Tool::Erase,
+            Tool::Paint,
+            Tool::Eyedropper,
+            Tool::Shape,
+            Tool::Select,
+            Tool::Move,
+        ] {
+            let spec = Action::SelectTool(tool).spec();
+            assert_eq!(spec.menu_label, tool.label());
+            assert_eq!(spec.label, format!("Switch to {}", tool.label()));
+        }
     }
 
     #[test]
