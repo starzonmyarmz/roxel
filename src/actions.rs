@@ -451,6 +451,8 @@ pub struct ActionState<'a> {
     pub shape: ShapePrimitive,
     pub has_undo: bool,
     pub has_redo: bool,
+    /// A drag is mid-stroke; one-shot edits wait for it to finish.
+    pub stroke_open: bool,
     pub has_selection: bool,
     pub selection_idle: bool,
     pub has_clipboard: bool,
@@ -495,6 +497,7 @@ impl ActionStateParams<'_> {
             shape: self.shape.primitive,
             has_undo: !self.history.undo.is_empty(),
             has_redo: !self.history.redo.is_empty(),
+            stroke_open: self.history.is_open(),
             has_selection: self.selection.aabb.is_some(),
             selection_idle: self.select_state.phase == crate::select::SelectPhase::Idle,
             has_clipboard: self.clipboard.has_stamp(),
@@ -1054,6 +1057,9 @@ impl Action {
 
     pub fn enabled(self, s: &ActionState) -> bool {
         let dialog_ok = !s.dialog_busy;
+        if s.stroke_open && self.edits_scene() {
+            return false;
+        }
         match self {
             Action::NewProject
             | Action::ClearRecent
@@ -1108,6 +1114,21 @@ impl Action {
 }
 
 impl Action {
+    /// One-shot edits that write their own history stroke.
+    fn edits_scene(self) -> bool {
+        matches!(
+            self,
+            Action::Undo
+                | Action::Redo
+                | Action::Cut
+                | Action::Paste
+                | Action::FillSelection
+                | Action::DeleteSelectionContents
+                | Action::DoubleDensity
+                | Action::HalveDensity
+        )
+    }
+
     /// Every chord that triggers this action: its shortcut, plus Ctrl+Y for
     /// Redo off macOS and Cmd+Shift+= (Cmd+Plus) for Zoom In.
     pub fn chords(self) -> impl Iterator<Item = Chord> {
@@ -1591,6 +1612,7 @@ mod tests {
             shape: ShapePrimitive::Rectangle,
             has_undo: false,
             has_redo: false,
+            stroke_open: false,
             has_selection: false,
             selection_idle: true,
             has_clipboard: false,
@@ -1785,6 +1807,29 @@ mod tests {
         assert!(Action::FillSelection.enabled(&s));
         s.selection_idle = false;
         assert!(!Action::FillSelection.enabled(&s));
+    }
+
+    #[test]
+    fn scene_edits_wait_for_an_open_stroke() {
+        let palettes = vec![pal("A", true)];
+        let prefs = Preferences::default();
+        let mut s = state(&palettes, &prefs);
+        s.has_undo = true;
+        s.has_selection = true;
+        s.has_clipboard = true;
+        s.stroke_open = true;
+        for a in [
+            Action::Undo,
+            Action::Cut,
+            Action::Paste,
+            Action::FillSelection,
+            Action::DeleteSelectionContents,
+        ] {
+            assert!(!a.enabled(&s), "{a:?}");
+        }
+        assert!(Action::Copy.enabled(&s));
+        s.stroke_open = false;
+        assert!(Action::Undo.enabled(&s));
     }
 
     fn fire(s: &ActionState, mods: Mods, key: KeyCode, gate: ShortcutGate) -> Option<Action> {

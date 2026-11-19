@@ -37,8 +37,15 @@ impl bevy_ecs::prelude::Resource for History {}
 const MAX_UNDO: usize = 200;
 
 impl History {
+    /// Starts a stroke. A stroke still open (a drag interrupted by a key
+    /// command) is committed first so its edits stay undoable.
     pub fn begin(&mut self) {
+        self.end();
         self.current = Some(Stroke::default());
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.current.is_some()
     }
 
     pub fn record(&mut self, grid: &mut VoxelGrid, pos: IVec3, after: Option<Color8>) {
@@ -152,6 +159,26 @@ mod tests {
         assert_eq!(g.get(p), None);
         h.redo(&mut g);
         assert_eq!(g.get(p), Some([10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn begin_commits_an_open_stroke() {
+        let mut g = VoxelGrid::default();
+        let mut h = History::default();
+        let a = IVec3::new(1, 0, 0);
+        let b = IVec3::new(2, 0, 0);
+        h.begin();
+        rec(&mut h, &mut g, a, Some([1, 1, 1, 255]));
+        assert!(h.is_open());
+        h.begin();
+        rec(&mut h, &mut g, b, Some([2, 2, 2, 255]));
+        h.end();
+        assert!(!h.is_open());
+        assert_eq!(h.undo.len(), 2);
+        h.undo(&mut g);
+        h.undo(&mut g);
+        assert_eq!(g.get(a), None);
+        assert_eq!(g.get(b), None);
     }
 
     #[test]

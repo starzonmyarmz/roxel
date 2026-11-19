@@ -569,6 +569,7 @@ mod tests {
             shape: ShapePrimitive::Rectangle,
             has_undo: false,
             has_redo: false,
+            stroke_open: false,
             has_selection: false,
             selection_idle: true,
             has_clipboard: false,

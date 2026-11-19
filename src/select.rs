@@ -668,10 +668,7 @@ pub fn move_selection_keys_system(
     mut history: ResMut<History>,
     mut selection: ResMut<Selection>,
 ) {
-    if tool.current != Tool::Move {
-        return;
-    }
-    if selection.aabb.is_none() {
+    if tool.current != Tool::Move || selection.aabb.is_none() || history.is_open() {
         return;
     }
     let egui_wants = contexts

@@ -8,7 +8,7 @@ Core data flow, tools, camera, rendering, app systems. egui surface lives in `sr
 
 Every `set` flips `dirty`, inserts owning chunk into `dirty_chunks`, plus seam-neighbour chunks for boundary cells (face occlusion changes there). `dirty_chunks` drained by `regenerate_mesh_system`.
 
-**Mutations flow through `History::record`, not `grid.set` directly.** Recording wraps each set in a `CellDelta`, dedupes per-stroke via `HashSet<(i32,i32,i32)>`. `History::begin`/`end` bracket a stroke; LMB-release path in `tool_input_system` calls `end`. Undo cap `MAX_UNDO = 200`; new stroke clears redo. Picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow) — voxels placed earlier in the same stroke are invisible to the next pick. This kills runaway stacking and replaces the old full-grid-clone snapshot (unbounded in open world).
+**Mutations flow through `History::record`, not `grid.set` directly.** Recording wraps each set in a `CellDelta`, dedupes per-stroke via `HashSet<(i32,i32,i32)>`. `History::begin`/`end` bracket a stroke; LMB-release path in `tool_input_system` calls `end`. `begin` commits a stroke that's still open instead of dropping it; scene-editing actions (`Action::edits_scene`) and the Move arrow-key nudge are disabled while `History::is_open()`, so a key command can't land mid-drag. Undo cap `MAX_UNDO = 200`; new stroke clears redo. Picker reads pre-stroke values via `history.pre_stroke_value(p)` (per-cell shadow) — voxels placed earlier in the same stroke are invisible to the next pick. This kills runaway stacking and replaces the old full-grid-clone snapshot (unbounded in open world).
 
 ## Mesher
 
