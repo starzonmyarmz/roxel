@@ -25,7 +25,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 ## Install
 
-Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases).
+Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) and published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date.
 
 > [!WARNING]
 > **macOS builds are self-signed and not notarized.** Gatekeeper will block first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files). To bypass:
@@ -90,7 +90,10 @@ The bundle picks up `assets/icons/roxel.icns` via `[package.metadata.bundle]` in
 ## Releases
 
 Tagged versions trigger a GitHub Actions workflow that builds and uploads
-`Roxel.app` (macOS) and `Roxel.exe` (Windows) to a GitHub Release.
+`Roxel.app` (macOS) and `Roxel.exe` (Windows) to a GitHub Release, then
+pushes each build to the matching itch.io channel with
+[butler](https://itch.io/docs/butler/). The push needs a `BUTLER_API_KEY`
+repository secret (from `butler login`, or an itch.io API key).
 
 To cut a release:
 

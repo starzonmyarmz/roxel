@@ -4,6 +4,8 @@
 
 Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases). Grab the latest.
 
+The same builds are published to [itch.io](https://starzonmyarmz.itch.io/roxel) with every release. If you install through the [itch app](https://itch.io/app), it keeps Roxel up to date for you.
+
 ### macOS — first launch
 
 macOS builds are **self-signed and not notarized**, so Gatekeeper blocks the first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files).
