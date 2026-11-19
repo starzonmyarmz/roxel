@@ -218,7 +218,7 @@ pub fn tool_island_contents(
                             let icon_size = crate::ui::tokens::icon::md_square();
                             let icon_rect = egui::Rect::from_center_size(rect.center(), icon_size);
                             let tint = if selected {
-                                egui::Color32::WHITE
+                                theme.on_accent
                             } else {
                                 theme.text
                             };

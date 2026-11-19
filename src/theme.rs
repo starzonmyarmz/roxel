@@ -22,6 +22,10 @@ pub struct Theme {
     pub surface_hover: egui::Color32,
     pub accent: egui::Color32,
     pub accent_dim: egui::Color32,
+    /// Text and icons drawn on an `accent` fill (selected chips, primary
+    /// buttons, the selected shape option). Holds WCAG AA (4.5:1) against
+    /// `accent` in both modes.
+    pub on_accent: egui::Color32,
     pub text: egui::Color32,
     /// Brighter than `text_dim`, dimmer than `text`. Used for chevrons and
     /// secondary glyphs that need to read clearly without competing with
@@ -55,6 +59,7 @@ impl Theme {
             surface_hover: egui::Color32::from_rgb(0x3A, 0x3B, 0x42),
             accent: egui::Color32::from_rgb(0xF4, 0x7A, 0x5C),
             accent_dim: egui::Color32::from_rgb(0x7A, 0x35, 0x25),
+            on_accent: egui::Color32::from_rgb(0x14, 0x14, 0x16),
             text: egui::Color32::from_rgb(220, 225, 235),
             text_muted: egui::Color32::from_rgb(210, 216, 228),
             text_dim: egui::Color32::from_rgb(150, 158, 172),
@@ -74,11 +79,12 @@ impl Theme {
             panel: egui::Color32::from_rgb(255, 255, 255),
             surface: egui::Color32::from_rgb(240, 242, 246),
             surface_hover: egui::Color32::from_rgb(228, 232, 240),
-            accent: egui::Color32::from_rgb(0xD1, 0x4E, 0x2A),
+            accent: egui::Color32::from_rgb(0xC8, 0x48, 0x24),
             accent_dim: egui::Color32::from_rgb(0xF8, 0xD5, 0xC9),
+            on_accent: egui::Color32::from_rgb(255, 255, 255),
             text: egui::Color32::from_rgb(32, 36, 44),
             text_muted: egui::Color32::from_rgb(80, 90, 105),
-            text_dim: egui::Color32::from_rgb(110, 120, 135),
+            text_dim: egui::Color32::from_rgb(98, 108, 122),
             border: egui::Color32::from_rgb(210, 215, 225),
             faint: egui::Color32::from_rgb(248, 249, 251),
             success: egui::Color32::from_rgb(0x2E, 0x8E, 0x4E),
@@ -226,6 +232,45 @@ mod tests {
                     mid >= min && mid <= max,
                     "hover {mid} outside [{min},{max}]"
                 );
+            }
+        }
+    }
+
+    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+        fn lin(c: u8) -> f32 {
+            let c = c as f32 / 255.0;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        let lum =
+            |c: egui::Color32| 0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b());
+        let (la, lb) = (lum(a), lum(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+    }
+
+    #[test]
+    fn contrast_matches_wcag_reference() {
+        let black = egui::Color32::BLACK;
+        let white = egui::Color32::WHITE;
+        assert!((contrast(black, white) - 21.0).abs() < 0.01);
+        assert!((contrast(white, white) - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn text_pairs_meet_wcag_aa() {
+        for t in [Theme::dark(), Theme::light()] {
+            for (name, fg, bg) in [
+                ("on_accent/accent", t.on_accent, t.accent),
+                ("text/panel", t.text, t.panel),
+                ("text_dim/panel", t.text_dim, t.panel),
+                ("text_dim/surface", t.text_dim, t.surface),
+                ("accent/panel", t.accent, t.panel),
+            ] {
+                let c = contrast(fg, bg);
+                assert!(c >= 4.5, "{:?} {name} contrast {c:.2} < 4.5", t.mode);
             }
         }
     }
@@ -774,7 +819,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
     visuals.widgets.active.bg_fill = theme.accent;
     visuals.widgets.active.weak_bg_fill = theme.accent;
     visuals.widgets.active.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.accent);
-    visuals.widgets.active.fg_stroke = egui::Stroke::new(stroke::NORMAL, egui::Color32::WHITE);
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(stroke::NORMAL, theme.on_accent);
     visuals.widgets.active.corner_radius = r_sm;
 
     visuals.widgets.open.bg_fill = theme.surface_hover;

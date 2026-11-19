@@ -600,7 +600,7 @@ pub fn modal_heading(theme: &Theme, title: &str) -> egui::RichText {
 }
 
 /// Toggle chip used by selection rows (Theme: System / Light / Dark). Selected
-/// = accent fill + white text + no stroke; unselected = surface + text + 0.5
+/// = accent fill + `on_accent` text + no stroke; unselected = surface + text + 0.5
 /// border. Generic over the value so future selectors (shape kind, etc.) can
 /// reuse it.
 pub fn chip_button<T: PartialEq + Copy>(
@@ -612,7 +612,7 @@ pub fn chip_button<T: PartialEq + Copy>(
 ) -> egui::Response {
     let selected = *current == value;
     let (fill, fg, chip_stroke) = if selected {
-        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+        (theme.accent, theme.on_accent, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
@@ -661,7 +661,7 @@ pub fn prefs_row(ui: &mut egui::Ui, theme: &Theme, label: &str, add: impl FnOnce
 }
 
 /// Compact text button for modal action rows (Create / Cancel). `primary =
-/// true` uses accent fill + white text + no stroke; `primary = false` uses
+/// true` uses accent fill + `on_accent` text + no stroke; `primary = false` uses
 /// surface + text + 0.5 border. Matches `chip_button` styling so a row of
 /// dialog buttons reads as the same family as other modal controls.
 pub fn dialog_button(
@@ -671,7 +671,7 @@ pub fn dialog_button(
     primary: bool,
 ) -> egui::Response {
     let (fill, fg, btn_stroke) = if primary {
-        (theme.accent, egui::Color32::WHITE, egui::Stroke::NONE)
+        (theme.accent, theme.on_accent, egui::Stroke::NONE)
     } else {
         (
             theme.surface,
@@ -803,7 +803,7 @@ fn select_row(
         egui::Color32::TRANSPARENT
     };
     let fg = if selected {
-        egui::Color32::WHITE
+        theme.on_accent
     } else {
         theme.text
     };
