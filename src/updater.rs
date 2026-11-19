@@ -12,27 +12,81 @@ const HTTP_TIMEOUT_SECS: u64 = 10;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     pub tag: String,
-    pub version: (u32, u32, u32),
+    pub version: Version,
     pub html_url: String,
 }
 
-pub fn parse_tag(tag: &str) -> Option<(u32, u32, u32)> {
+/// A semver version, ordered by semver precedence: a pre-release
+/// (`1.0.0-rc.1`) sorts below its release, build metadata is ignored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Version {
+    pub core: (u32, u32, u32),
+    pub pre: Vec<PreId>,
+}
+
+/// One dot-separated pre-release identifier. Numeric ones sort below
+/// alphanumeric ones, which the variant order gives the derived `Ord`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PreId {
+    Num(u64),
+    Alpha(String),
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.core
+            .cmp(&other.core)
+            .then_with(|| match (self.pre.is_empty(), other.pre.is_empty()) {
+                (true, true) => std::cmp::Ordering::Equal,
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+                (false, false) => self.pre.cmp(&other.pre),
+            })
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+pub fn parse_tag(tag: &str) -> Option<Version> {
     let s = tag.strip_prefix('v').unwrap_or(tag);
-    let mut parts = s.split('.');
+    let s = s.split_once('+').map_or(s, |(v, _build)| v);
+    let (core, pre) = match s.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (s, None),
+    };
+    let mut parts = core.split('.');
     let a: u32 = parts.next()?.parse().ok()?;
     let b: u32 = parts.next()?.parse().ok()?;
     let c: u32 = parts.next()?.parse().ok()?;
     if parts.next().is_some() {
         return None;
     }
-    Some((a, b, c))
+    let pre = match pre {
+        None => Vec::new(),
+        Some(p) => p
+            .split('.')
+            .map(|id| match id {
+                "" => None,
+                _ if id.bytes().all(|b| b.is_ascii_digit()) => id.parse().ok().map(PreId::Num),
+                _ => Some(PreId::Alpha(id.to_string())),
+            })
+            .collect::<Option<_>>()?,
+    };
+    Some(Version {
+        core: (a, b, c),
+        pre,
+    })
 }
 
-pub fn current_version() -> (u32, u32, u32) {
-    parse_tag(env!("CARGO_PKG_VERSION")).unwrap_or((0, 0, 0))
+pub fn current_version() -> Version {
+    parse_tag(env!("CARGO_PKG_VERSION")).expect("CARGO_PKG_VERSION is semver")
 }
 
-pub fn is_newer(current: (u32, u32, u32), remote: (u32, u32, u32)) -> bool {
+pub fn is_newer(current: &Version, remote: &Version) -> bool {
     remote > current
 }
 
@@ -79,7 +133,7 @@ fn fetch_latest() -> Result<CheckOutcome, String> {
         .map_err(|e| format!("{e}"))?;
     let body = resp.into_string().map_err(|e| format!("{e}"))?;
     let rel = parse_release_json(&body).ok_or_else(|| "could not parse release".to_string())?;
-    if is_newer(current_version(), rel.version) {
+    if is_newer(&current_version(), &rel.version) {
         Ok(CheckOutcome::Newer(rel))
     } else {
         Ok(CheckOutcome::UpToDate)
@@ -188,11 +242,24 @@ pub fn open_url(url: &str) {
 mod tests {
     use super::*;
 
+    fn v(s: &str) -> Version {
+        parse_tag(s).unwrap_or_else(|| panic!("{s} parses"))
+    }
+
     #[test]
     fn parse_tag_strips_v_prefix() {
-        assert_eq!(parse_tag("v0.5.1"), Some((0, 5, 1)));
-        assert_eq!(parse_tag("0.5.1"), Some((0, 5, 1)));
-        assert_eq!(parse_tag("v10.20.30"), Some((10, 20, 30)));
+        assert_eq!(v("v0.5.1").core, (0, 5, 1));
+        assert_eq!(v("0.5.1"), v("v0.5.1"));
+        assert_eq!(v("v10.20.30").core, (10, 20, 30));
+    }
+
+    #[test]
+    fn parse_tag_reads_pre_release_and_drops_build_metadata() {
+        let rc = v("v1.0.0-rc.1");
+        assert_eq!(rc.core, (1, 0, 0));
+        assert_eq!(rc.pre, vec![PreId::Alpha("rc".into()), PreId::Num(1)]);
+        assert_eq!(v("1.0.0+build.5"), v("1.0.0"));
+        assert_eq!(v("1.0.0-beta+exp.sha"), v("1.0.0-beta"));
     }
 
     #[test]
@@ -202,16 +269,38 @@ mod tests {
         assert_eq!(parse_tag("garbage"), None);
         assert_eq!(parse_tag(""), None);
         assert_eq!(parse_tag("v0.5.x"), None);
+        assert_eq!(parse_tag("v1.0.0-"), None);
+        assert_eq!(parse_tag("v1.0.0-rc..1"), None);
     }
 
     #[test]
     fn is_newer_compares_lexicographically_per_component() {
-        assert!(is_newer((0, 5, 0), (0, 5, 1)));
-        assert!(!is_newer((0, 5, 0), (0, 5, 0)));
-        assert!(!is_newer((0, 5, 1), (0, 5, 0)));
-        assert!(is_newer((0, 5, 9), (0, 6, 0)));
-        assert!(is_newer((0, 99, 99), (1, 0, 0)));
-        assert!(!is_newer((1, 0, 0), (0, 99, 99)));
+        assert!(is_newer(&v("0.5.0"), &v("0.5.1")));
+        assert!(!is_newer(&v("0.5.0"), &v("0.5.0")));
+        assert!(!is_newer(&v("0.5.1"), &v("0.5.0")));
+        assert!(is_newer(&v("0.5.9"), &v("0.6.0")));
+        assert!(is_newer(&v("0.99.99"), &v("1.0.0")));
+        assert!(!is_newer(&v("1.0.0"), &v("0.99.99")));
+    }
+
+    #[test]
+    fn pre_releases_sort_by_semver_precedence() {
+        let order = [
+            "1.0.0-alpha",
+            "1.0.0-alpha.1",
+            "1.0.0-alpha.beta",
+            "1.0.0-beta",
+            "1.0.0-beta.2",
+            "1.0.0-beta.11",
+            "1.0.0-rc.1",
+            "1.0.0",
+            "1.0.1-rc.1",
+        ];
+        for pair in order.windows(2) {
+            assert!(is_newer(&v(pair[0]), &v(pair[1])), "{pair:?}");
+            assert!(!is_newer(&v(pair[1]), &v(pair[0])), "{pair:?}");
+        }
+        assert!(!is_newer(&v("1.0.0-rc.1"), &v("0.16.2")));
     }
 
     #[test]
@@ -235,7 +324,7 @@ mod tests {
         let body = r#"{"tag_name":"v0.5.1","name":"Roxel 0.5.1","html_url":"https://github.com/starzonmyarmz/roxel/releases/tag/v0.5.1","body":"notes"}"#;
         let r = parse_release_json(body).expect("parse");
         assert_eq!(r.tag, "v0.5.1");
-        assert_eq!(r.version, (0, 5, 1));
+        assert_eq!(r.version, v("0.5.1"));
         assert_eq!(
             r.html_url,
             "https://github.com/starzonmyarmz/roxel/releases/tag/v0.5.1"
@@ -284,6 +373,6 @@ mod tests {
     fn current_version_parses_cargo_pkg_version() {
         let v = current_version();
         // Sanity: at least one component non-zero (cargo guarantees the env var).
-        assert!(v != (0, 0, 0));
+        assert!(v.core != (0, 0, 0));
     }
 }
