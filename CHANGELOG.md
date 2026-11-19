@@ -6,9 +6,9 @@ All notable changes to Roxel are recorded here. Format follows
 
 Add bullets under `## [Unreleased]` as you land work. When a `v*` tag is
 pushed, `.github/workflows/release.yml` renames the section to the new
-version + date, regenerates the bullets from the tag's commit range,
-commits the result back to `main`, and uses the same body for the GitHub
-Release notes.
+version + date, commits the result back to `main`, and uses the same
+bullets for the GitHub Release notes. If Unreleased is empty, it fills in
+the commit subjects since the previous tag.
 
 ## [Unreleased]
 
@@ -57,18 +57,6 @@ Release notes.
 
 - fix(ui): use theme color tokens in floating save button tint
 - docs: finalize CHANGELOG for v0.7.1 [skip ci]
-- chore: bump to 0.7.1
-- chore: gitignore local .cargo/config.toml
-- docs: add user guide site and keep-current workflow
-- fix(ui): make canvas/shot color pickers color-space aware
-- refactor(ui): collapse duplicated dialog-spawn and widget helpers
-- fix(ui): pin prefs/shot row label column to a fixed width
-- feat(ui): Export Shot tweak panel — live preview + art-direction knobs
-- feat(io): Export Shot — polished social-media PNG (phase 1)
-- docs: finalize CHANGELOG for v0.7.0 [skip ci]
-
-## [0.7.1] - 2026-06-03
-
 - chore: bump to 0.7.1
 - chore: gitignore local .cargo/config.toml
 - docs: add user guide site and keep-current workflow

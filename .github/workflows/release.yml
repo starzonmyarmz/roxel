@@ -77,29 +77,31 @@ jobs:
           import os, pathlib
           version = os.environ["VERSION"]
           date = os.environ["DATE"]
-          bullets = pathlib.Path("/tmp/bullets.txt").read_text().rstrip() + "\n"
           path = pathlib.Path("CHANGELOG.md")
           text = path.read_text()
           lines = text.splitlines(keepends=True)
           out, i, header = [], 0, f"## [{version}] - {date}\n"
+          bullets = None
           while i < len(lines):
               line = lines[i]
-              if line.startswith("## [Unreleased]"):
-                  out.append(line)
-                  out.append("\n")
-                  out.append(header)
-                  out.append("\n")
-                  out.append(bullets)
+              if bullets is None and line.startswith("## [Unreleased]"):
                   i += 1
-                  # Drop old Unreleased body until next "## " header or EOF.
+                  body = []
                   while i < len(lines) and not lines[i].startswith("## "):
+                      body.append(lines[i])
                       i += 1
-                  # Re-emit a blank line before the next section if missing.
-                  if i < len(lines) and out[-1] != "\n":
+                  bullets = "".join(body).strip()
+                  if not bullets:
+                      bullets = pathlib.Path("/tmp/bullets.txt").read_text().strip()
+                  bullets += "\n"
+                  out += [line, "\n", header, "\n", bullets]
+                  if i < len(lines):
                       out.append("\n")
                   continue
               out.append(line)
               i += 1
+          if bullets is None:
+              raise SystemExit("CHANGELOG.md has no '## [Unreleased]' section")
           path.write_text("".join(out))
           pathlib.Path("release-notes.md").write_text(header + "\n" + bullets)
           PY
