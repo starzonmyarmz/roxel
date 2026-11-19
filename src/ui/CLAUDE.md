@@ -51,7 +51,7 @@ Buttons render icons **only** — never Unicode glyphs or emoji. Add a new funct
 
 **Deleting a palette is confirmed.** The inspector `…` menu and the command palette only stage the index via `DeleteConfirm::request` (built-ins ignored); `ui_system` draws `modals::draw_delete_palette` (Cancel is the default — Enter/Esc cancel, only a click deletes) and runs `palette::delete_palette` + `io::palettes::save` on confirm. Don't delete from a trigger directly.
 
-**Palette switcher.** `PaletteSwitcher` resource (open/search/selected/just_opened) backs the Cmd+K-style switcher popover drawn by `ui/palette_switcher.rs::draw` (centred-top window, surface-framed search, hidden scrollbar, footer hint — mirrors `command_palette`). Opened via `open_fresh()` from the inspector's `…` menu (skips the click-outside-close guard on the just-opened frame, else the opening click dismisses it). Lists user palettes then a "Built-in" group — group headers spaced apart for distinct bands — each row with a narrow, tall (`swatch::PREVIEW_SM` = 12×20) preview showing as many colours as fit the right ~60% of the row. `draw` returns the chosen global index, routed through `request_select` by `ui_system` so a dirty built-in still confirms. Reuses `command_palette::fuzzy_match` for filtering.
+**Palette switcher.** `PaletteSwitcher` resource (open/search/selected/just_opened) backs the Cmd+K-style switcher popover drawn by `ui/palette_switcher.rs::draw` (both it and the command palette draw through `ui/search_popover.rs::show` — centred-top window, surface-framed search that keeps focus, hidden-scrollbar list or empty hint, ↑↓/↵/Esc footer; `SearchNav::consume` takes the nav keys before the field sees them). Opened via `open_fresh()` from the inspector's `…` menu (skips the click-outside-close guard on the just-opened frame, else the opening click dismisses it). Lists user palettes then a "Built-in" group — group headers spaced apart for distinct bands — each row with a narrow, tall (`swatch::PREVIEW_SM` = 12×20) preview showing as many colours as fit the right ~60% of the row. `draw` returns the chosen global index, routed through `request_select` by `ui_system` so a dirty built-in still confirms. Reuses `command_palette::fuzzy_match` for filtering.
 
 User palettes persist via `io::palettes` (see `src/io/CLAUDE.md`). Mutating operations must call `io::palettes::save(...)` — no autosave; built-in scratch edits are never saved.
 
@@ -85,7 +85,7 @@ For real bold use `FontFamily::Name(INTER_SEMIBOLD_FAMILY.into())`, not `.strong
 
 ## Command-palette draw
 
-`ui/command_palette.rs` owns the resource and draw (the action table it lists is documented in `src/CLAUDE.md`). Draw uses a modal-styled `egui::Window` (no resize, no title bar) sized via tokens. `INTER_SEMIBOLD_FAMILY` highlights the active row. Search input auto-focused when `just_opened` is set; arrow keys move `selected`; Enter returns the selected `Action` for `ui_system` to queue; Esc closes.
+`ui/command_palette.rs` owns the resource and draw (the action table it lists is documented in `src/CLAUDE.md`). Draw goes through the shared `search_popover::show` shell (same as the palette switcher); the module keeps ranking, navigation and row painting. `INTER_SEMIBOLD_FAMILY` highlights the active row. Search input auto-focused when `just_opened` is set; arrow keys move `selected`; Enter returns the selected `Action` for `ui_system` to queue; Esc closes.
 
 ## Onboarding overlay
 

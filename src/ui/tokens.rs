@@ -94,6 +94,7 @@ pub mod space {
     /// Margin between canvas edge and a floating UI element (pill menu, tool
     /// island, status chip).
     pub const FLOAT_GAP: f32 = 16.0;
+    pub const POPOVER_TOP: f32 = 60.0; // search popovers' offset below the window top
     /// Horizontal indent that aligns a row under `size::PREFS_LABEL`.
     /// Equals `size::PREFS_LABEL.x + XS`.
     pub const PREFS_INDENT: f32 = 76.0;
@@ -135,7 +136,6 @@ pub mod icon {
     pub const LG: f32 = 20.0; // left tool rail
     pub const HERO: f32 = 64.0; // onboarding coachmark hero
 
-    #[allow(dead_code)] // reserved for future XS icon use
     pub const fn xs_square() -> Vec2 {
         Vec2::new(XS, XS)
     }
@@ -314,6 +314,7 @@ mod tests {
             space::MD,
             space::LG,
             space::FLOAT_GAP,
+            space::POPOVER_TOP,
             space::PREFS_INDENT,
         ] {
             assert_eq!(v as u32 % 2, 0, "space {v} is odd");

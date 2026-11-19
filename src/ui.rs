@@ -9,6 +9,7 @@ mod inspector;
 mod modals;
 mod palette;
 mod palette_switcher;
+mod search_popover;
 mod shortcuts;
 pub mod toast;
 pub mod tokens;
