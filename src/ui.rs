@@ -9,6 +9,7 @@ mod inspector;
 mod modals;
 mod palette;
 mod palette_switcher;
+mod shortcuts;
 pub mod toast;
 pub mod tokens;
 mod visibility;
@@ -26,6 +27,7 @@ pub use palette::{
     Palettes, WorkingPalette, display_colors, edit_colors, next_palette_name, request_select,
     save_as_new,
 };
+pub use shortcuts::ShortcutsWindow;
 pub use toast::{Toasts, toast_lifetime_system};
 pub use visibility::UiVisible;
 
@@ -97,6 +99,7 @@ pub struct UiState<'w> {
     pub actions: ResMut<'w, ActionQueue>,
     pub recent_files: Res<'w, RecentFiles>,
     pub about: ResMut<'w, crate::menu::AboutWindow>,
+    pub shortcuts: ResMut<'w, ShortcutsWindow>,
 }
 
 #[derive(SystemParam)]
@@ -170,6 +173,7 @@ pub fn ui_system(
         mut actions,
         recent_files,
         mut about,
+        mut shortcuts,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -201,6 +205,7 @@ pub fn ui_system(
         || delete.pending.is_some()
         || shot_panel.open
         || about.0
+        || shortcuts.0
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
@@ -426,6 +431,10 @@ pub fn ui_system(
 
     if about.0 && modals::draw_about(ctx, &theme) {
         about.0 = false;
+    }
+
+    if shortcuts.0 && shortcuts::draw(ctx, &theme) {
+        shortcuts.0 = false;
     }
 
     if cmd_palette.open {

@@ -214,6 +214,7 @@ fn main() {
             ),
         );
     app.init_resource::<crate::menu::AboutWindow>();
+    app.init_resource::<crate::ui::ShortcutsWindow>();
     #[cfg(target_os = "macos")]
     {
         use crate::menu::native;

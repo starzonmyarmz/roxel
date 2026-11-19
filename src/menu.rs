@@ -180,7 +180,11 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
             ),
             (
                 "Help",
-                vec![Item(Action::ShowOnboarding), Item(Action::Changelog)],
+                vec![
+                    Item(Action::ShowOnboarding),
+                    Item(Action::ShowShortcuts),
+                    Item(Action::Changelog),
+                ],
             ),
         ]
     } else {
@@ -209,6 +213,7 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
                 "Help",
                 vec![
                     Item(Action::ShowOnboarding),
+                    Item(Action::ShowShortcuts),
                     Item(Action::Changelog),
                     Separator,
                     Item(Action::CheckForUpdates),

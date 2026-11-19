@@ -200,6 +200,7 @@ pub mod width {
     /// wide enough for all three actions on one row.
     pub const MODAL_DISCARD: f32 = 304.0;
     pub const MODAL_ABOUT: f32 = 280.0;
+    pub const MODAL_SHORTCUTS: f32 = 400.0;
     /// Export-Shot tweak panel — the preview sits left, the knob column right,
     /// so the modal stays short enough to fit the app window.
     pub const MODAL_SHOT: f32 = 720.0;
@@ -234,6 +235,7 @@ pub mod motion {
 /// Container heights / max-heights.
 pub mod height {
     pub const COMMAND_PALETTE_MAX: f32 = 318.0;
+    pub const MODAL_SHORTCUTS_MAX: f32 = 480.0;
     /// Height of the floating pill menu row.
     #[allow(dead_code)] // reserved for pill-height tuning
     pub const FLOAT_MENU: f32 = 36.0;

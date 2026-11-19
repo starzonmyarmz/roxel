@@ -18,7 +18,7 @@ use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, 
 use crate::ui::{
     CommandPalette, CurrentProjectPath, DeleteConfirm, DialogResult, DiscardConfirm, GuardedAction,
     Palette, PaletteChoice, PaletteRenameState, PaletteSwitcher, Palettes, PendingDialog,
-    RecentFiles, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
+    RecentFiles, ShortcutsWindow, Toasts, UiVisible, UnsavedGuard, WorkingPalette,
 };
 use roxel::color_space::ColorSpace;
 use roxel::grid::Color8;
@@ -178,6 +178,7 @@ fn key_name(key: KeyCode, platform: Platform) -> Cow<'static, str> {
         KeyCode::Backspace => "Backspace".into(),
         KeyCode::Comma => ",".into(),
         KeyCode::Backquote => "`".into(),
+        KeyCode::Slash => "/".into(),
         KeyCode::Equal => "=".into(),
         KeyCode::Minus => "-".into(),
         other => {
@@ -413,6 +414,7 @@ pub enum Action {
     Preferences,
     SetTheme(ThemePref),
     ShowOnboarding,
+    ShowShortcuts,
     Changelog,
     CheckForUpdates,
     About,
@@ -605,6 +607,7 @@ impl Action {
         Action::SetTheme(ThemePref::Light),
         Action::SetTheme(ThemePref::Dark),
         Action::ShowOnboarding,
+        Action::ShowShortcuts,
         Action::Changelog,
         Action::CheckForUpdates,
         Action::About,
@@ -1000,6 +1003,13 @@ impl Action {
                 "tutorial intro welcome help",
                 None,
             ),
+            Action::ShowShortcuts => spec(
+                "Keyboard shortcuts",
+                "Keyboard Shortcuts",
+                C::Help,
+                "keys hotkeys keybindings cheat sheet help",
+                Some(Chord::cmd(K::Slash)),
+            ),
             Action::Changelog => spec(
                 "Open Changelog",
                 "Changelog",
@@ -1079,6 +1089,7 @@ impl Action {
             | Action::SetColorSpace(_)
             | Action::ShowCommandPalette
             | Action::ShowOnboarding
+            | Action::ShowShortcuts
             | Action::About => true,
             Action::CheckForUpdates => !s.checking_updates,
             Action::OpenProject
@@ -1216,6 +1227,7 @@ pub struct ShortcutGate {
     pub modal: bool,
     pub palette_open: bool,
     pub prefs_open: bool,
+    pub shortcuts_open: bool,
 }
 
 impl ShortcutGate {
@@ -1226,6 +1238,7 @@ impl ShortcutGate {
         match action {
             Action::ShowCommandPalette => free || self.palette_open,
             Action::Preferences => free || self.prefs_open,
+            Action::ShowShortcuts => free || self.shortcuts_open,
             _ => free,
         }
     }
@@ -1252,6 +1265,7 @@ pub struct ShortcutInput<'w, 's> {
     modal: Res<'w, crate::ui::ModalActive>,
     cmd_palette: Res<'w, CommandPalette>,
     prefs_window: Res<'w, PreferencesWindow>,
+    shortcuts: Res<'w, ShortcutsWindow>,
 }
 
 /// The one keyboard-shortcut handler: matches this frame's keys against every
@@ -1274,6 +1288,7 @@ pub fn shortcut_system(
         modal: input.modal.0,
         palette_open: input.cmd_palette.open,
         prefs_open: input.prefs_window.open,
+        shortcuts_open: input.shortcuts.0,
     };
     let mods = Mods::from_keys(&input.keys);
     let keys = &input.keys;
@@ -1352,6 +1367,7 @@ pub struct AppParams<'w> {
     onboarding: ResMut<'w, crate::onboarding::Onboarding>,
     updater: ResMut<'w, crate::updater::UpdateCheck>,
     about: ResMut<'w, crate::menu::AboutWindow>,
+    shortcuts: ResMut<'w, ShortcutsWindow>,
 }
 
 #[derive(SystemParam)]
@@ -1623,6 +1639,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             None => crate::updater::start_check(&mut app.updater, true),
         },
         Action::About => app.about.0 = true,
+        Action::ShowShortcuts => app.shortcuts.0 = !app.shortcuts.0,
     }
 }
 
@@ -2102,7 +2119,7 @@ mod tests {
     }
 
     #[test]
-    fn open_palette_and_prefs_close_with_their_own_shortcut() {
+    fn open_palette_prefs_and_sheet_close_with_their_own_shortcut() {
         let palettes = vec![pal("A", true)];
         let prefs = Preferences::default();
         let s = state(&palettes, &prefs);
@@ -2110,7 +2127,7 @@ mod tests {
             typing: true,
             modal: true,
             palette_open: true,
-            prefs_open: false,
+            ..Default::default()
         };
         assert_eq!(
             fire(&s, CMD, KeyCode::KeyK, palette),
@@ -2119,14 +2136,24 @@ mod tests {
         let prefs_gate = ShortcutGate {
             typing: false,
             modal: true,
-            palette_open: false,
             prefs_open: true,
+            ..Default::default()
         };
         assert_eq!(
             fire(&s, CMD, KeyCode::Comma, prefs_gate),
             Some(Action::Preferences)
         );
         assert_eq!(fire(&s, CMD, KeyCode::KeyK, prefs_gate), None);
+        let sheet = ShortcutGate {
+            modal: true,
+            shortcuts_open: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            fire(&s, CMD, KeyCode::Slash, sheet),
+            Some(Action::ShowShortcuts)
+        );
+        assert_eq!(fire(&s, CMD, KeyCode::Comma, sheet), None);
     }
 
     #[test]

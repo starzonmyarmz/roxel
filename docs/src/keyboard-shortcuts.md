@@ -2,6 +2,8 @@
 
 On macOS use `Cmd`; on Windows and Linux use `Ctrl`. Shortcuts don't fire while you're typing in a text field or while a dialog is open; `Cmd/Ctrl + K` and `Cmd/Ctrl + ,` still close the command palette and Preferences.
 
+Press `Cmd/Ctrl + /` (or **Help → Keyboard Shortcuts**) to see these in the app, with your platform's modifier keys.
+
 ## File
 
 | Key                    | Action          |
@@ -64,3 +66,4 @@ Right mouse drag orbits the camera. Scroll to zoom. The orientation cube in the 
 | `Cmd/Ctrl + Shift + Z` | Redo                                       |
 | `Ctrl + Y`             | Redo (Windows and Linux)                   |
 | `` ` ``                | Focus mode — toggle inspector + chrome     |
+| `Cmd/Ctrl + /`         | Keyboard shortcuts cheat sheet             |
