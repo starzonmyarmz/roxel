@@ -692,6 +692,25 @@ fn select_commit(state: &mut SelectState, selection: &mut Selection) {
     state.reset();
 }
 
+/// Esc or RMB aborts an in-progress select drag. Idle, Esc deselects but RMB
+/// doesn't — it's reserved for camera orbit. Returns whether either fired.
+fn cancel_select(
+    state: &mut SelectState,
+    selection: &mut Selection,
+    esc: bool,
+    rmb_just: bool,
+) -> bool {
+    if !esc && !rmb_just {
+        return false;
+    }
+    if state.phase != SelectPhase::Idle {
+        state.reset();
+    } else if esc {
+        selection.clear();
+    }
+    true
+}
+
 #[allow(clippy::too_many_arguments)]
 fn select_input(
     state: &mut SelectState,
@@ -708,17 +727,7 @@ fn select_input(
     let rmb_just = mouse.just_pressed(MouseButton::Right);
     let esc = keys.just_pressed(KeyCode::Escape);
 
-    if esc || rmb_just {
-        if state.phase != SelectPhase::Idle {
-            // Abort in-progress footprint/extrude.
-            state.reset();
-            return;
-        }
-        // Idle: Esc deselects, but RMB is reserved for camera orbit/pan —
-        // don't clear the committed selection when the user rotates the view.
-        if esc {
-            selection.clear();
-        }
+    if cancel_select(state, selection, esc, rmb_just) {
         return;
     }
 
@@ -886,15 +895,12 @@ pub fn tool_input_system(
                 blocked,
             );
         } else {
-            let rmb = mouse.just_pressed(MouseButton::Right);
-            let esc = keys.just_pressed(KeyCode::Escape);
-            if esc || rmb {
-                if select_state.phase != SelectPhase::Idle {
-                    select_state.reset();
-                } else {
-                    selection.aabb = None;
-                }
-            }
+            cancel_select(
+                &mut select_state,
+                &mut selection,
+                keys.just_pressed(KeyCode::Escape),
+                mouse.just_pressed(MouseButton::Right),
+            );
         }
         return;
     }
@@ -1461,6 +1467,26 @@ mod tests {
             normal,
             hit_voxel: true,
         }
+    }
+
+    #[test]
+    fn select_cancel_keeps_the_selection_on_rmb_and_clears_it_fully_on_esc() {
+        let mut state = SelectState::default();
+        let mut selection = Selection::default();
+        selection.set_cells(HashSet::from([IVec3::ZERO, IVec3::X]));
+        assert!(!cancel_select(&mut state, &mut selection, false, false));
+
+        assert!(cancel_select(&mut state, &mut selection, false, true));
+        assert!(selection.aabb.is_some());
+
+        state.phase = SelectPhase::Footprint;
+        assert!(cancel_select(&mut state, &mut selection, true, false));
+        assert_eq!(state.phase, SelectPhase::Idle);
+        assert!(selection.aabb.is_some());
+
+        assert!(cancel_select(&mut state, &mut selection, true, false));
+        assert!(selection.aabb.is_none());
+        assert!(selection.cells.is_none());
     }
 
     #[test]
