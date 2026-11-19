@@ -66,6 +66,7 @@ pub struct ShapePreviewInputs<'w> {
     handles: Res<'w, ShapePreviewHandles>,
     flyby: Res<'w, crate::camera::FlybyState>,
     theme: Res<'w, Theme>,
+    snapshot: Res<'w, crate::snapshot::SnapshotInProgress>,
 }
 
 #[derive(SystemParam)]
@@ -82,7 +83,11 @@ pub fn shape_preview_system(
 ) {
     let Ok(mut vis) = q.single_mut() else { return };
 
-    if inputs.flyby.active || inputs.tool.current != Tool::Shape || inputs.state.phase.is_none() {
+    if inputs.flyby.active
+        || inputs.snapshot.0
+        || inputs.tool.current != Tool::Shape
+        || inputs.state.phase.is_none()
+    {
         *vis = Visibility::Hidden;
         return;
     }

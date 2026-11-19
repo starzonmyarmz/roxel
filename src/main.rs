@@ -255,6 +255,8 @@ fn main() {
             shape_preview_system.before(regenerate_mesh_system),
             crate::select::selection_render_system.before(regenerate_mesh_system),
             start_snapshot_system
+                .before(brush_preview_system)
+                .before(shape_preview_system)
                 .before(floor_dots_system)
                 .before(draw_origin_system)
                 .before(crate::select::selection_render_system),

@@ -103,7 +103,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 `snapshot.rs` — one-shot offscreen `Camera3d` at main camera's transform/projection, renders into `Image` at physical window res with `ClearColorConfig::Custom(Color::NONE)`, captures via `Screenshot` pipeline. **Forces `Tonemapping::None`** — tonemap fullscreen pass writes `alpha=1` to every pixel, clobbering transparent clear. Voxel materials are `unlit` so colors are unaffected.
 
-`SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
+`SnapshotInProgress` set while in flight. `floor_dots_system`, `vignette_system`, `draw_origin_system`, `selection_render_system` early-return on snapshot frame; `brush_preview_system` and `shape_preview_system` hide their ghost/outline and clear `PreviewHide` so the chunk meshes rebuild without the preview swap. `start_snapshot_system` ordered `.before(...)` each. `ScreenshotCaptured` observer clears flag.
 
 ## Roxel Shot (social export)
 
