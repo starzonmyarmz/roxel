@@ -1,5 +1,17 @@
 # Keyboard Shortcuts
 
+On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
+
+## File
+
+| Key                    | Action          |
+| ---------------------- | --------------- |
+| `Cmd/Ctrl + N`         | New project     |
+| `Cmd/Ctrl + O`         | Open…           |
+| `Cmd/Ctrl + S`         | Save            |
+| `Cmd/Ctrl + Shift + S` | Save As…        |
+| `Cmd/Ctrl + ,`         | Preferences     |
+
 ## Tools
 
 | Key   | Action                                                         |

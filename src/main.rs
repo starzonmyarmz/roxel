@@ -213,6 +213,11 @@ fn main() {
             ),
         );
     }
+    #[cfg(not(target_os = "macos"))]
+    app.add_systems(
+        Update,
+        crate::ui::file_shortcut_system.before(resolve_unsaved_guard_system),
+    );
 
     app.add_systems(
         Startup,

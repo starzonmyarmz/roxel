@@ -23,6 +23,8 @@ pub use dialogs::{
 };
 // Re-exported only for the macOS native menu (`menu.rs`); the Win/Linux pill
 // reaches these through the `dialogs` module path directly.
+#[cfg(not(target_os = "macos"))]
+pub use dialogs::file_shortcut_system;
 #[cfg(target_os = "macos")]
 pub use dialogs::{spawn_export, spawn_import, spawn_save, spawn_save_as};
 pub use palette::{
