@@ -1268,15 +1268,13 @@ pub fn move_drag_system(
         let (anchor, _) = stroke_anchor_from_hit(&hit, AnchorTarget::Picked);
         let start_cell = anchor_target(&anchor, origin, dir).unwrap_or(hit.cell);
 
-        let originals: Vec<(IVec3, Color8)> = match &selection.cells {
-            Some(cells) if !ad_hoc => cells
-                .iter()
-                .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
-                .collect(),
-            _ => effective_aabb
+        let originals: Vec<(IVec3, Color8)> = if ad_hoc {
+            effective_aabb
                 .iter_cells()
                 .filter_map(|p| grid.get(p).map(|c| (p, c)))
-                .collect(),
+                .collect()
+        } else {
+            selection.occupied(&grid).collect()
         };
         if originals.is_empty() {
             return;

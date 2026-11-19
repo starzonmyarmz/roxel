@@ -60,7 +60,7 @@ impl SelectionAabb {
         (e.x as usize) * (e.y as usize) * (e.z as usize)
     }
 
-    pub fn iter_cells(&self) -> impl Iterator<Item = IVec3> + '_ {
+    pub fn iter_cells(self) -> impl Iterator<Item = IVec3> {
         let (mn, mx) = (self.min, self.max);
         (mn.z..=mx.z).flat_map(move |z| {
             (mn.y..=mx.y).flat_map(move |y| (mn.x..=mx.x).map(move |x| IVec3::new(x, y, z)))
@@ -104,6 +104,29 @@ impl Selection {
             return cells.contains(&p);
         }
         self.aabb.is_some_and(|a| a.contains(p))
+    }
+
+    /// Every selected cell: the mask when present, else the whole AABB hull.
+    pub fn iter_cells(&self) -> impl Iterator<Item = IVec3> + '_ {
+        let hull = if self.cells.is_none() {
+            self.aabb
+        } else {
+            None
+        };
+        self.cells
+            .iter()
+            .flatten()
+            .copied()
+            .chain(hull.into_iter().flat_map(SelectionAabb::iter_cells))
+    }
+
+    /// Selected cells that hold a voxel, with their colors.
+    pub fn occupied<'a>(
+        &'a self,
+        grid: &'a VoxelGrid,
+    ) -> impl Iterator<Item = (IVec3, Color8)> + 'a {
+        self.iter_cells()
+            .filter_map(|p| grid.get(p).map(|c| (p, c)))
     }
 
     /// Occupied-voxel count inside the active selection. Respects the cell
@@ -169,10 +192,14 @@ impl SelectState {
     }
 }
 
-/// Clear every non-empty cell inside the AABB. One history stroke.
-fn clear_aabb(grid: &mut VoxelGrid, history: &mut History, aabb: &SelectionAabb) {
+/// Clear every non-empty cell in the active selection. When the selection has
+/// a cell mask only those cells clear; otherwise it falls back to the AABB.
+pub fn clear_selection(grid: &mut VoxelGrid, history: &mut History, selection: &Selection) {
+    if selection.aabb.is_none() {
+        return;
+    }
     history.begin();
-    for cell in aabb.iter_cells() {
+    for cell in selection.iter_cells() {
         if grid.in_bounds(cell) && grid.get(cell).is_some() {
             history.record(grid, cell, None);
         }
@@ -180,36 +207,21 @@ fn clear_aabb(grid: &mut VoxelGrid, history: &mut History, aabb: &SelectionAabb)
     history.end();
 }
 
-/// Clear every non-empty cell in the active selection. When the selection has
-/// a cell mask only those cells clear; otherwise it falls back to the AABB.
-pub fn clear_selection(grid: &mut VoxelGrid, history: &mut History, selection: &Selection) {
-    if let Some(cells) = &selection.cells {
-        history.begin();
-        for cell in cells {
-            if grid.in_bounds(*cell) && grid.get(*cell).is_some() {
-                history.record(grid, *cell, None);
-            }
-        }
-        history.end();
-        return;
-    }
-    if let Some(aabb) = selection.aabb {
-        clear_aabb(grid, history, &aabb);
-    }
-}
-
-/// Recolor every non-empty cell inside the AABB by sampling from `pool`
-/// per cell. Empty cells stay empty — Paint must not materialize new voxels.
-/// One history stroke. Returns the distinct colors actually used.
-fn recolor_aabb(
+/// Recolor every non-empty cell in the active selection by sampling from
+/// `pool` per cell. Empty cells stay empty — Paint must not materialize new
+/// voxels. One history stroke. Returns the distinct colors actually used.
+pub fn recolor_selection(
     grid: &mut VoxelGrid,
     history: &mut History,
-    aabb: &SelectionAabb,
+    selection: &Selection,
     pool: &[Color8],
 ) -> Vec<Color8> {
+    if selection.aabb.is_none() {
+        return Vec::new();
+    }
     history.begin();
     let mut used: Vec<Color8> = Vec::new();
-    for cell in aabb.iter_cells() {
+    for cell in selection.iter_cells() {
         if grid.in_bounds(cell) && grid.get(cell).is_some() {
             let c = crate::tools::sample_color(cell, pool);
             history.record(grid, cell, Some(c));
@@ -218,34 +230,6 @@ fn recolor_aabb(
     }
     history.end();
     used
-}
-
-/// Recolor every non-empty cell in the active selection by sampling from
-/// `pool` per cell. Respects the cell mask when present. Returns the distinct
-/// colors actually used.
-pub fn recolor_selection(
-    grid: &mut VoxelGrid,
-    history: &mut History,
-    selection: &Selection,
-    pool: &[Color8],
-) -> Vec<Color8> {
-    if let Some(cells) = &selection.cells {
-        history.begin();
-        let mut used: Vec<Color8> = Vec::new();
-        for cell in cells {
-            if grid.in_bounds(*cell) && grid.get(*cell).is_some() {
-                let c = crate::tools::sample_color(*cell, pool);
-                history.record(grid, *cell, Some(c));
-                note_used(&mut used, c);
-            }
-        }
-        history.end();
-        return used;
-    }
-    if let Some(aabb) = selection.aabb {
-        return recolor_aabb(grid, history, &aabb, pool);
-    }
-    Vec::new()
 }
 
 /// Translate every non-empty voxel inside the selection AABB by `delta`,
@@ -276,16 +260,7 @@ pub fn move_selection(
     // Snapshot occupied cells before any mutation so source-clears and
     // destination-writes overlap cleanly inside one stroke. Respect the
     // selection's per-cell mask when present — only voxels in the mask move.
-    let occupied: Vec<(IVec3, Color8)> = match &selection.cells {
-        Some(cells) => cells
-            .iter()
-            .filter_map(|p| grid.get(*p).map(|c| (*p, c)))
-            .collect(),
-        None => aabb
-            .iter_cells()
-            .filter_map(|p| grid.get(p).map(|c| (p, c)))
-            .collect(),
-    };
+    let occupied: Vec<(IVec3, Color8)> = selection.occupied(grid).collect();
 
     if occupied.is_empty() {
         selection.aabb = Some(SelectionAabb {
@@ -746,6 +721,46 @@ mod tests {
         }
     }
 
+    fn aabb_selection(aabb: SelectionAabb) -> Selection {
+        let mut s = Selection::default();
+        s.set_aabb(aabb);
+        s
+    }
+
+    #[test]
+    fn selection_iter_cells_walks_hull_without_mask() {
+        let aabb = SelectionAabb::from_corners(IVec3::ZERO, IVec3::new(1, 1, 1));
+        let s = aabb_selection(aabb);
+        let cells: HashSet<IVec3> = s.iter_cells().collect();
+        assert_eq!(cells, aabb.iter_cells().collect());
+    }
+
+    #[test]
+    fn selection_iter_cells_walks_only_mask() {
+        let mask: HashSet<IVec3> = [IVec3::ZERO, IVec3::new(3, 0, 0)].into();
+        let mut s = Selection::default();
+        s.set_cells(mask.clone());
+        assert_eq!(s.iter_cells().collect::<HashSet<_>>(), mask);
+    }
+
+    #[test]
+    fn selection_iter_cells_empty_when_cleared() {
+        assert_eq!(Selection::default().iter_cells().count(), 0);
+    }
+
+    #[test]
+    fn selection_occupied_skips_empty_cells() {
+        let mut grid = VoxelGrid::default();
+        let red = [200, 0, 0, 255];
+        fill_grid(&mut grid, red, &[IVec3::new(1, 0, 0), IVec3::new(9, 0, 0)]);
+        let s = aabb_selection(SelectionAabb::from_corners(
+            IVec3::ZERO,
+            IVec3::new(2, 2, 2),
+        ));
+        let occupied: Vec<_> = s.occupied(&grid).collect();
+        assert_eq!(occupied, vec![(IVec3::new(1, 0, 0), red)]);
+    }
+
     #[test]
     fn select_all_selects_only_occupied_cells() {
         let mut grid = VoxelGrid::default();
@@ -827,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_aabb_clears_only_inside_cells() {
+    fn clear_selection_aabb_clears_only_inside_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         fill_grid(
@@ -841,27 +856,27 @@ mod tests {
         );
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         assert!(grid.get(IVec3::new(1, 1, 1)).is_none());
         assert!(grid.get(IVec3::new(2, 1, 1)).is_none());
         assert_eq!(grid.get(IVec3::new(5, 5, 5)), Some(red));
     }
 
     #[test]
-    fn clear_aabb_leaves_empty_cells_empty() {
+    fn clear_selection_aabb_leaves_empty_cells_empty() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         grid.set(IVec3::new(2, 2, 2), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         for cell in s.iter_cells() {
             assert!(grid.get(cell).is_none(), "cell {cell:?} should be empty");
         }
     }
 
     #[test]
-    fn clear_aabb_undoable_as_single_stroke() {
+    fn clear_selection_aabb_undoable_as_single_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let touched = [
@@ -873,7 +888,7 @@ mod tests {
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
         let before_strokes = history.undo.len();
-        clear_aabb(&mut grid, &mut history, &s);
+        clear_selection(&mut grid, &mut history, &aabb_selection(s));
         assert_eq!(history.undo.len(), before_strokes + 1);
         history.undo(&mut grid);
         for cell in &touched {
@@ -882,27 +897,27 @@ mod tests {
     }
 
     #[test]
-    fn recolor_aabb_overwrites_non_empty_cells() {
+    fn recolor_selection_aabb_overwrites_non_empty_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         fill_grid(&mut grid, red, &[IVec3::new(1, 1, 1), IVec3::new(2, 2, 2)]);
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(blue));
         assert_eq!(grid.get(IVec3::new(2, 2, 2)), Some(blue));
     }
 
     #[test]
-    fn recolor_aabb_skips_empty_cells() {
+    fn recolor_selection_aabb_skips_empty_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         grid.set(IVec3::new(1, 1, 1), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(1, 1, 1)), Some(blue));
         // Every other cell in the AABB stays empty.
         for cell in s.iter_cells() {
@@ -917,19 +932,19 @@ mod tests {
     }
 
     #[test]
-    fn recolor_aabb_skips_outside_cells() {
+    fn recolor_selection_aabb_skips_outside_cells() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
         grid.set(IVec3::new(5, 5, 5), Some(red));
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(3, 3, 3));
         let mut history = History::default();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(grid.get(IVec3::new(5, 5, 5)), Some(red));
     }
 
     #[test]
-    fn recolor_aabb_undoable_as_single_stroke() {
+    fn recolor_selection_aabb_undoable_as_single_stroke() {
         let mut grid = VoxelGrid::default();
         let red = [200, 0, 0, 255];
         let blue = [0, 0, 200, 255];
@@ -942,7 +957,7 @@ mod tests {
         let s = SelectionAabb::from_corners(IVec3::new(0, 0, 0), IVec3::new(4, 4, 4));
         let mut history = History::default();
         let before_strokes = history.undo.len();
-        recolor_aabb(&mut grid, &mut history, &s, &[blue]);
+        recolor_selection(&mut grid, &mut history, &aabb_selection(s), &[blue]);
         assert_eq!(history.undo.len(), before_strokes + 1);
         history.undo(&mut grid);
         for cell in &touched {
