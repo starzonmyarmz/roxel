@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
+On macOS use `Cmd`; on Windows and Linux use `Ctrl`. Shortcuts don't fire while you're typing in a text field or while a dialog is open; `Cmd/Ctrl + K` and `Cmd/Ctrl + ,` still close the command palette and Preferences.
 
 ## File
 
@@ -20,7 +20,7 @@ On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
 | `E`   | Erase                                                          |
 | `P`   | Paint (recolor existing voxel)                                 |
 | `I`   | Eyedropper                                                     |
-| `S`   | Shape (rect / ellipse / line; 2D or extruded)                  |
+| `S`   | Shape (rect / ellipse / line; 2D or extruded); again cycles the shape |
 | `M`   | Select (drag a 3D AABB on a face plane)                        |
 | `V`   | Move (drag a selected voxel; click bare voxel for ad-hoc move) |
 
@@ -39,6 +39,9 @@ On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
 | `Shift` + `↑` / `↓`   | Nudge selection 1 voxel on Y (Move tool)          |
 | `Shift` + drag        | Lock Move drag to the same horizontal plane       |
 | `Backspace` / `Delete`| Clear voxels inside the active selection          |
+| `F`                   | Fill the selection with the current color         |
+| `Cmd/Ctrl + A`        | Select all voxels                                 |
+| `Cmd/Ctrl + D`        | Clear the selection                               |
 
 ## Camera & view
 
