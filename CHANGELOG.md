@@ -20,6 +20,10 @@ Release notes.
 - Deleting a palette asks for confirmation.
 - `.rox` projects are saved in a compact, versioned binary format (about 20× smaller), and saving an unchanged scene writes identical bytes. Older projects still open.
 - Projects remember their palette: opening one switches to it, adding it as a user palette if you don't have it.
+- Windows/Linux: Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S and Ctrl+, now work, and Ctrl+Y redoes.
+- Windows/Linux: the menu pill now has the macOS File, Edit, View and Help menus, including Open Recent, camera views, Changelog and an About screen.
+- Windows/Linux: the command palette shows Ctrl shortcuts instead of ⌘.
+- Roxel opens a `.rox` file passed on the command line, and release builds no longer open a console window on Windows.
 
 ## [0.7.1] - 2026-06-03
 
