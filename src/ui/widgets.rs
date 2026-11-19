@@ -1,9 +1,12 @@
 use super::icons;
+use crate::actions::{Chord, KeyToken, Platform};
 use crate::theme::{INTER_SEMIBOLD_FAMILY, Theme};
 use crate::tools::{Tool, ToolState};
 use crate::ui::tokens::{font, gap, height, icon, pad, radius, shadow, size, space, stroke, width};
 use bevy_egui::egui;
 use roxel::color_space::ColorSpace;
+use std::borrow::Cow;
+use std::sync::Arc;
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn vertical_rule(ui: &mut egui::Ui, theme: &Theme) {
@@ -217,6 +220,127 @@ pub fn stat_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: String) {
             );
         });
     });
+}
+
+/// One piece of a key-combo display: a key chip (text or a Lucide modifier
+/// icon) or a dim connecting word such as "+ click" that isn't a key.
+#[derive(Clone, Debug, PartialEq)]
+pub enum KeySeg {
+    Text(Cow<'static, str>),
+    Command,
+    Shift,
+    Option,
+    Word(&'static str),
+}
+
+impl From<KeyToken> for KeySeg {
+    fn from(t: KeyToken) -> Self {
+        match t {
+            KeyToken::Command => KeySeg::Command,
+            KeyToken::Shift => KeySeg::Shift,
+            KeyToken::Control => KeySeg::Text("Ctrl".into()),
+            KeyToken::Key(k) => KeySeg::Text(k),
+        }
+    }
+}
+
+impl KeySeg {
+    fn icon_source(&self) -> Option<egui::ImageSource<'static>> {
+        match self {
+            KeySeg::Command => Some(icons::command()),
+            KeySeg::Shift => Some(icons::arrow_big_up()),
+            KeySeg::Option => Some(icons::option()),
+            _ => None,
+        }
+    }
+}
+
+pub fn chord_segs(chord: Chord, platform: Platform) -> Vec<KeySeg> {
+    chord
+        .tokens(platform)
+        .into_iter()
+        .map(KeySeg::from)
+        .collect()
+}
+
+const KEY_CHIP_H: f32 = icon::XS + space::SM;
+
+fn key_seg_galley(ui: &egui::Ui, seg: &KeySeg, theme: &Theme) -> Option<Arc<egui::Galley>> {
+    let (text, font_id, color) = match seg {
+        KeySeg::Text(s) => (
+            s.to_string(),
+            egui::FontId::monospace(font::SMALL),
+            theme.text,
+        ),
+        KeySeg::Word(s) => (
+            s.to_string(),
+            egui::FontId::proportional(font::SMALL),
+            theme.text_dim,
+        ),
+        _ => return None,
+    };
+    Some(ui.painter().layout_no_wrap(text, font_id, color))
+}
+
+fn key_seg_width(galley: Option<&Arc<egui::Galley>>, seg: &KeySeg) -> f32 {
+    match (seg, galley) {
+        (KeySeg::Word(_), Some(g)) => g.size().x + space::XS * 2.0,
+        (_, Some(g)) => g.size().x + space::SX * 2.0,
+        _ => icon::XS + space::SX * 2.0,
+    }
+}
+
+/// Paints `segs` right-aligned to `right`, vertically centred on `center_y`.
+pub fn paint_key_segs(ui: &egui::Ui, theme: &Theme, segs: &[KeySeg], right: f32, center_y: f32) {
+    let laid: Vec<_> = segs
+        .iter()
+        .map(|s| {
+            let g = key_seg_galley(ui, s, theme);
+            let w = key_seg_width(g.as_ref(), s);
+            (s, g, w)
+        })
+        .collect();
+    let total = laid.iter().map(|(_, _, w)| w).sum::<f32>()
+        + space::XXS * laid.len().saturating_sub(1) as f32;
+    let mut x = right - total;
+    let y = center_y - KEY_CHIP_H * 0.5;
+    for (seg, galley, w) in laid {
+        let rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, KEY_CHIP_H));
+        if !matches!(seg, KeySeg::Word(_)) {
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(radius::XS), theme.surface);
+        }
+        match galley {
+            Some(g) => {
+                let pos = rect.center() - g.size() * 0.5;
+                ui.painter().galley(pos, g, theme.text);
+            }
+            None => {
+                if let Some(src) = seg.icon_source() {
+                    let img =
+                        egui::Rect::from_center_size(rect.center(), egui::vec2(icon::XS, icon::XS));
+                    egui::Image::new(src).tint(theme.text).paint_at(ui, img);
+                }
+            }
+        }
+        x += w + space::XXS;
+    }
+}
+
+/// A label on the left with its key combo as chips on the right.
+pub fn key_row(ui: &mut egui::Ui, theme: &Theme, label: &str, segs: &[KeySeg]) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), KEY_CHIP_H),
+        egui::Sense::hover(),
+    );
+    let galley = ui.painter().layout_no_wrap(
+        label.to_string(),
+        egui::FontId::proportional(font::SMALL),
+        theme.text_dim,
+    );
+    let pos = egui::pos2(rect.left(), rect.center().y - galley.size().y * 0.5);
+    ui.painter().galley(pos, galley, theme.text_dim);
+    paint_key_segs(ui, theme, segs, rect.right(), rect.center().y);
 }
 
 /// Dim italic small body text used for inline help under sections. Wraps.
@@ -882,6 +1006,26 @@ fn select_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_tokens_map_to_chips() {
+        assert_eq!(KeySeg::from(KeyToken::Control), KeySeg::Text("Ctrl".into()));
+        assert_eq!(
+            KeySeg::from(KeyToken::Key("N".into())),
+            KeySeg::Text("N".into())
+        );
+        assert_eq!(KeySeg::from(KeyToken::Shift), KeySeg::Shift);
+        assert_eq!(KeySeg::from(KeyToken::Command), KeySeg::Command);
+    }
+
+    #[test]
+    fn modifier_chips_draw_icons_and_words_do_not() {
+        for seg in [KeySeg::Command, KeySeg::Shift, KeySeg::Option] {
+            assert!(seg.icon_source().is_some(), "{seg:?}");
+        }
+        assert!(KeySeg::Word("+ click").icon_source().is_none());
+        assert!(KeySeg::Text("Z".into()).icon_source().is_none());
+    }
 
     fn run_confirm(events: Vec<egui::Event>) -> Option<u8> {
         let ctx = egui::Context::default();

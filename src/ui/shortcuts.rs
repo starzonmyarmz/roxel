@@ -4,19 +4,18 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use std::borrow::Cow;
 
 use crate::actions::{Action, Category, Platform};
 use crate::theme::Theme;
-use crate::ui::tokens::{height, width};
-use crate::ui::widgets;
+use crate::ui::tokens::{height, space, width};
+use crate::ui::widgets::{self, KeySeg};
 
 #[derive(Resource, Default)]
 pub struct ShortcutsWindow(pub bool);
 
 pub struct ShortcutGroup {
     pub title: &'static str,
-    pub rows: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+    pub rows: Vec<(Vec<KeySeg>, &'static str)>,
 }
 
 fn group_title(c: Category) -> &'static str {
@@ -43,41 +42,41 @@ const CATEGORY_ORDER: [Category; 8] = [
     Category::Help,
 ];
 
-fn canvas_rows(platform: Platform) -> Vec<(Cow<'static, str>, Cow<'static, str>)> {
-    let mac = platform == Platform::Mac;
-    [
-        ("Left-drag", "Use the current tool"),
-        ("Right-drag", "Orbit"),
-        ("Scroll", "Zoom"),
-        ("Space + drag", "Pan"),
-        ("Z + click", "Zoom in at the cursor"),
+fn canvas_rows(platform: Platform) -> Vec<(Vec<KeySeg>, &'static str)> {
+    use KeySeg::{Shift, Text, Word};
+    let alt = || match platform {
+        Platform::Mac => KeySeg::Option,
+        Platform::Other => Text("Alt".into()),
+    };
+    vec![
+        (vec![Word("Left-drag")], "Use the current tool"),
+        (vec![Word("Right-drag")], "Orbit"),
+        (vec![Word("Scroll")], "Zoom"),
+        (vec![Text("Space".into()), Word("+ drag")], "Pan"),
         (
-            if mac { "⌥Z + click" } else { "Alt+Z + click" },
+            vec![Text("Z".into()), Word("+ click")],
+            "Zoom in at the cursor",
+        ),
+        (
+            vec![alt(), Text("Z".into()), Word("+ click")],
             "Zoom out at the cursor",
         ),
+        (vec![Shift, Word("+ click")], "Line from the last voxel"),
+        (vec![alt(), Word("(hold)")], "Eyedropper while held"),
         (
-            if mac { "⇧ + click" } else { "Shift + click" },
-            "Line from the last voxel",
+            vec![Word("Double-click")],
+            "Select or paint a connected region",
         ),
         (
-            if mac { "⌥ (hold)" } else { "Alt (hold)" },
-            "Eyedropper while held",
+            vec![Text("Arrow keys".into())],
+            "Nudge the selection (Move)",
         ),
-        ("Double-click", "Select or paint a connected region"),
-        ("Arrow keys", "Nudge the selection (Move)"),
         (
-            if mac {
-                "⇧↑ / ⇧↓"
-            } else {
-                "Shift+↑ / Shift+↓"
-            },
+            vec![Shift, Text("↑".into()), Word("/"), Shift, Text("↓".into())],
             "Nudge the selection up or down",
         ),
-        ("Esc", "Cancel, or clear the selection"),
+        (vec![Text("Esc".into())], "Cancel, or clear the selection"),
     ]
-    .into_iter()
-    .map(|(k, l)| (k.into(), l.into()))
-    .collect()
 }
 
 /// Every group the sheet shows, in order: canvas keys first, then each action
@@ -94,7 +93,7 @@ pub fn shortcut_groups(platform: Platform) -> Vec<ShortcutGroup> {
             .flat_map(|a| {
                 let label = a.spec().label;
                 a.chords()
-                    .map(move |c| (c.display(platform).into(), label.into()))
+                    .map(move |c| (widgets::chord_segs(c, platform), label))
             })
             .collect();
         if !rows.is_empty() {
@@ -116,13 +115,19 @@ pub fn draw(ctx: &egui::Context, theme: &Theme) -> bool {
         egui::ScrollArea::vertical()
             .max_height(height::MODAL_SHORTCUTS_MAX)
             .show(ui, |ui| {
-                for group in shortcut_groups(Platform::CURRENT) {
-                    widgets::section(ui, theme, group.title, |ui| {
-                        for (keys, label) in group.rows {
-                            widgets::stat_row(ui, theme, &label, keys.into_owned());
-                        }
-                    });
-                }
+                let gutter = egui::Frame::default().inner_margin(egui::Margin {
+                    right: space::PANEL_INSET as i8,
+                    ..egui::Margin::ZERO
+                });
+                gutter.show(ui, |ui| {
+                    for group in shortcut_groups(Platform::CURRENT) {
+                        widgets::section(ui, theme, group.title, |ui| {
+                            for (keys, label) in &group.rows {
+                                widgets::key_row(ui, theme, label, keys);
+                            }
+                        });
+                    }
+                });
             });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if widgets::dialog_button(ui, theme, "Close", true).clicked() {
@@ -144,13 +149,13 @@ mod tests {
             let groups = shortcut_groups(platform);
             for action in Action::STATIC {
                 for chord in action.chords() {
-                    let keys = chord.display(platform);
+                    let keys = widgets::chord_segs(chord, platform);
                     assert!(
                         groups
                             .iter()
                             .flat_map(|g| &g.rows)
                             .any(|(k, l)| *k == keys && *l == action.spec().label),
-                        "{action:?} ({keys}) missing from the sheet"
+                        "{action:?} ({keys:?}) missing from the sheet"
                     );
                 }
             }
@@ -166,14 +171,9 @@ mod tests {
 
     #[test]
     fn canvas_keys_follow_platform_modifiers() {
-        let keys = |p| -> Vec<String> {
-            canvas_rows(p)
-                .into_iter()
-                .map(|(k, _)| k.into_owned())
-                .collect()
-        };
-        assert!(keys(Platform::Mac).iter().any(|k| k.contains('⌥')));
-        assert!(keys(Platform::Other).iter().all(|k| !k.contains('⌥')));
-        assert!(keys(Platform::Other).iter().any(|k| k.contains("Alt")));
+        let segs = |p| -> Vec<KeySeg> { canvas_rows(p).into_iter().flat_map(|(k, _)| k).collect() };
+        assert!(segs(Platform::Mac).contains(&KeySeg::Option));
+        assert!(!segs(Platform::Other).contains(&KeySeg::Option));
+        assert!(segs(Platform::Other).contains(&KeySeg::Text("Alt".into())));
     }
 }
