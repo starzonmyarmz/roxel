@@ -39,6 +39,8 @@ Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [Git
 >
 > Windows builds are unsigned; SmartScreen will warn on first run — click **More info** → **Run anyway**.
 
+Roxel checks GitHub for a new release on launch, at most once a day. The request carries only the Roxel version in its `User-Agent`. Turn it off under **Preferences → Updates**; see [Preferences](https://starzonmyarmz.github.io/roxel/preferences.html#updates) for details.
+
 ## Run
 
 ```sh
