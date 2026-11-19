@@ -1121,6 +1121,7 @@ impl Action {
 
     /// Whether the macOS menu must disable this action while a text field has
     /// focus: AppKit would otherwise take its key before the field sees it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn clashes_with_typing(self) -> bool {
         matches!(self, Action::SelectAll | Action::ClearSelection)
             || self.shortcut().is_some_and(|c| !c.cmd)
