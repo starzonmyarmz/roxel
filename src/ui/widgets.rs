@@ -1090,7 +1090,7 @@ mod tests {
 
     fn pointer_over_ui_beside_window_panel(x: f32) -> bool {
         let ctx = egui::Context::default();
-        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let screen = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(800.0, 600.0));
         let mut over = false;
         for _ in 0..2 {
             let input = egui::RawInput {

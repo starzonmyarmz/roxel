@@ -501,9 +501,9 @@ mod tests {
     fn canvas_rect_falls_back_to_the_content_rect_until_recorded() {
         let ctx = egui::Context::default();
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
+            screen_rect: Some(egui::Rect::from_min_max(
                 egui::Pos2::ZERO,
-                egui::vec2(800.0, 600.0),
+                egui::pos2(800.0, 600.0),
             )),
             ..Default::default()
         };
