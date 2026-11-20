@@ -73,10 +73,8 @@ pub fn draw_toasts(ctx: &egui::Context, theme: &Theme, toasts: &Toasts) {
     if toasts.0.is_empty() {
         return;
     }
-    // Anchor at bottom-center of the canvas (the region left after every panel
-    // is registered). `available_rect` reflects that area at this point in the
-    // frame since `draw_toasts` is called last in `ui_system`.
-    let canvas = ctx.available_rect();
+    // Anchor at bottom-center of the canvas beside the inspector.
+    let canvas = crate::ui::canvas_rect(ctx);
     let center_x = (canvas.min.x + canvas.max.x) * 0.5;
     let bottom_y = canvas.max.y - space::FLOAT_GAP;
     egui::Area::new(egui::Id::new("toast-stack"))

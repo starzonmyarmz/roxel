@@ -183,6 +183,34 @@ pub fn camera_smoothness(reduce_motion: bool) -> (f32, f32, f32) {
     (d.orbit_smoothness, d.pan_smoothness, d.zoom_smoothness)
 }
 
+/// Whether the camera takes pointer input this frame. A gesture keeps the
+/// decision it started with, so an orbit that crosses onto the inspector
+/// carries on and a drag that began on the inspector never orbits.
+pub fn camera_input_enabled(current: bool, pointer_over_ui: bool, button_held: bool) -> bool {
+    if button_held {
+        current
+    } else {
+        !pointer_over_ui
+    }
+}
+
+/// panorbit's own egui check misses the inspector (see `ui::pointer_over_ui`),
+/// so gate it on Roxel's.
+pub fn gate_camera_input_system(
+    mut contexts: bevy_egui::EguiContexts,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut cameras: Query<&mut PanOrbitCamera>,
+) {
+    let over_ui = crate::ui::egui_wants_pointer(&mut contexts);
+    let held = mouse.get_pressed().any(|b| !mouse.just_pressed(*b));
+    for mut cam in &mut cameras {
+        let enabled = camera_input_enabled(cam.enabled, over_ui, held);
+        if cam.enabled != enabled {
+            cam.enabled = enabled;
+        }
+    }
+}
+
 pub fn apply_camera_motion_system(
     prefs: Res<crate::theme::Preferences>,
     mut cameras: Query<&mut PanOrbitCamera>,
@@ -285,6 +313,14 @@ mod tests {
         assert_eq!(camera_smoothness(true), (0.0, 0.0, 0.0));
         let (orbit, pan, zoom) = camera_smoothness(false);
         assert!(orbit > 0.0 && pan > 0.0 && zoom > 0.0);
+    }
+
+    #[test]
+    fn camera_input_follows_the_pointer_until_a_drag_holds_it() {
+        assert!(!camera_input_enabled(true, true, false));
+        assert!(camera_input_enabled(false, false, false));
+        assert!(camera_input_enabled(true, true, true));
+        assert!(!camera_input_enabled(false, false, true));
     }
 
     #[test]
@@ -641,7 +677,7 @@ pub fn update_viewport_rect(
     mut rect_res: ResMut<ViewportRect>,
 ) {
     if let Ok(ctx) = contexts.ctx_mut() {
-        let a = ctx.available_rect();
+        let a = crate::ui::canvas_rect(ctx);
         let s = ctx.content_rect();
         rect_res.avail = Some(bevy::math::Rect {
             min: Vec2::new(a.min.x, a.min.y),

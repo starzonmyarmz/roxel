@@ -89,9 +89,7 @@ pub fn spawn_brush_preview(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    let mesh = meshes.add(Mesh::from(bevy::math::primitives::Cuboid::new(
-        1.0, 1.0, 1.0,
-    )));
+    let mesh = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
     let mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 1.0, 1.0, 0.45),
         unlit: true,
@@ -171,7 +169,7 @@ pub fn brush_preview_system(
         *tf = Transform::from_translation(pos);
         *vis = Visibility::Visible;
         if *world.ghost_color != Some(c)
-            && let Some(m) = world.materials.get_mut(&world.mat_handle.0)
+            && let Some(mut m) = world.materials.get_mut(&world.mat_handle.0)
         {
             *world.ghost_color = Some(c);
             m.base_color = Color::srgba(

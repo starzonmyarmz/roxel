@@ -188,7 +188,7 @@ pub fn regenerate_mesh_system(
     let material = chunk_meshes.material.clone();
     for (coord, new_mesh) in built {
         if let Some((_, handle)) = chunk_meshes.chunks.get(&coord) {
-            if let Some(slot) = meshes.get_mut(handle) {
+            if let Some(mut slot) = meshes.get_mut(handle) {
                 *slot = new_mesh;
             }
         } else {

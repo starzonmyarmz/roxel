@@ -26,9 +26,8 @@ mod updater;
 use bevy::prelude::Resource;
 use std::ops::{Deref, DerefMut};
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct GridResource(pub roxel::grid::VoxelGrid);
-impl Resource for GridResource {}
 impl Deref for GridResource {
     type Target = roxel::grid::VoxelGrid;
     fn deref(&self) -> &Self::Target {
@@ -292,6 +291,7 @@ fn main() {
             refresh_theme_system,
             crate::theme::apply_ui_scale_system,
             crate::camera::apply_camera_motion_system,
+            crate::camera::gate_camera_input_system,
             zoom_click_system,
             apply_canvas_bg_system,
             floor_dots_system,
@@ -678,7 +678,7 @@ fn vignette_system(
         return;
     }
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    let rect = ctx.available_rect();
+    let rect = crate::ui::canvas_rect(ctx);
     if rect.width() < 4.0 || rect.height() < 4.0 {
         return;
     }

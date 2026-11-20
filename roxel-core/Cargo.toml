@@ -9,9 +9,9 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
-bevy_ecs = "0.18"
+bevy_ecs = "0.20"
 dot_vox = "5"
-glam = "0.30"
+glam = "0.33"
 ron = "0.12"
 serde = { version = "1", features = ["derive"] }
 dirs = "7"

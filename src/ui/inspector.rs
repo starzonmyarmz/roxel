@@ -111,6 +111,7 @@ pub fn inspector_panel(
     mut insp: Inspector,
 ) -> Option<egui::InnerResponse<()>> {
     if !visible {
+        crate::ui::set_canvas_rect(ctx, ctx.content_rect());
         return None;
     }
     let mac_gutter: i8 = if cfg!(target_os = "macos") {
@@ -119,15 +120,15 @@ pub fn inspector_panel(
         0
     };
     let inset = space::PANEL_INSET as i8;
-    let panel = egui::SidePanel::left("inspector_panel")
+    let panel = egui::Panel::left("inspector_panel")
         .resizable(true)
         // egui's separator draws at `noninteractive.bg_stroke` (1.0px) and
         // stacks on the custom HAIR vline below — reads thick. Suppress it;
         // the hairline is the edge, the resize grab region still works.
         .show_separator_line(false)
-        .default_width(width::SIDE_PANEL)
-        .min_width(width::SIDE_PANEL)
-        .max_width(width::SIDE_PANEL_MAX)
+        .default_size(width::SIDE_PANEL)
+        .min_size(width::SIDE_PANEL)
+        .max_size(width::SIDE_PANEL_MAX)
         .frame(
             egui::Frame::default()
                 .fill(theme.panel)
@@ -138,7 +139,7 @@ pub fn inspector_panel(
                     bottom: inset,
                 }),
         );
-    Some(panel.show(ctx, |ui| {
+    let resp = widgets::window_panel(ctx, panel, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
@@ -154,7 +155,8 @@ pub fn inspector_panel(
                     selection_section(ui, theme, &insp);
                 });
             });
-    }))
+    });
+    Some(resp)
 }
 
 fn extent_label(extent: IVec3) -> String {

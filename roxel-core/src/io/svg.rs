@@ -233,8 +233,13 @@ mod tests {
     fn test_camera() -> (Mat4, Mat4, Vec3) {
         let eye = Vec3::new(50.0, 50.0, 50.0);
         let center = Vec3::new(16.0, 16.0, 16.0);
-        let view = Mat4::look_at_rh(eye, center, Vec3::Y);
-        let proj = Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 1000.0);
+        let view = glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
+        let proj = glam::camera::rh::proj::opengl::perspective(
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.1,
+            1000.0,
+        );
         (view, proj * view, eye)
     }
 

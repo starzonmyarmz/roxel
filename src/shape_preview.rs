@@ -131,7 +131,7 @@ pub fn shape_preview_system(
         pool,
     };
     if cache.key.as_ref() != Some(&key) {
-        let Some(mesh) = assets.meshes.get_mut(&inputs.handles.mesh) else {
+        let Some(mut mesh) = assets.meshes.get_mut(&inputs.handles.mesh) else {
             *vis = Visibility::Hidden;
             return;
         };
@@ -157,7 +157,7 @@ pub fn shape_preview_system(
         }
         mesh.insert_indices(Indices::U32(indices));
 
-        if let Some(m) = assets.materials.get_mut(&inputs.handles.material) {
+        if let Some(mut m) = assets.materials.get_mut(&inputs.handles.material) {
             if multi {
                 // White base lets vertex colors show through unmodified.
                 m.base_color = Color::srgba(1.0, 1.0, 1.0, 0.4);

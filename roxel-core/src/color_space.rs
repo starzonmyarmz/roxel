@@ -254,7 +254,7 @@ pub fn oklch_to_rgb(l: f32, c: f32, h: f32) -> [u8; 3] {
 /// match the live `(CurrentColor, Preferences.color_space)` — that way typing
 /// digits mid-edit never drops information to roundtrip rounding (a pure-grey
 /// HSL hue is undefined, etc.).
-#[derive(Default, Clone)]
+#[derive(Default, Clone, bevy_ecs::prelude::Resource)]
 pub struct ColorEditBuffer {
     pub source: [u8; 4],
     pub space: ColorSpace,
@@ -262,8 +262,6 @@ pub struct ColorEditBuffer {
     /// in Hex mode.
     pub fields: [String; 3],
 }
-
-impl bevy_ecs::prelude::Resource for ColorEditBuffer {}
 
 impl ColorEditBuffer {
     /// Repopulate field strings from a Color8 + active space. Always called
