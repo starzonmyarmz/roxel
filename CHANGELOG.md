@@ -13,6 +13,7 @@ the commit subjects since the previous tag.
 ## [Unreleased]
 
 - The docs cover every shortcut and the newer tools, Export Shot and settings, and no longer mention the removed floor color.
+- Updated the engine to Bevy 0.20 and egui 0.36, built with Rust 1.97.1.
 
 ## [0.14.2] - 2026-11-19
 
