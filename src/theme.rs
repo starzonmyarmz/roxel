@@ -527,11 +527,11 @@ mod tests {
             ..Default::default()
         };
         apply_motion_style(&ctx, &prefs);
-        assert_eq!(ctx.style().animation_time, 0.0);
+        assert_eq!(ctx.global_style().animation_time, 0.0);
         prefs.reduce_motion = false;
         apply_motion_style(&ctx, &prefs);
         assert_eq!(
-            ctx.style().animation_time,
+            ctx.global_style().animation_time,
             egui::Style::default().animation_time
         );
     }
@@ -651,22 +651,21 @@ impl Preferences {
 /// reduced motion.
 pub fn apply_motion_style(ctx: &egui::Context, prefs: &Preferences) {
     let secs = prefs.motion_secs(egui::Style::default().animation_time);
-    if ctx.style().animation_time != secs {
-        ctx.style_mut(|s| s.animation_time = secs);
+    if ctx.global_style().animation_time != secs {
+        ctx.global_style_mut(|s| s.animation_time = secs);
     }
 }
 
-/// Apply [`Preferences::ui_zoom`] through bevy_egui's per-context scale
-/// factor. egui's own `set_zoom_factor` doesn't stick: bevy_egui calls
-/// `set_pixels_per_point` every frame.
+/// Apply [`Preferences::ui_zoom`] as the primary context's egui zoom factor.
 pub fn apply_ui_scale_system(
     prefs: Res<Preferences>,
-    mut contexts: Query<&mut bevy_egui::EguiContextSettings, With<bevy_egui::PrimaryEguiContext>>,
+    mut contexts: Query<&mut bevy_egui::EguiContext, With<bevy_egui::PrimaryEguiContext>>,
 ) {
     let zoom = prefs.ui_zoom();
-    for mut settings in &mut contexts {
-        if settings.scale_factor != zoom {
-            settings.scale_factor = zoom;
+    for mut ctx in &mut contexts {
+        let ctx = ctx.get_mut();
+        if ctx.zoom_factor() != zoom {
+            ctx.set_zoom_factor(zoom);
         }
     }
 }
@@ -919,7 +918,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
 
     visuals.widgets.hovered.bg_fill = theme.surface_hover;
     visuals.widgets.hovered.weak_bg_fill = theme.surface_hover;
-    // Softer hover stroke — the SidePanel resize handle picks this up, and the
+    // Softer hover stroke — the inspector panel resize handle picks this up, and the
     // saturated accent_dim ring read as a hard line. `border` keeps the hint
     // without flashing.
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(stroke::NORMAL, theme.border);
@@ -949,7 +948,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
 
     ctx.set_visuals(visuals);
 
-    let mut style: egui::Style = (*ctx.style()).clone();
+    let mut style: egui::Style = (*ctx.global_style()).clone();
     style.spacing.item_spacing = gap::DEFAULT;
     style.spacing.button_padding = pad::DEFAULT;
     style.spacing.menu_margin = egui::Margin::same(pad::MENU.x as i8);
@@ -983,7 +982,7 @@ pub fn apply_egui_style(ctx: &egui::Context, theme: &Theme) {
         TextStyle::Monospace,
         FontId::new(font::BODY, FontFamily::Monospace),
     );
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 
     // Disable shape feathering. bevy_egui 0.39's fragment shader runs the
     // gamma→linear conversion on egui's *premultiplied* vertex colors, so a

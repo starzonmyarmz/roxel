@@ -26,7 +26,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Tools and input
 
-`tool_input_system` (`tools.rs`) is the central dispatcher. Early-returns when egui wants the pointer or the gizmo viewport rect contains the cursor.
+`tool_input_system` (`tools.rs`) is the central dispatcher. Early-returns when egui wants the pointer or the gizmo viewport rect contains the cursor. "Egui wants the pointer" is `ui::egui_wants_pointer` → `ui::pointer_over_ui`: egui's `is_pointer_over_egui` **or** the pointer is off `ui::canvas_rect`. The second half is required: bevy_egui runs the primary pass through `run_ui` with an unused root `Ui`, so egui treats the background-layer inspector as canvas. `camera::gate_camera_input_system` applies the same gate to `PanOrbitCamera::enabled` (panorbit's own egui check has the same blind spot), re-deciding only while no mouse button is held so an orbit keeps the decision it started with.
 
 - **`Tool::Paint`** (`P`, bucket icon) — the single recolor tool. Three gestures, all sampling the color pool per cell into one history stroke each:
   - **Drag / single click** — freehand recolor of each occupied voxel touched (per-voxel stroke machinery, the default fall-through path).
@@ -91,7 +91,7 @@ Previews hide during orbit (RMB), gizmo drag, or mid-stroke — checked via mous
 
 ## Lighting
 
-`lighting.rs::spawn_lights` — single `DirectionalLight` anchored at origin (open-world grid has no centroid). `illuminance = 1_500.0`, `shadows_enabled = false`, 2-cascade config, `maximum_distance = 400.0`. Spawned once in `setup_scene`. Voxel materials are `unlit`, so color render is independent of light direction — the directional light affects only any non-unlit gizmo / chrome geometry.
+`lighting.rs::spawn_lights` — single `DirectionalLight` anchored at origin (open-world grid has no centroid). `illuminance = 1_500.0`, `shadow_maps_enabled = false`, 2-cascade config, `maximum_distance = 400.0`. Spawned once in `setup_scene`. Voxel materials are `unlit`, so color render is independent of light direction — the directional light affects only any non-unlit gizmo / chrome geometry.
 
 ## Color space
 
@@ -115,7 +115,7 @@ Unlike `snapshot.rs` (live unlit scene, current camera, transparent bg), the sho
 
 **Background = hero-color pastel.** `auto_background(hero_color(cells))`. `hero_color` is the distinct voxel color maximizing `count × saturation² × value³` — the most prominent *vivid, bright* color (grass/water), so a multicolor scene gets real hue instead of a muddy average or a brown dirt base (raw frequency alone picks the dirt). Falls back to the average for an all-grey model. `auto_background` then mixes 44% hero + 56% near-white into a light pastel.
 
-**Real cast shadow — ground plane is `lit` and exposure-calibrated.** The shadow must be tied to the scene (anchored at the base, stretching with the light), so it's a **real** Bevy directional shadow, not a faked quad (faked offset blobs read detached; rectangular footprint quads + tight "lift" quads were also tried and rejected). The key `DirectionalLight` has `shadows_enabled` + a 1-cascade config; the camera carries `ShadowFilteringMethod::Gaussian` for soft edges. The ground plane is **lit** (albedo = `auto_background`) so it can *receive* the shadow — but a lit plane × a strong light clips to white under `Tonemapping::None`, so `KEY_LUX`/`FILL_LUX` (+ the global ambient) are **calibrated so a fully-lit up-facing surface renders ≈ its albedo** (the bg color) while shadowed ground darkens naturally to a colored shadow. Don't crank the lux back up — it whites out the ground. `key_dir ≈ (-0.5,-1,0.32)` (upper back-right) shades the camera-facing front-left and drops the shadow front-left. Fill is kept low so it doesn't wash the cast shadow.
+**Real cast shadow — ground plane is `lit` and exposure-calibrated.** The shadow must be tied to the scene (anchored at the base, stretching with the light), so it's a **real** Bevy directional shadow, not a faked quad (faked offset blobs read detached; rectangular footprint quads + tight "lift" quads were also tried and rejected). The key `DirectionalLight` has `shadow_maps_enabled` + a 1-cascade config; the camera carries `ShadowFilteringMethod::Gaussian` for soft edges. The ground plane is **lit** (albedo = `auto_background`) so it can *receive* the shadow — but a lit plane × a strong light clips to white under `Tonemapping::None`, so `KEY_LUX`/`FILL_LUX` (+ the global ambient) are **calibrated so a fully-lit up-facing surface renders ≈ its albedo** (the bg color) while shadowed ground darkens naturally to a colored shadow. Don't crank the lux back up — it whites out the ground. `key_dir ≈ (-0.5,-1,0.32)` (upper back-right) shades the camera-facing front-left and drops the shadow front-left. Fill is kept low so it doesn't wash the cast shadow.
 
 **Soft AO contact shadow** — on top of the real cast shadow, one centered `unlit`+`Blend` quad (`soft_blob_image`, tinted by `shadow_color`) pools darkness around the base. Its mask (`contact_alpha`) is **solid across the footprint then feathers _outward_** to the quad edge (rounded-box `sdf_round_box`, `CONTACT_INNER` = footprint fraction), so the dark band hugs the base perimeter and fades into open ground — a centered *radial* falloff was invisible (its core hid under the model and the edge was already near-zero). This is the *only* faked shadow; the directional one is real.
 
@@ -212,6 +212,6 @@ Lives in `assets/icons/`: `roxel.svg` (1024×1024 master, squircle + transparent
 1. `winit::Window::set_window_icon` — Win/Linux only; **no-ops on macOS** for unbundled binaries.
 2. `NSApplication::setApplicationIconImage` (objc2 + objc2-app-kit) — only way to get a dock icon for `cargo run --release` on macOS.
 
-Accesses `WINIT_WINDOWS` via thread-local `bevy::winit::WINIT_WINDOWS` (not a regular NonSend resource in Bevy 0.18). Main-thread only, enforced by `NonSendMarker`.
+Accesses `WINIT_WINDOWS` via thread-local `bevy::winit::WINIT_WINDOWS` (not a regular NonSend resource in Bevy 0.20). Main-thread only, enforced by `NonSendMarker`.
 
 Packaged builds: `[package.metadata.bundle]` in `Cargo.toml` points cargo-bundle at `roxel.icns`.

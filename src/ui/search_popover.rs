@@ -131,7 +131,7 @@ fn search_field(
                         .desired_width(f32::INFINITY)
                         .hint_text(hint)
                         .font(egui::TextStyle::Body)
-                        .frame(false),
+                        .frame(egui::Frame::NONE),
                 )
             })
             .inner
@@ -217,12 +217,14 @@ mod tests {
             events: vec![key(egui::Key::ArrowDown), key(egui::Key::Enter)],
             ..Default::default()
         };
-        let _ = ctx.run(input, |ctx| {
+        ctx.run_ui(input, |ui| {
+            let ctx = ui.ctx();
             let nav = SearchNav::consume(ctx);
             assert!(nav.down && nav.enter);
             assert!(!nav.up && !nav.esc);
             let again = SearchNav::consume(ctx);
             assert!(!again.down && !again.enter);
-        });
+        })
+        .drop_without_applying_deltas();
     }
 }

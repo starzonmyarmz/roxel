@@ -62,14 +62,12 @@ pub(crate) fn local_idx(p: IVec3) -> usize {
 /// Set `apply` to clear the scene and start an untitled project; the
 /// application consumes it next frame. Requests go through the app's
 /// unsaved-changes guard, which sets this once the user has confirmed.
-#[derive(Default)]
+#[derive(Default, bevy_ecs::prelude::Resource)]
 pub struct NewProject {
     pub apply: bool,
 }
 
-impl bevy_ecs::prelude::Resource for NewProject {}
-
-#[derive(Default)]
+#[derive(Default, bevy_ecs::prelude::Resource)]
 pub struct VoxelGrid {
     /// Sparse storage keyed by chunk coordinate. Allocates on first write,
     /// drops when the chunk's `count` hits zero.
@@ -91,8 +89,6 @@ pub struct VoxelGrid {
     /// walk while the scene is idle.
     bbox_cache: Option<Option<(IVec3, IVec3)>>,
 }
-
-impl bevy_ecs::prelude::Resource for VoxelGrid {}
 
 impl VoxelGrid {
     /// The only hard rule in the open-world grid: no cells below the floor.

@@ -1,7 +1,7 @@
 //! Free-floating UI surfaces drawn over the canvas: the right-edge tool
 //! island and (on Win/Linux) the top-center menu pill. Both follow the toast
 //! pattern — a shadowed `egui::Area` styled with a pill-shaped
-//! `Frame::popup` and anchored by pivot against `ctx.available_rect()` so
+//! `Frame::popup` and anchored by pivot against `crate::ui::canvas_rect(ctx)` so
 //! they nest cleanly beside any registered side panel.
 
 use crate::theme::{Preferences, Theme};
@@ -39,7 +39,7 @@ pub fn pill_frame(theme: &Theme) -> egui::Frame {
 /// every floating helper so anchoring/order is consistent.
 pub fn floating_area(
     ctx: &egui::Context,
-    id: impl std::hash::Hash,
+    id: impl std::hash::Hash + std::fmt::Debug,
     anchor: egui::Pos2,
     pivot: egui::Align2,
     add_contents: impl FnOnce(&mut egui::Ui),
@@ -54,7 +54,7 @@ pub fn floating_area(
 
 /// Right-edge vertically-centered anchor for the tool island.
 pub fn tool_island_anchor(ctx: &egui::Context) -> egui::Pos2 {
-    let canvas = ctx.available_rect();
+    let canvas = crate::ui::canvas_rect(ctx);
     let cy = (canvas.min.y + canvas.max.y) * 0.5;
     egui::pos2(canvas.max.x - space::FLOAT_GAP, cy)
 }
@@ -62,7 +62,7 @@ pub fn tool_island_anchor(ctx: &egui::Context) -> egui::Pos2 {
 /// Top-center anchor for the Win/Linux floating menu pill.
 #[cfg(not(target_os = "macos"))]
 pub fn pill_menu_anchor(ctx: &egui::Context) -> egui::Pos2 {
-    let canvas = ctx.available_rect();
+    let canvas = crate::ui::canvas_rect(ctx);
     let cx = (canvas.min.x + canvas.max.x) * 0.5;
     egui::pos2(cx, canvas.min.y + space::FLOAT_GAP)
 }

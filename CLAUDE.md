@@ -40,7 +40,7 @@ Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml
 
 ## Architecture
 
-Single-window Bevy 0.18 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Two-crate workspace: the `roxel` binary (`src/main.rs`) and the `roxel-core` lib (grid, history, shapes, mesher, palettes and every file format, imported as `roxel::`).
+Single-window Bevy 0.20 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Two-crate workspace: the `roxel` binary (`src/main.rs`) and the `roxel-core` lib (grid, history, shapes, mesher, palettes and every file format, imported as `roxel::`).
 
 Documentation is split by subdirectory so context windows stay small — Claude Code lazy-loads each subdir's `CLAUDE.md` only when reading files in or under that directory. Open the relevant one before editing:
 

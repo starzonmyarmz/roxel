@@ -23,7 +23,7 @@ pub struct Stroke {
     pub id: u64,
 }
 
-#[derive(Default)]
+#[derive(Default, bevy_ecs::prelude::Resource)]
 pub struct History {
     pub undo: Vec<Stroke>,
     pub redo: Vec<Stroke>,
@@ -32,8 +32,6 @@ pub struct History {
     /// stable for the life of the session even across the `MAX_UNDO` cap.
     next_id: u64,
 }
-
-impl bevy_ecs::prelude::Resource for History {}
 
 const MAX_UNDO: usize = 200;
 

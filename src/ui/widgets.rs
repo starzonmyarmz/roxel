@@ -658,6 +658,25 @@ pub fn paint_add_swatch(
         .paint_at(ui, img_rect);
 }
 
+/// Shows `panel` against the whole window and records the space it leaves as
+/// the canvas (`crate::ui::canvas_rect`).
+pub fn window_panel<R>(
+    ctx: &egui::Context,
+    panel: egui::Panel,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let mut root = egui::Ui::new(
+        ctx.clone(),
+        egui::Id::new("window_panel_root"),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::background())
+            .max_rect(ctx.content_rect()),
+    );
+    let resp = panel.show(&mut root, add_contents);
+    crate::ui::set_canvas_rect(ctx, root.available_rect_before_wrap());
+    resp
+}
+
 /// Alpha (0–255) of the full-screen dim painted behind an open modal.
 const SCRIM_ALPHA: u8 = 96;
 
@@ -670,12 +689,8 @@ const SCRIM_ALPHA: u8 = 96;
 /// Senses clicks so the pointer can't reach the canvas behind it — no stray
 /// voxels land while a modal is up.
 pub fn modal_scrim(ctx: &egui::Context) {
-    // Full window rect (panels + canvas). `viewport_rect`/`content_rect` both
-    // exclude the side panel, which would leave the inspector undimmed — for a
-    // backdrop we explicitly want the whole window, so `screen_rect` is right
-    // despite its deprecation toward the layout-oriented accessors.
-    #[allow(deprecated)]
-    let screen = ctx.screen_rect();
+    // Full window rect (inspector + canvas), so the inspector dims too.
+    let screen = ctx.viewport_rect();
     egui::Area::new(egui::Id::new("modal_scrim"))
         .order(egui::Order::Middle)
         .fixed_pos(screen.min)
@@ -1030,15 +1045,16 @@ mod tests {
     fn run_confirm(events: Vec<egui::Event>) -> Option<u8> {
         let ctx = egui::Context::default();
         crate::theme::install_fonts(&ctx);
-        let _ = ctx.run(egui::RawInput::default(), |_| {});
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .drop_without_applying_deltas();
         let mut out = None;
         let input = egui::RawInput {
             events,
             ..Default::default()
         };
-        let _ = ctx.run(input, |ctx| {
+        ctx.run_ui(input, |ui| {
             out = confirm_dialog(
-                ctx,
+                ui.ctx(),
                 &Theme::dark(),
                 "Heading",
                 "Prompt",
@@ -1046,7 +1062,8 @@ mod tests {
                 2,
                 1,
             );
-        });
+        })
+        .drop_without_applying_deltas();
         out
     }
 
@@ -1071,12 +1088,39 @@ mod tests {
         );
     }
 
+    fn pointer_over_ui_beside_window_panel(x: f32) -> bool {
+        let ctx = egui::Context::default();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let mut over = false;
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                events: vec![egui::Event::PointerMoved(egui::pos2(x, 300.0))],
+                ..Default::default()
+            };
+            // An unused root `Ui`, the way bevy_egui runs the primary pass.
+            ctx.run_ui(input, |ui| {
+                let panel = egui::Panel::left("test_panel").exact_size(200.0);
+                window_panel(ui.ctx(), panel, |ui| ui.label("panel"));
+                over = crate::ui::pointer_over_ui(ui.ctx());
+            })
+            .drop_without_applying_deltas();
+        }
+        over
+    }
+
+    #[test]
+    fn window_panel_leaves_the_rest_of_the_window_as_canvas() {
+        assert!(pointer_over_ui_beside_window_panel(100.0));
+        assert!(!pointer_over_ui_beside_window_panel(500.0));
+    }
+
     #[test]
     fn hline_at_snaps_to_a_pixel_center_across_the_clip_rect() {
         let ctx = egui::Context::default();
         let mut clip = egui::Rect::NOTHING;
-        let out = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 clip = ui.clip_rect();
                 hline_at(ui, &Theme::dark(), 10.3);
             });
@@ -1085,7 +1129,7 @@ mod tests {
             .shapes
             .iter()
             .find_map(|c| match &c.shape {
-                egui::Shape::LineSegment { points, .. } => Some(*points),
+                egui::Shape::LineSegment { points, .. } => Some(points),
                 _ => None,
             })
             .expect("hline painted");
@@ -1093,6 +1137,7 @@ mod tests {
         assert_eq!(line[1].y, 10.5);
         assert_eq!(line[0].x, clip.left());
         assert_eq!(line[1].x, clip.right());
+        out.drop_without_applying_deltas();
     }
 
     #[test]

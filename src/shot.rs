@@ -603,7 +603,7 @@ fn build_scene(
         .spawn((
             DirectionalLight {
                 illuminance: KEY_LUX,
-                shadows_enabled: true,
+                shadow_maps_enabled: true,
                 ..default()
             },
             Transform::IDENTITY.looking_to(key_dir, Vec3::Y),
@@ -616,7 +616,7 @@ fn build_scene(
         .spawn((
             DirectionalLight {
                 illuminance: FILL_LUX,
-                shadows_enabled: false,
+                shadow_maps_enabled: false,
                 ..default()
             },
             Transform::IDENTITY.looking_to(Vec3::new(0.4, -0.5, -0.4).normalize(), Vec3::Y),

@@ -14,7 +14,7 @@ pub fn spawn_lights(commands: &mut Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: 1_500.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_translation(center + Vec3::new(100.0, 140.0, 80.0))

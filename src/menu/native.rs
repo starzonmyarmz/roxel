@@ -34,7 +34,7 @@ pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
         return;
     }
     let store = build_menu();
-    world.insert_non_send_resource(store);
+    world.insert_non_send(store);
     *done = true;
 }
 

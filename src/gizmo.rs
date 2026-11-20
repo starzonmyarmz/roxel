@@ -271,7 +271,7 @@ pub fn update_gizmo_viewport(
     }
     cam.is_active = true;
 
-    let rect = ctx.available_rect();
+    let rect = crate::ui::canvas_rect(ctx);
     let ppp = ctx.pixels_per_point();
 
     let x_pt = (rect.right() - GIZMO_SIZE_PT - GIZMO_MARGIN).max(0.0);
@@ -331,7 +331,7 @@ pub fn update_gizmo_hover(
     hover.hovered_index = picked;
 
     for (face, handle) in faces.iter() {
-        if let Some(mat) = materials.get_mut(&handle.0) {
+        if let Some(mut mat) = materials.get_mut(&handle.0) {
             mat.base_color = if Some(face.index) == picked {
                 brighten(face.base, 0.35)
             } else {

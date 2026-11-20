@@ -54,12 +54,41 @@ pub struct ModalActive(pub bool);
 pub fn egui_wants_pointer(contexts: &mut EguiContexts) -> bool {
     contexts
         .ctx_mut()
-        .is_ok_and(|c| c.is_pointer_over_area() || c.is_using_pointer())
+        .is_ok_and(|c| pointer_over_ui(c) || c.egui_is_using_pointer())
+}
+
+/// The pointer is over egui: a window or popup, or off the canvas (the
+/// inspector). bevy_egui runs the primary pass through `run_ui` with an unused
+/// root `Ui`, so `is_pointer_over_egui` alone treats background-layer panels
+/// as canvas.
+pub fn pointer_over_ui(ctx: &egui::Context) -> bool {
+    ctx.is_pointer_over_egui()
+        || ctx
+            .input(|i| i.pointer.interact_pos())
+            .is_some_and(|p| !canvas_rect(ctx).contains(p))
 }
 
 /// A text field has keyboard focus.
 pub fn egui_wants_keyboard(contexts: &mut EguiContexts) -> bool {
-    contexts.ctx_mut().is_ok_and(|c| c.wants_keyboard_input())
+    contexts
+        .ctx_mut()
+        .is_ok_and(|c| c.egui_wants_keyboard_input())
+}
+
+fn canvas_rect_id() -> egui::Id {
+    egui::Id::new("roxel_canvas_rect")
+}
+
+/// Records the canvas beside the inspector. Stands in for egui's removed
+/// `Context::available_rect`.
+pub fn set_canvas_rect(ctx: &egui::Context, rect: egui::Rect) {
+    ctx.data_mut(|d| d.insert_temp(canvas_rect_id(), rect));
+}
+
+/// The canvas beside the inspector, as of the latest `ui_system` pass.
+pub fn canvas_rect(ctx: &egui::Context) -> egui::Rect {
+    ctx.data(|d| d.get_temp(canvas_rect_id()))
+        .unwrap_or_else(|| ctx.content_rect())
 }
 
 #[derive(SystemParam)]
@@ -311,13 +340,10 @@ pub fn ui_system(
     if let Some(resp) = inspector_resp {
         let rect = resp.response.rect;
         onboarding_anchors.color_palette = Some(rect);
-        // Background order so floating windows (command palette, palette switcher
-        // — both `egui::Window` at `Order::Middle`) render above the edge line
-        // instead of having it slice across them.
-        let painter = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Background,
-            egui::Id::new("inspector_panel_edge"),
-        ));
+        // On the panel's own background layer, so floating windows (command
+        // palette, palette switcher — `Order::Middle`) render above the edge
+        // line instead of having it slice across them.
+        let painter = ctx.layer_painter(resp.response.layer_id);
         painter.vline(
             painter.round_to_pixel_center(rect.right()),
             rect.y_range(),
@@ -326,7 +352,7 @@ pub fn ui_system(
     }
 
     // Reflect tool in cursor when pointer is over the viewport.
-    if !ctx.is_pointer_over_area() {
+    if !pointer_over_ui(ctx) {
         let alt = Mods::from_keys(&keys).alt;
         let z = keys.pressed(KeyCode::KeyZ);
         let over_gizmo = gizmo_view.drag.active
@@ -465,4 +491,29 @@ pub fn ui_system(
     toast::draw_toasts(ctx, &theme, &toasts);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canvas_rect_falls_back_to_the_content_rect_until_recorded() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        ctx.run_ui(input, |ui| {
+            let ctx = ui.ctx();
+            assert_eq!(canvas_rect(ctx), ctx.content_rect());
+            let canvas = egui::Rect::from_min_max(egui::pos2(240.0, 0.0), egui::pos2(800.0, 600.0));
+            set_canvas_rect(ctx, canvas);
+            assert_eq!(canvas_rect(ctx), canvas);
+        })
+        .drop_without_applying_deltas();
+    }
 }
