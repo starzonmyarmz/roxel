@@ -8,44 +8,95 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_INCREMENTAL: 0
+
 jobs:
+  macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-arm64
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-bundle
+      - name: Build arm64 .app
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-darwin
+          cargo bundle --release --target aarch64-apple-darwin
+          tar -cf macos-arm64.tar -C target/aarch64-apple-darwin/release/bundle/osx Roxel.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-arm64
+          if-no-files-found: error
+          path: macos-arm64.tar
+
+  macos-x86_64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-x86_64
+      - name: Build x86_64 binary
+        run: |
+          set -euo pipefail
+          rustup target add x86_64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          tar -cf macos-x86_64.tar -C target/x86_64-apple-darwin/release Roxel
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-x86_64
+          if-no-files-found: error
+          path: macos-x86_64.tar
+
+  macos-universal:
+    needs: [macos-arm64, macos-x86_64]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: macos-*
+          merge-multiple: true
+      - name: Merge into a universal .app
+        run: |
+          set -euo pipefail
+          tar -xf macos-arm64.tar
+          mkdir x86_64
+          tar -xf macos-x86_64.tar -C x86_64
+          app=Roxel.app
+          lipo -create \
+            "$app/Contents/MacOS/Roxel" \
+            x86_64/Roxel \
+            -output Roxel-universal
+          mv Roxel-universal "$app/Contents/MacOS/Roxel"
+          lipo "$app/Contents/MacOS/Roxel" -verify_arch arm64
+          lipo "$app/Contents/MacOS/Roxel" -verify_arch x86_64
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" Roxel-macos.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-macOS
+          if-no-files-found: error
+          path: Roxel-macos.zip
+
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}
-
-      - name: Install cargo-bundle
-        if: runner.os == 'macOS'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-bundle
-
-      - name: Build universal macOS .app
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          cargo build --release --target x86_64-apple-darwin
-          cargo bundle --release --target aarch64-apple-darwin
-          app=target/aarch64-apple-darwin/release/bundle/osx/Roxel.app
-          lipo -create \
-            target/aarch64-apple-darwin/release/Roxel \
-            target/x86_64-apple-darwin/release/Roxel \
-            -output "$app/Contents/MacOS/Roxel"
-          lipo "$app/Contents/MacOS/Roxel" -verify_arch arm64
-          lipo "$app/Contents/MacOS/Roxel" -verify_arch x86_64
-          codesign --force --deep --sign - "$app"
-          ditto -c -k --keepParent "$app" Roxel-macos.zip
 
       - name: Build Windows .exe and installer
         if: runner.os == 'Windows'
@@ -66,7 +117,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
 
       - name: Build Linux tarball
         if: runner.os == 'Linux'
@@ -157,7 +208,7 @@ jobs:
           path: release-notes.md
 
   release:
-    needs: [build, changelog]
+    needs: [build, macos-universal, changelog]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
