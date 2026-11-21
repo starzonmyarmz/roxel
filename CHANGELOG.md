@@ -12,6 +12,8 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-21
+
 - Roxel 1.0, the first stable release.
 - The user guide has a new look that matches the app, with a front page and key-chip shortcuts.
 
