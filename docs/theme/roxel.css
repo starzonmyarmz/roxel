@@ -5,6 +5,11 @@
     --radius-sm: 6px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --sidebar-resize-indicator-width: 0px;
+}
+
+#mdbook-sidebar-resize-handle {
+    display: none;
 }
 
 .light,
@@ -27,7 +32,6 @@ html:not(.js) {
     --sidebar-non-existant: var(--fg-dim);
     --sidebar-active: var(--accent);
     --sidebar-spacer: var(--border);
-    --sidebar-header-border-color: var(--accent);
 
     --scrollbar: var(--border);
     --icons: var(--fg-dim);
@@ -85,7 +89,6 @@ html:not(.js) {
     --sidebar-non-existant: var(--surface-hover);
     --sidebar-active: var(--accent);
     --sidebar-spacer: var(--border);
-    --sidebar-header-border-color: var(--accent);
 
     --scrollbar: var(--surface-hover);
     --icons: var(--fg-dim);
@@ -138,7 +141,6 @@ h3,
 h4,
 h5,
 h6,
-.menu-title,
 .content strong {
     font-weight: 600;
 }
@@ -167,7 +169,11 @@ h6 {
 }
 
 .menu-title {
-    font-size: 1.8rem;
+    visibility: hidden;
+}
+
+:is(h1, h2, h3, h4, h5, h6, dt):target::before {
+    content: none;
 }
 
 .content {
@@ -295,6 +301,13 @@ blockquote {
     }
 }
 
+.on-this-page {
+    margin-inline-start: 1.2rem;
+    padding-inline-start: 0.4rem;
+    margin-block-start: 0.8rem;
+    border-inline-start: 1px solid var(--border);
+}
+
 .sidebar .sidebar-scrollbox::before,
 .sidebar-iframe-inner::before {
     content: "";
@@ -304,10 +317,47 @@ blockquote {
     background: url("{{ resource "images/roxel-logo.svg" }}") no-repeat left center / contain;
 }
 
+.nav-chapters,
+.mobile-nav-chapters {
+    display: none;
+}
+
 #mdbook-theme-rust,
 #mdbook-theme-coal,
 #mdbook-theme-ayu {
     display: none;
+}
+
+#mdbook-theme-toggle svg {
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 18a6 6 0 0 0 0-12v12z'/%3E%3C/svg%3E") center / contain no-repeat;
+
+    & path {
+        display: none;
+    }
+}
+
+.theme-popup {
+    min-width: 12rem;
+    padding: 0.4rem;
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+    font-size: 1.4rem;
+
+    & .theme {
+        padding: 0.6rem 1.2rem;
+        border-radius: var(--radius-sm);
+        line-height: 1.4;
+    }
+
+    & .theme-selected {
+        color: var(--accent);
+        font-weight: 500;
+
+        &::before {
+            content: none;
+        }
+    }
 }
 
 #mdbook-theme-navy {
