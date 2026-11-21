@@ -30,7 +30,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 ## Install
 
-Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) and published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date.
+Prebuilt downloads for macOS (a universal `Roxel.app`), Windows (an installer, or a plain `Roxel.exe`) and Linux (a tarball with an install script) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases), along with a `SHA256SUMS` file. They're also published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date. See [Installation](https://starzonmyarmz.github.io/roxel/installation.html) for each platform's steps.
 
 > [!WARNING]
 > **macOS builds are self-signed and not notarized.** Gatekeeper will block first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files). To bypass:
@@ -80,14 +80,17 @@ The bundle picks up `assets/icons/roxel.icns` via `[package.metadata.bundle]` in
 
 ## Releases
 
-Tagged versions trigger a GitHub Actions workflow that builds and uploads
-`Roxel.app` (macOS) and `Roxel.exe` (Windows) to a GitHub Release, then
-pushes each build to the matching itch.io channel with
+Tagged versions trigger a GitHub Actions workflow that builds a universal
+`Roxel.app` (macOS), `Roxel.exe` plus an Inno Setup installer
+(`packaging/windows/roxel.iss`) for Windows, and a Linux tarball
+(`packaging/linux/`). It uploads them to a GitHub Release with a
+`SHA256SUMS` file, then pushes the macOS, Windows and Linux builds to the
+matching itch.io channels with
 [butler](https://itch.io/docs/butler/). The push needs a `BUTLER_API_KEY`
 repository secret (from `butler login`, or an itch.io API key).
 
 To cut a release, run `scripts/release.sh <major|minor|patch>` on an
-up-to-date `main`. It bumps `Cargo.toml`, commits, tags and pushes. Bumping
+up-to-date `main`. It bumps `Cargo.toml` and `roxel-core/Cargo.toml`, commits, tags and pushes. Bumping
 the version alone doesn't release anything: only the `v*` tag push does. If
 `main` already carries the bumped version, tag it instead:
 
@@ -96,7 +99,7 @@ git tag -a v0.14.0 -m v0.14.0
 git push origin v0.14.0
 ```
 
-The workflow lives at `.github/workflows/release.yml`. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds.
+The workflow lives at `.github/workflows/release.yml`. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds and the Linux install steps.
 
 ## File format
 
