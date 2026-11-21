@@ -12,6 +12,8 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- Smaller downloads: the macOS zip drops from 81 MB to 48 MB, and the Windows and Linux builds shrink too.
+
 ## [1.0.0] - 2026-11-21
 
 - Roxel 1.0, the first stable release.
