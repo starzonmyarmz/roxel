@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Bump version in Cargo.toml, commit, tag, and push.
+# Bump the version in Cargo.toml and roxel-core/Cargo.toml, commit, tag, and push.
 # The "v*" tag push triggers .github/workflows/release.yml, which builds
-# the macOS/Windows artifacts, finalizes CHANGELOG.md, and creates the
+# the macOS/Windows/Linux artifacts, finalizes CHANGELOG.md, and creates the
 # GitHub Release. Nothing else to do locally.
 #
 # Usage: scripts/release.sh <major|minor|patch>
@@ -34,7 +34,9 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
 cargo_toml="Cargo.toml"
+core_toml="roxel-core/Cargo.toml"
 [[ -f "$cargo_toml" ]] || { echo "no Cargo.toml at $repo_root" >&2; exit 1; }
+[[ -f "$core_toml" ]] || { echo "no $core_toml at $repo_root" >&2; exit 1; }
 
 run() {
   if (( dry_run )); then
@@ -125,28 +127,34 @@ fi
 
 # Only the first `version = "..."` line (the [package] one). BSD/macOS sed
 # doesn't support -i without an extension arg, so write to a tmp file.
-tmp="$(mktemp)"
-awk -v new="$next" '
-  !done && /^version[[:space:]]*=[[:space:]]*"[^"]+"/ {
-    sub(/"[^"]+"/, "\"" new "\"")
-    done = 1
-  }
-  { print }
-' "$cargo_toml" > "$tmp"
+bump_manifest() {
+  local manifest="$1" tmp
+  tmp="$(mktemp)"
+  awk -v new="$next" '
+    !done && /^version[[:space:]]*=[[:space:]]*"[^"]+"/ {
+      sub(/"[^"]+"/, "\"" new "\"")
+      done = 1
+    }
+    { print }
+  ' "$manifest" > "$tmp"
 
-if (( dry_run )); then
-  echo "--- Cargo.toml diff ---"
-  diff -u "$cargo_toml" "$tmp" || true
-  rm -f "$tmp"
-else
-  mv "$tmp" "$cargo_toml"
-fi
+  if (( dry_run )); then
+    echo "--- $manifest diff ---"
+    diff -u "$manifest" "$tmp" || true
+    rm -f "$tmp"
+  else
+    mv "$tmp" "$manifest"
+  fi
+}
 
-# Refresh Cargo.lock so the roxel package entry matches the new version.
-# `cargo update -p roxel` is fast and doesn't touch unrelated deps.
-run cargo update -p roxel --offline >/dev/null 2>&1 || run cargo update -p roxel
+bump_manifest "$cargo_toml"
+bump_manifest "$core_toml"
 
-run git add Cargo.toml Cargo.lock
+# Refresh Cargo.lock so the package entries match the new version.
+# `cargo update -p` is fast and doesn't touch unrelated deps.
+run cargo update -p roxel -p roxel-core --offline >/dev/null 2>&1 || run cargo update -p roxel -p roxel-core
+
+run git add "$cargo_toml" "$core_toml" Cargo.lock
 run git commit -m "chore: bump to $next"
 run git tag -a "$tag" -m "$tag"
 run git push origin main
