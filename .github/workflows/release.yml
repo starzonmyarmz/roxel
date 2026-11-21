@@ -13,11 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            artifact: Roxel-macos.zip
-          - os: windows-latest
-            artifact: Roxel-windows.zip
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
       CARGO_INCREMENTAL: 0
@@ -29,29 +25,68 @@ jobs:
           key: ${{ matrix.os }}
 
       - name: Install cargo-bundle
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-bundle
 
-      - name: Build macOS .app
-        if: matrix.os == 'macos-latest'
+      - name: Build universal macOS .app
+        if: runner.os == 'macOS'
         run: |
-          cargo bundle --release
-          codesign --force --deep --sign - target/release/bundle/osx/Roxel.app
-          ditto -c -k --keepParent target/release/bundle/osx/Roxel.app Roxel-macos.zip
+          set -euo pipefail
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          cargo bundle --release --target aarch64-apple-darwin
+          app=target/aarch64-apple-darwin/release/bundle/osx/Roxel.app
+          lipo -create \
+            target/aarch64-apple-darwin/release/Roxel \
+            target/x86_64-apple-darwin/release/Roxel \
+            -output "$app/Contents/MacOS/Roxel"
+          lipo "$app/Contents/MacOS/Roxel" -verify_arch arm64
+          lipo "$app/Contents/MacOS/Roxel" -verify_arch x86_64
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" Roxel-macos.zip
 
-      - name: Build Windows .exe
-        if: matrix.os == 'windows-latest'
+      - name: Build Windows .exe and installer
+        if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
           cargo build --release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Compress-Archive -Path target/release/Roxel.exe -DestinationPath Roxel-windows.zip
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $version = $env:TAG_NAME.TrimStart('v')
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/O$PWD" packaging\windows\roxel.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Build Linux tarball
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          cargo build --release
+          mkdir Roxel
+          cp target/release/Roxel Roxel/
+          cp assets/icons/roxel.iconset/icon_256x256.png Roxel/roxel.png
+          cp packaging/linux/install.sh packaging/linux/roxel.desktop packaging/linux/roxel.xml Roxel/
+          tar -czf Roxel-linux.tar.gz Roxel
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: build-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            Roxel-*.zip
+            Roxel-*.tar.gz
+            Roxel-setup.exe
 
   changelog:
     runs-on: ubuntu-latest
@@ -129,9 +164,16 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum Roxel-* > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
-          files: dist/*.zip
+          files: |
+            dist/Roxel-*
+            dist/SHA256SUMS
           body_path: dist/release-notes.md
 
   publish-itch:
@@ -140,7 +182,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: Roxel-*
+          pattern: build-*
           path: dist
           merge-multiple: true
       - name: Install butler
@@ -158,17 +200,25 @@ jobs:
           set -uo pipefail
           version="${GITHUB_REF_NAME#v}"
           shopt -s nullglob
-          builds=(dist/Roxel-*.zip)
+          builds=(dist/Roxel-*.zip dist/Roxel-*.tar.gz)
           if (( ${#builds[@]} == 0 )); then
-            echo "::error::no Roxel-*.zip builds to push"
+            echo "::error::no Roxel-*.zip or Roxel-*.tar.gz builds to push"
             exit 1
           fi
           failed=0
           for build in "${builds[@]}"; do
-            channel="$(basename "$build" .zip)"
-            channel="${channel#Roxel-}"
+            name="$(basename "$build")"
+            name="${name%.zip}"
+            name="${name%.tar.gz}"
+            channel="${name#Roxel-}"
             echo "::group::${channel}"
-            ./butler push "$build" "starzonmyarmz/roxel:${channel}" --userversion "$version" || failed=1
+            target="$build"
+            if [[ "$build" == *.tar.gz ]]; then
+              target="dist/${name}"
+              mkdir -p "$target"
+              tar -xzf "$build" -C "$target" || { failed=1; echo "::endgroup::"; continue; }
+            fi
+            ./butler push "$target" "starzonmyarmz/roxel:${channel}" --userversion "$version" || failed=1
             echo "::endgroup::"
           done
           exit "$failed"

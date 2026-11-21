@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Roxel
+GenericName=Voxel editor
+Comment=Build and paint voxel models
+Exec=Roxel %f
+Icon=roxel
+Terminal=false
+Categories=Graphics;3DGraphics;
+MimeType=application/x-roxel;

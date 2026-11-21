@@ -12,6 +12,11 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- macOS builds are now universal, so they run natively on Intel Macs too.
+- New Windows installer (`Roxel-setup.exe`): Start menu entry, uninstaller, and `.rox` files open in Roxel.
+- New Linux build (`Roxel-linux.tar.gz`) with an install script that adds Roxel to your app launcher.
+- Each release now includes a `SHA256SUMS` file.
+
 ## [0.15.0] - 2026-11-20
 
 - The docs cover every shortcut and the newer tools, Export Shot and settings, and no longer mention the removed floor color.

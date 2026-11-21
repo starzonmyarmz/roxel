@@ -2,7 +2,16 @@
 
 ## Prebuilt downloads
 
-Prebuilt `Roxel.app` (macOS) and `Roxel.exe` (Windows) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases). Grab the latest.
+Each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) has these downloads. Grab the latest.
+
+| Platform | Download | What's inside |
+| -------- | -------- | ------------- |
+| macOS (Apple silicon and Intel) | `Roxel-macos.zip` | `Roxel.app` |
+| Windows | `Roxel-setup.exe` | Installer. Adds Roxel to the Start menu and opens `.rox` files in Roxel. |
+| Windows | `Roxel-windows.zip` | `Roxel.exe` on its own, if you'd rather not install |
+| Linux (x86_64) | `Roxel-linux.tar.gz` | The `Roxel` binary and an install script |
+
+`SHA256SUMS` lists a checksum for each download, so you can check that a file arrived intact.
 
 The same builds are published to [itch.io](https://starzonmyarmz.itch.io/roxel) with every release. If you install through the [itch app](https://itch.io/app), it keeps Roxel up to date for you.
 
@@ -21,7 +30,22 @@ To bypass:
 
 ### Windows — first launch
 
-Windows builds are unsigned, so SmartScreen warns on first run. Click **More info** → **Run anyway**.
+Windows builds are unsigned, so SmartScreen warns when you run the installer or `Roxel.exe` the first time. Click **More info** → **Run anyway**.
+
+The installer doesn't need admin rights. It installs Roxel for your account only, unless you choose to install for everyone. Uninstall it from **Settings → Apps**.
+
+### Linux
+
+Unpack the tarball, then run the install script from the unpacked folder:
+
+```sh
+tar -xzf Roxel-linux.tar.gz
+./Roxel/install.sh
+```
+
+It copies Roxel to `~/.local/bin`, adds it to your app launcher and opens `.rox` files in Roxel. Nothing goes outside your home folder. To remove it, run `./Roxel/install.sh --uninstall`.
+
+You can also skip the script and run `./Roxel/Roxel` directly.
 
 ## If Roxel crashes
 
