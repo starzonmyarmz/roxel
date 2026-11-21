@@ -8,8 +8,13 @@ src = "src"
 [output.html]
 git-repository-url = "https://github.com/starzonmyarmz/roxel"
 edit-url-template = "https://github.com/starzonmyarmz/roxel/edit/main/docs/{path}"
-default-theme = "navy"
+default-theme = "light"
 preferred-dark-theme = "navy"
+additional-css = ["theme/roxel.css"]
+additional-js = ["theme/roxel.js"]
+
+[output.html.print]
+enable = false
 
 [output.html.fold]
 enable = true

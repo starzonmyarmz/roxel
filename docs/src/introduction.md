@@ -1,8 +1,20 @@
-# Roxel
+# ![Roxel: a lightweight, open-source voxel editor for desktop](images/roxel-banner.png)
 
-A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use, and nice to look at.
+Made for hobbyists and indie creators. Simple to learn, fun to use, and nice to look at.
+
+<div class="roxel-cta">
+
+[Download on itch.io](https://starzonmyarmz.itch.io/roxel) [Source on GitHub](https://github.com/starzonmyarmz/roxel)
+
+</div>
+
+MIT licensed: free to use, fork, and build on.
+
+<div class="roxel-hero">
 
 ![Roxel editing a diorama scene](images/screenshot.jpg)
+
+</div>
 
 ## What is Roxel?
 
@@ -10,15 +22,16 @@ Roxel is a desktop voxel editor for building 3D models out of cubes. You paint o
 
 Roxel reads and writes the common voxel formats (MagicaVoxel, Qubicle, Goxel) and exports to game-engine and image formats (glTF, OBJ, PNG, SVG), so it fits alongside the tools you already use.
 
-## Highlights
+## Features
 
-- Brush, erase, recolor, eyedrop, shape, select, and move tools
-- Shape tool with 2D and extruded 3D primitives, including spheres
-- 3D box or same-color selection for bulk delete / recolor / move / copy and paste
-- Built-in and user-defined color palettes
-- Orbit / pan / zoom camera with an isometric default angle
-- `.rox` project files plus import / export across many formats
-- Light / Dark / System themes with a canvas-first, hideable UI
+<div class="roxel-features">
+
+- **[Tools](tools.md)** Brush, erase, paint, eyedrop, shape, select, and move. Shapes come in 2D and extruded 3D, spheres included.
+- **[Palettes](palettes.md)** Sweetie 16, PICO-8, DawnBringer, Endesga 32 and more built in, plus your own palettes and `.ase` import / export.
+- **[Import & Export](import-export.md)** `.rox` projects, MagicaVoxel `.vox`, Qubicle `.qb`, Goxel `.gox`, glTF, OBJ, PNG and SVG.
+- **[Everything else](preferences.md)** An open-world grid, Light / Dark / System themes, a floor dot grid, an RGB axis triad, and a hideable, canvas-first UI.
+
+</div>
 
 ## Where to go next
 

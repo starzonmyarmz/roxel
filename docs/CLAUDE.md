@@ -29,6 +29,8 @@ When a change adds, removes, or alters **user-facing behavior**, update the matc
 - **Images** must live under `docs/src/` (mdBook only publishes files inside `src/`). `../`-relative refs to repo files render on GitHub but 404 on the built site. Doc images go in `src/images/`. Marketing/README imagery lives in `.github/assets/` — not here.
 - Every page in `src/SUMMARY.md` must have a file; every file should be linked from `SUMMARY.md`.
 - Build output `docs/book/` is gitignored.
+- **Styling** lives in `theme/roxel.css` (colors mirror `Theme` in `src/theme.rs`) and `theme/fonts/` (Inter). Don't add `theme/index.hbs`. Markdown stays generator-agnostic; styled bits hang off wrapper classes (`roxel-cta`, `roxel-features`, `roxel-hero`).
+- **Keys** on `keyboard-shortcuts.md` are `<kbd>` chips, one per key, joined by a plain ` + `: `<kbd>Cmd/Ctrl</kbd> + <kbd>S</kbd>`. Other words in a row (`(hold)`, `+ click`, `for Back`) stay plain text.
 
 ## Preview locally
 
