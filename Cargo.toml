@@ -70,6 +70,10 @@ muda = "0.19"
 [profile.dev]
 opt-level = 1
 
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
 # `cargo install cargo-bundle` then `cargo bundle --release` to produce Roxel.app.
 [package.metadata.bundle]
 name = "Roxel"
