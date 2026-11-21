@@ -12,6 +12,9 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- Roxel 1.0, the first stable release.
+- The user guide has a new look that matches the app, with a front page and key-chip shortcuts.
+
 ## [0.16.0] - 2026-11-21
 
 - macOS builds are now universal, so they run natively on Intel Macs too.
