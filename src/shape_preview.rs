@@ -351,6 +351,73 @@ mod tests {
         assert_eq!(silhouette_segments(&[IVec3::ZERO]).len(), 24);
     }
 
+    fn block(n: i32) -> Vec<IVec3> {
+        (0..n)
+            .flat_map(|x| (0..n).flat_map(move |y| (0..n).map(move |z| IVec3::new(x, y, z))))
+            .collect()
+    }
+
+    #[test]
+    fn silhouette_segments_of_a_block_trace_only_its_outer_edges() {
+        let segments = silhouette_segments(&block(2));
+        assert_eq!(segments.len(), 48, "12 edges × 2 units × 2 faces each");
+        let on_rim = |v: f32| v == 0.0 || v == 2.0;
+        for &(a, b) in &segments {
+            for p in [a, b] {
+                let rim = [p.x, p.y, p.z].into_iter().filter(|&v| on_rim(v)).count();
+                assert!(rim >= 2, "segment {a:?}–{b:?} isn't on a block edge");
+            }
+        }
+    }
+
+    #[test]
+    fn build_cubes_mesh_emits_six_quads_per_cell_at_its_offset() {
+        let cells = [IVec3::new(0, 0, 0), IVec3::new(3, 1, -2)];
+        let (pos, nor, idx) = build_cubes_mesh(&cells);
+        assert_eq!(pos.len(), 48);
+        assert_eq!(nor.len(), 48);
+        assert_eq!(idx.len(), 72);
+        assert!(idx.iter().all(|&i| (i as usize) < pos.len()));
+        for (n, cell) in cells.iter().enumerate() {
+            let lo = cell.as_vec3();
+            for p in &pos[n * 24..(n + 1) * 24] {
+                let v = Vec3::from_array(*p);
+                assert!(v.cmpge(lo).all() && v.cmple(lo + Vec3::ONE).all());
+            }
+        }
+        for n in &nor {
+            assert_eq!(Vec3::from_array(*n).length(), 1.0);
+        }
+    }
+
+    #[test]
+    fn build_cubes_mesh_normals_point_away_from_the_cell_center() {
+        let (pos, nor, _) = build_cubes_mesh(&[IVec3::ZERO]);
+        let center = Vec3::splat(0.5);
+        for (p, n) in pos.iter().zip(&nor) {
+            let out = Vec3::from_array(*p) - center;
+            assert!(out.dot(Vec3::from_array(*n)) > 0.0);
+        }
+    }
+
+    #[test]
+    fn cube_vertex_colors_match_what_the_commit_samples() {
+        let cells = block(3);
+        let pool: Vec<Color8> = vec![[255, 0, 0, 255], [0, 128, 255, 255], [10, 200, 30, 255]];
+        let colors = build_cube_vertex_colors(&cells, &pool);
+        assert_eq!(colors.len(), cells.len() * 24);
+        for (n, &cell) in cells.iter().enumerate() {
+            let s = sample_color(cell, &pool);
+            let expected = [
+                srgb_to_linear(s[0] as f32 / 255.0),
+                srgb_to_linear(s[1] as f32 / 255.0),
+                srgb_to_linear(s[2] as f32 / 255.0),
+                1.0,
+            ];
+            assert!(colors[n * 24..(n + 1) * 24].iter().all(|c| *c == expected));
+        }
+    }
+
     #[test]
     fn silhouette_segments_skip_the_seam_between_coplanar_faces() {
         let segments = silhouette_segments(&[IVec3::ZERO, IVec3::X]);

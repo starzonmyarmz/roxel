@@ -272,6 +272,65 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    fn fills_in_paint_order(svg: &str) -> Vec<[u8; 3]> {
+        svg.split("<path fill=\"#")
+            .skip(1)
+            .map(|rest| {
+                let hex = &rest[..6];
+                let ch = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
+                [ch(0), ch(2), ch(4)]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn painter_order_draws_far_cells_before_near_ones() {
+        let mut g = crate::grid::VoxelGrid::default();
+        // On the line from the origin toward the camera at (50, 50, 50).
+        g.set(IVec3::new(0, 0, 0), Some([255, 0, 0, 255]));
+        g.set(IVec3::new(6, 6, 6), Some([0, 255, 0, 255]));
+        g.set(IVec3::new(12, 12, 12), Some([0, 0, 255, 255]));
+        let (view, view_proj, cam_pos) = test_camera();
+        let path = tmp_path("painter");
+        export(&path, &g, view, view_proj, cam_pos, Vec2::new(800.0, 600.0)).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        let _ = std::fs::remove_file(&path);
+
+        let rank = |rgb: &[u8; 3]| match rgb {
+            [_, 0, 0] => 0,
+            [0, _, 0] => 1,
+            [0, 0, _] => 2,
+            other => panic!("unexpected fill {other:?}"),
+        };
+        let order: Vec<u8> = fills_in_paint_order(&s).iter().map(rank).collect();
+        assert!(!order.is_empty());
+        assert!(
+            order.windows(2).all(|w| w[0] <= w[1]),
+            "far-to-near order broken: {order:?}",
+        );
+        assert_eq!(order.first(), Some(&0));
+        assert_eq!(order.last(), Some(&2));
+    }
+
+    #[test]
+    fn painter_order_puts_an_occluder_after_the_cell_it_hides() {
+        let mut g = crate::grid::VoxelGrid::default();
+        // A cell directly in front (toward the camera) of another, touching
+        // only at an edge, so both keep their camera-facing faces.
+        g.set(IVec3::new(4, 4, 4), Some([255, 0, 0, 255]));
+        g.set(IVec3::new(5, 5, 4), Some([0, 0, 255, 255]));
+        let (view, view_proj, cam_pos) = test_camera();
+        let path = tmp_path("occluder");
+        export(&path, &g, view, view_proj, cam_pos, Vec2::new(800.0, 600.0)).expect("export");
+        let s = std::fs::read_to_string(&path).expect("read");
+        let _ = std::fs::remove_file(&path);
+
+        let fills = fills_in_paint_order(&s);
+        let last_red = fills.iter().rposition(|c| c[1] == 0 && c[2] == 0).unwrap();
+        let first_blue = fills.iter().position(|c| c[0] == 0 && c[1] == 0).unwrap();
+        assert!(last_red < first_blue, "fills: {fills:?}");
+    }
+
     #[test]
     fn shade_color_darkens_with_face_normal() {
         let rgb = [200u8, 100u8, 50u8, 255u8];

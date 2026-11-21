@@ -287,6 +287,39 @@ mod tests {
     }
 
     #[test]
+    fn position_accessor_min_max_bound_every_vertex() {
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::new(-2, 0, 3), Some([255, 0, 0, 255]));
+        g.set(IVec3::new(1, 2, -1), Some([0, 0, 255, 255]));
+        let mesh = build_mesh(&g);
+
+        let mut lo = [f32::INFINITY; 3];
+        let mut hi = [f32::NEG_INFINITY; 3];
+        for p in &mesh.positions {
+            for k in 0..3 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+        }
+        assert_eq!(mesh.pos_min, lo);
+        assert_eq!(mesh.pos_max, hi);
+        assert_eq!(mesh.pos_min, [-2.0, 0.0, -1.0]);
+        assert_eq!(mesh.pos_max, [2.0, 3.0, 4.0]);
+
+        let bin = pack_bin(&mesh);
+        let json = String::from_utf8(build_json(&mesh, bin.len() as u32)).unwrap();
+        assert!(json.contains(r#""type":"VEC3","min":[-2,0,-1],"max":[2,3,4]"#));
+    }
+
+    #[test]
+    fn empty_grid_accessor_min_max_are_zero_not_infinite() {
+        let mesh = build_mesh(&VoxelGrid::default());
+        let json = String::from_utf8(build_json(&mesh, 0)).unwrap();
+        assert!(json.contains(r#""count":0,"type":"VEC3","min":[0,0,0],"max":[0,0,0]"#));
+        assert!(!json.contains("inf"));
+    }
+
+    #[test]
     fn neighboring_voxels_omit_shared_faces() {
         let mut g = VoxelGrid::default();
         g.set(IVec3::new(0, 0, 0), Some([255, 0, 0, 255]));

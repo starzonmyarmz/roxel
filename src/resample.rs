@@ -345,6 +345,43 @@ mod tests {
     }
 
     #[test]
+    fn halving_50k_voxels_is_one_fast_undoable_stroke() {
+        let mut g = VoxelGrid::default();
+        let side = 37; // 37³ = 50_653
+        for x in 0..side {
+            for y in 0..side {
+                for z in 0..side {
+                    let c = if (x + y + z) % 2 == 0 { RED } else { BLUE };
+                    g.set(IVec3::new(x, y, z), Some(c));
+                }
+            }
+        }
+        let before: HashMap<IVec3, Color8> = g.iter_occupied().collect();
+        assert_eq!(before.len(), 50_653);
+
+        let mut h = History::default();
+        let mut toasts = Toasts::default();
+        let start = std::time::Instant::now();
+        apply_resample(&mut g, &mut h, &mut toasts, ResampleOp::Halve);
+        let elapsed = start.elapsed();
+        // Halving rewrites cells it just cleared, which hits the re-touch
+        // path; a quadratic re-touch takes minutes here, linear takes ms.
+        assert!(elapsed.as_secs() < 5, "halving 50k voxels took {elapsed:?}");
+
+        assert_eq!(h.undo.len(), 1);
+        assert_eq!(g.count(), 19 * 19 * 19);
+        let after: HashMap<IVec3, Color8> = g.iter_occupied().collect();
+
+        h.undo(&mut g);
+        let undone: HashMap<IVec3, Color8> = g.iter_occupied().collect();
+        assert_eq!(undone, before);
+
+        h.redo(&mut g);
+        let redone: HashMap<IVec3, Color8> = g.iter_occupied().collect();
+        assert_eq!(redone, after);
+    }
+
+    #[test]
     fn apply_resample_empty_grid_does_nothing() {
         let mut g = VoxelGrid::default();
         let mut h = History::default();
