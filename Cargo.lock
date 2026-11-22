@@ -4821,7 +4821,7 @@ dependencies = [
 
 [[package]]
 name = "roxel"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "bevy",
@@ -4847,7 +4847,7 @@ dependencies = [
 
 [[package]]
 name = "roxel-cli"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -4859,7 +4859,7 @@ dependencies = [
 
 [[package]]
 name = "roxel-core"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "bevy_ecs",
