@@ -1,4 +1,5 @@
 mod color;
+mod convert;
 mod info;
 mod load;
 mod render;
@@ -14,12 +15,15 @@ rox: headless Roxel
 Usage:
   rox info <file>
   rox render <file> -o <out.png> [--view 0-3] [--scale N] [--bg #rrggbb[aa]]
+  rox convert <in> <out>
 
 Reads .rox, .vox, .qb and .gox files.
 
 Commands:
   info     Print voxel count, bounds and colors as JSON
   render   Render an isometric PNG
+  convert  Save in another format, chosen by <out>'s extension:
+           .rox, .vox, .gox, .glb, .obj or .svg
 
 Render options:
   -o, --output <path>   PNG to write
@@ -42,6 +46,10 @@ enum Command {
         output: PathBuf,
         opts: RenderOptions,
     },
+    Convert {
+        input: PathBuf,
+        output: PathBuf,
+    },
 }
 
 fn parse_args(args: &[String]) -> Result<Command> {
@@ -58,6 +66,15 @@ fn parse_args(args: &[String]) -> Result<Command> {
             _ => bail!("usage: rox info <file>"),
         },
         "render" => parse_render(rest),
+        "convert" => match rest {
+            [input, output] if !input.starts_with('-') && !output.starts_with('-') => {
+                Ok(Command::Convert {
+                    input: input.into(),
+                    output: output.into(),
+                })
+            }
+            _ => bail!("usage: rox convert <in> <out>"),
+        },
         other => bail!("unknown command '{other}'; run `rox --help`"),
     }
 }
@@ -114,7 +131,7 @@ fn run(cmd: Command) -> Result<()> {
         Command::Help => println!("{USAGE}"),
         Command::Version => println!("rox {}", env!("CARGO_PKG_VERSION")),
         Command::Info { input } => {
-            let grid = load::load(&input)?;
+            let grid = load::load(&input)?.grid;
             println!("{}", serde_json::to_string_pretty(&info::info(&grid))?);
         }
         Command::Render {
@@ -122,11 +139,12 @@ fn run(cmd: Command) -> Result<()> {
             output,
             opts,
         } => {
-            let grid = load::load(&input)?;
+            let grid = load::load(&input)?.grid;
             let img = render::render(&grid, opts)?;
             render::write_png(&output, &img)
                 .with_context(|| format!("can't write {}", output.display()))?;
         }
+        Command::Convert { input, output } => convert::convert(&input, &output)?,
     }
     Ok(())
 }
@@ -212,6 +230,26 @@ mod tests {
         ] {
             let err = parse(args).unwrap_err().to_string();
             assert!(err.contains(msg), "{args}: {err}");
+        }
+    }
+
+    #[test]
+    fn parses_convert() {
+        assert_eq!(
+            parse("convert castle.vox castle.glb").unwrap(),
+            Command::Convert {
+                input: "castle.vox".into(),
+                output: "castle.glb".into(),
+            }
+        );
+        for args in [
+            "convert",
+            "convert a.vox",
+            "convert a.vox b.rox c.rox",
+            "convert a.vox -o b.rox",
+        ] {
+            let err = parse(args).unwrap_err().to_string();
+            assert!(err.contains("usage: rox convert"), "{args}: {err}");
         }
     }
 
