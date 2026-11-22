@@ -91,7 +91,7 @@ matching itch.io channels (the app only, not `rox`) with
 repository secret (from `butler login`, or an itch.io API key).
 
 To cut a release, run `scripts/release.sh <major|minor|patch>` on an
-up-to-date `main`. It bumps `Cargo.toml` and `roxel-core/Cargo.toml`, commits, tags and pushes. Bumping
+up-to-date `main`. It bumps `Cargo.toml`, `roxel-core/Cargo.toml` and `roxel-cli/Cargo.toml`, commits, tags and pushes. Bumping
 the version alone doesn't release anything: only the `v*` tag push does. If
 `main` already carries the bumped version, tag it instead:
 
