@@ -28,7 +28,7 @@ cargo install --git https://github.com/starzonmyarmz/roxel roxel-cli
 
 ## Supported files
 
-Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension.
+Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension. `rox convert` can also write `.glb`, `.obj` and `.svg`.
 
 ## `rox info`
 
@@ -74,6 +74,25 @@ rox render castle.rox -o castle-back.png --view 2 --scale 4 --bg "#202830"
 ```
 
 Quote a `--bg` color in your shell, since `#` starts a comment in some shells.
+
+## `rox convert`
+
+```sh
+rox convert castle.vox castle.glb
+```
+
+Saves the model in another format, chosen by the output file's extension.
+
+| Output | Format |
+| ------ | ------ |
+| `.rox` | Roxel project. It keeps the palette saved in a `.rox` input, or the colors a `.vox` input uses, named after the file. |
+| `.vox` | MagicaVoxel. Up to 256 voxels on each axis. |
+| `.gox` | Goxel |
+| `.glb` | Binary glTF mesh |
+| `.obj` | Wavefront OBJ mesh with vertex colors |
+| `.svg` | Vector image from the same camera angle as `rox render`'s default view |
+
+A `.rox` written by `rox convert` has no preview image. Open and save it in Roxel to add one.
 
 ## Exit status
 
