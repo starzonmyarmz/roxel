@@ -4,13 +4,27 @@
 
 ## Installing
 
-`rox` isn't part of the prebuilt downloads yet. With [Rust](https://www.rust-lang.org/tools/install) installed, build it from the Roxel repository:
+Each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) includes `rox` as its own download, separate from the app:
+
+| Platform | Download |
+| -------- | -------- |
+| macOS (Apple silicon and Intel) | `rox-macos.zip` |
+| Windows | `rox-windows.zip` |
+| Linux (x86_64) | `rox-linux.tar.gz` |
+
+Unpack it and move `rox` (`rox.exe` on Windows) into a folder on your `PATH`, such as `~/.local/bin` or `/usr/local/bin`. Run `rox --help` for a summary of every command.
+
+On macOS, `rox` is self-signed and not notarized, like the app, so macOS blocks a copy downloaded with a browser. Clear the quarantine flag once:
+
+```sh
+xattr -d com.apple.quarantine /usr/local/bin/rox
+```
+
+With [Rust](https://www.rust-lang.org/tools/install) installed, you can build it from source instead:
 
 ```sh
 cargo install --git https://github.com/starzonmyarmz/roxel roxel-cli
 ```
-
-This puts `rox` on your `PATH`. Run `rox --help` for a summary of every command.
 
 ## Supported files
 

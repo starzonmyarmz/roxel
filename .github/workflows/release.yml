@@ -23,12 +23,14 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-bundle
-      - name: Build arm64 .app
+      - name: Build arm64 .app and rox
         run: |
           set -euo pipefail
           rustup target add aarch64-apple-darwin
           cargo bundle --release --target aarch64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin -p roxel-cli
           tar -cf macos-arm64.tar -C target/aarch64-apple-darwin/release/bundle/osx Roxel.app
+          tar -rf macos-arm64.tar -C target/aarch64-apple-darwin/release rox
       - uses: actions/upload-artifact@v7
         with:
           name: macos-arm64
@@ -43,12 +45,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: macos-x86_64
-      - name: Build x86_64 binary
+      - name: Build x86_64 binaries
         run: |
           set -euo pipefail
           rustup target add x86_64-apple-darwin
           cargo build --release --target x86_64-apple-darwin
-          tar -cf macos-x86_64.tar -C target/x86_64-apple-darwin/release Roxel
+          cargo build --release --target x86_64-apple-darwin -p roxel-cli
+          tar -cf macos-x86_64.tar -C target/x86_64-apple-darwin/release Roxel rox
       - uses: actions/upload-artifact@v7
         with:
           name: macos-x86_64
@@ -79,11 +82,20 @@ jobs:
           lipo "$app/Contents/MacOS/Roxel" -verify_arch x86_64
           codesign --force --deep --sign - "$app"
           ditto -c -k --keepParent "$app" Roxel-macos.zip
+
+          lipo -create rox x86_64/rox -output rox-universal
+          mv rox-universal rox
+          lipo rox -verify_arch arm64
+          lipo rox -verify_arch x86_64
+          codesign --force --sign - rox
+          zip -j rox-macos.zip rox
       - uses: actions/upload-artifact@v7
         with:
           name: build-macOS
           if-no-files-found: error
-          path: Roxel-macos.zip
+          path: |
+            Roxel-macos.zip
+            rox-macos.zip
 
   build:
     strategy:
@@ -104,9 +116,10 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          cargo build --release
+          cargo build --release --workspace
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Compress-Archive -Path target/release/Roxel.exe -DestinationPath Roxel-windows.zip
+          Compress-Archive -Path target/release/rox.exe -DestinationPath rox-windows.zip
           choco install innosetup --no-progress -y
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $version = $env:TAG_NAME.TrimStart('v')
@@ -123,7 +136,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          cargo build --release
+          cargo build --release --workspace
+          tar -czf rox-linux.tar.gz -C target/release rox
           mkdir Roxel
           cp target/release/Roxel Roxel/
           cp assets/icons/roxel.iconset/icon_256x256.png Roxel/roxel.png
@@ -138,6 +152,8 @@ jobs:
             Roxel-*.zip
             Roxel-*.tar.gz
             Roxel-setup.exe
+            rox-*.zip
+            rox-*.tar.gz
 
   changelog:
     runs-on: ubuntu-latest
@@ -218,12 +234,13 @@ jobs:
       - name: Write SHA256SUMS
         working-directory: dist
         run: |
-          sha256sum Roxel-* > SHA256SUMS
+          sha256sum Roxel-* rox-* > SHA256SUMS
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Roxel-*
+            dist/rox-*
             dist/SHA256SUMS
           body_path: dist/release-notes.md
 

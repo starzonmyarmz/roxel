@@ -10,6 +10,7 @@ Each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) has these
 | Windows | `Roxel-setup.exe` | Installer. Adds Roxel to the Start menu and opens `.rox` files in Roxel. |
 | Windows | `Roxel-windows.zip` | `Roxel.exe` on its own, if you'd rather not install |
 | Linux (x86_64) | `Roxel-linux.tar.gz` | The `Roxel` binary and an install script |
+| Any of the above | `rox-macos.zip`, `rox-windows.zip`, `rox-linux.tar.gz` | The `rox` command-line tool. See [Command Line](command-line.md). |
 
 `SHA256SUMS` lists a checksum for each download, so you can check that a file arrived intact.
 

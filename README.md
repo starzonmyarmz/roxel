@@ -31,7 +31,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 ## Install
 
-Prebuilt downloads for macOS (a universal `Roxel.app`), Windows (an installer, or a plain `Roxel.exe`) and Linux (a tarball with an install script) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases), along with a `SHA256SUMS` file. They're also published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date. See [Installation](https://starzonmyarmz.github.io/roxel/installation.html) for each platform's steps.
+Prebuilt downloads for macOS (a universal `Roxel.app`), Windows (an installer, or a plain `Roxel.exe`) and Linux (a tarball with an install script) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases), along with the `rox` command-line tool for each platform and a `SHA256SUMS` file. They're also published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date. See [Installation](https://starzonmyarmz.github.io/roxel/installation.html) for each platform's steps.
 
 > [!WARNING]
 > **macOS builds are self-signed and not notarized.** Gatekeeper will block first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files). To bypass:
@@ -84,9 +84,9 @@ The bundle picks up `assets/icons/roxel.icns` via `[package.metadata.bundle]` in
 Tagged versions trigger a GitHub Actions workflow that builds a universal
 `Roxel.app` (macOS), `Roxel.exe` plus an Inno Setup installer
 (`packaging/windows/roxel.iss`) for Windows, and a Linux tarball
-(`packaging/linux/`). It uploads them to a GitHub Release with a
-`SHA256SUMS` file, then pushes the macOS, Windows and Linux builds to the
-matching itch.io channels with
+(`packaging/linux/`), plus a `rox` CLI archive for each platform. It
+uploads them to a GitHub Release with a `SHA256SUMS` file, then pushes the macOS, Windows and Linux builds to the
+matching itch.io channels (the app only, not `rox`) with
 [butler](https://itch.io/docs/butler/). The push needs a `BUTLER_API_KEY`
 repository secret (from `butler login`, or an itch.io API key).
 
