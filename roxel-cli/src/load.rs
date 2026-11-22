@@ -39,7 +39,7 @@ pub fn extension(path: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-fn stem(path: &Path) -> String {
+pub fn stem(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default()

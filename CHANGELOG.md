@@ -14,6 +14,7 @@ the commit subjects since the previous tag.
 
 - New `rox` command-line tool: `rox info` prints a model's size and colors as JSON, and `rox render` saves an isometric PNG. Download it from the release as `rox-macos.zip`, `rox-windows.zip` or `rox-linux.tar.gz`.
 - `rox convert <in> <out>` saves a model as `.rox`, `.vox`, `.gox`, `.glb`, `.obj` or `.svg`, chosen by the output's extension.
+- `rox apply` builds or edits a model from a RON list of ops (boxes, cylinders, ellipsoids, lines, clears, recolors and single voxels), read from a file or piped in from a script.
 - Smaller downloads: the macOS zip drops from 81 MB to 48 MB, and the Windows and Linux builds shrink too.
 
 ## [1.0.0] - 2026-11-21

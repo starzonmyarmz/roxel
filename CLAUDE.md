@@ -41,7 +41,7 @@ Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml
 
 ## Architecture
 
-Single-window Bevy 0.20 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Three-crate workspace: the `roxel` binary (`src/main.rs`), the `roxel-core` lib (grid, history, shapes, mesher, palettes, face projection and every file format, imported as `roxel::`), and `roxel-cli`, the headless `rox` binary (no Bevy renderer; `info`, `convert` and `render`, the last an ortho camera plus a depth-buffered rasterizer over `roxel::projection`). The CLI bin is `rox`, never `roxel`: it would collide with the app's `Roxel` bin on case-insensitive macOS.
+Single-window Bevy 0.20 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Three-crate workspace: the `roxel` binary (`src/main.rs`), the `roxel-core` lib (grid, history, shapes, mesher, palettes, face projection and every file format, imported as `roxel::`), and `roxel-cli`, the headless `rox` binary (no Bevy renderer; `info`, `convert`, `apply` (RON op lists) and `render`, the last an ortho camera plus a depth-buffered rasterizer over `roxel::projection`). The CLI bin is `rox`, never `roxel`: it would collide with the app's `Roxel` bin on case-insensitive macOS.
 
 Documentation is split by subdirectory so context windows stay small — Claude Code lazy-loads each subdir's `CLAUDE.md` only when reading files in or under that directory. Open the relevant one before editing:
 

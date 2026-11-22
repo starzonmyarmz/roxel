@@ -1,3 +1,4 @@
+mod apply;
 mod color;
 mod convert;
 mod info;
@@ -16,6 +17,8 @@ Usage:
   rox info <file>
   rox render <file> -o <out.png> [--view 0-3] [--scale N] [--bg #rrggbb[aa]]
   rox convert <in> <out>
+  rox apply <file> <ops.ron|-> [-o <out>]
+  rox apply --new <ops.ron|-> -o <out>
 
 Reads .rox, .vox, .qb and .gox files.
 
@@ -24,6 +27,9 @@ Commands:
   render   Render an isometric PNG
   convert  Save in another format, chosen by <out>'s extension:
            .rox, .vox, .gox, .glb, .obj or .svg
+  apply    Run a RON list of ops on <file>, or on an empty scene with
+           --new, and save to <out> (default: <file>). `-` reads ops
+           from stdin.
 
 Render options:
   -o, --output <path>   PNG to write
@@ -48,6 +54,11 @@ enum Command {
     },
     Convert {
         input: PathBuf,
+        output: PathBuf,
+    },
+    Apply {
+        input: Option<PathBuf>,
+        ops: Option<PathBuf>,
         output: PathBuf,
     },
 }
@@ -75,6 +86,7 @@ fn parse_args(args: &[String]) -> Result<Command> {
             }
             _ => bail!("usage: rox convert <in> <out>"),
         },
+        "apply" => parse_apply(rest),
         other => bail!("unknown command '{other}'; run `rox --help`"),
     }
 }
@@ -126,6 +138,40 @@ fn parse_render(args: &[String]) -> Result<Command> {
     })
 }
 
+fn parse_apply(args: &[String]) -> Result<Command> {
+    let usage = "usage: rox apply <file|--new> <ops.ron|-> [-o <out>]";
+    let mut new = false;
+    let mut output = None;
+    let mut positional = Vec::new();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--new" => new = true,
+            "-o" | "--output" => {
+                let v = it.next().ok_or_else(|| anyhow!("{arg} needs a value"))?;
+                output = Some(PathBuf::from(v));
+            }
+            s if s.starts_with('-') && s.len() > 1 => bail!("unknown option '{s}'"),
+            _ => positional.push(arg.as_str()),
+        }
+    }
+    let (input, ops) = match (new, positional.as_slice()) {
+        (true, [ops]) => (None, *ops),
+        (false, [input, ops]) if *input != "-" => (Some(PathBuf::from(input)), *ops),
+        _ => bail!(usage),
+    };
+    let output = match (output, &input) {
+        (Some(o), _) => o,
+        (None, Some(i)) => i.clone(),
+        (None, None) => bail!("--new needs -o <out>"),
+    };
+    Ok(Command::Apply {
+        input,
+        ops: (ops != "-").then(|| PathBuf::from(ops)),
+        output,
+    })
+}
+
 fn run(cmd: Command) -> Result<()> {
     match cmd {
         Command::Help => println!("{USAGE}"),
@@ -145,6 +191,12 @@ fn run(cmd: Command) -> Result<()> {
                 .with_context(|| format!("can't write {}", output.display()))?;
         }
         Command::Convert { input, output } => convert::convert(&input, &output)?,
+        Command::Apply { input, ops, output } => {
+            let source = ops
+                .as_deref()
+                .map_or(apply::Source::Stdin, apply::Source::File);
+            apply::run(input.as_deref(), source, &output)?;
+        }
     }
     Ok(())
 }
@@ -250,6 +302,50 @@ mod tests {
         ] {
             let err = parse(args).unwrap_err().to_string();
             assert!(err.contains("usage: rox convert"), "{args}: {err}");
+        }
+    }
+
+    #[test]
+    fn parses_apply() {
+        assert_eq!(
+            parse("apply scene.rox ops.ron").unwrap(),
+            Command::Apply {
+                input: Some("scene.rox".into()),
+                ops: Some("ops.ron".into()),
+                output: "scene.rox".into(),
+            }
+        );
+        assert_eq!(
+            parse("apply scene.vox - -o out.rox").unwrap(),
+            Command::Apply {
+                input: Some("scene.vox".into()),
+                ops: None,
+                output: "out.rox".into(),
+            }
+        );
+        assert_eq!(
+            parse("apply -o scene.rox --new -").unwrap(),
+            Command::Apply {
+                input: None,
+                ops: None,
+                output: "scene.rox".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn apply_rejects_bad_usage() {
+        for (args, msg) in [
+            ("apply", "usage: rox apply"),
+            ("apply ops.ron", "usage: rox apply"),
+            ("apply - ops.ron", "usage: rox apply"),
+            ("apply --new a.rox ops.ron -o b.rox", "usage: rox apply"),
+            ("apply --new ops.ron", "--new needs -o"),
+            ("apply a.rox ops.ron -o", "needs a value"),
+            ("apply a.rox ops.ron --append", "unknown option"),
+        ] {
+            let err = parse(args).unwrap_err().to_string();
+            assert!(err.contains(msg), "{args}: {err}");
         }
     }
 
