@@ -3,7 +3,7 @@ members = ["roxel-core", "roxel-cli"]
 
 [package]
 name = "roxel"
-version = "1.3.1"
+version = "1.3.2"
 edition = "2024"
 
 [[bin]]
