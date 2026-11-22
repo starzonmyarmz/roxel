@@ -1,26 +1,27 @@
+"""Lighthouse island. Usage: python3 lighthouse.py | rox apply --new - -o lighthouse.rox"""
+
 import math
-import sys
 
 from noise import ValueNoise2D
 from props import cottage, find_flat, pier, sailboat
-from voxlib import Scene, hexc
+from voxlib import Scene
 
 P = {
-    "deep": hexc("2f6f9f"), "water": hexc("3f8fc0"), "shallow": hexc("6cc3d6"),
-    "foam": hexc("e8f6f8"),
-    "sand": hexc("f0d9a0"), "sand2": hexc("e2c487"),
-    "rock": hexc("8a8f98"), "rock2": hexc("6d727c"), "rock3": hexc("a3a8ae"),
-    "grass": hexc("7cc155"), "grass2": hexc("69ae46"), "grass3": hexc("90cf62"),
-    "dirt": hexc("8a6142"),
-    "white": hexc("f4f1ea"), "red": hexc("d8443c"), "red_dk": hexc("a8302c"),
-    "glass": hexc("ffd96a"), "iron": hexc("3a3f4b"),
-    "wall": hexc("efe6d2"), "roof": hexc("3f6fa8"), "roof2": hexc("355f92"),
-    "door": hexc("8a5232"), "window": hexc("9fd8f0"), "brick": hexc("b0533e"),
-    "wood": hexc("a8774a"), "wood2": hexc("8c6038"), "plank": hexc("c79a62"),
-    "pine": hexc("2f7d4f"), "pine2": hexc("3b9160"), "trunk": hexc("6b4a2f"),
-    "flower_y": hexc("ffd34d"), "flower_p": hexc("f28bb3"),
-    "hull": hexc("d8443c"), "hull2": hexc("f4f1ea"),
-    "sail2": hexc("f2c14e"), "wave": hexc("5aa8d2"),
+    "deep": "#2f6f9f", "water": "#3f8fc0", "shallow": "#6cc3d6",
+    "foam": "#e8f6f8",
+    "sand": "#f0d9a0", "sand2": "#e2c487",
+    "rock": "#8a8f98", "rock2": "#6d727c", "rock3": "#a3a8ae",
+    "grass": "#7cc155", "grass2": "#69ae46", "grass3": "#90cf62",
+    "dirt": "#8a6142",
+    "white": "#f4f1ea", "red": "#d8443c", "red_dk": "#a8302c",
+    "glass": "#ffd96a", "iron": "#3a3f4b",
+    "wall": "#efe6d2", "roof": "#3f6fa8", "roof2": "#355f92",
+    "door": "#8a5232", "window": "#9fd8f0", "brick": "#b0533e",
+    "wood": "#a8774a", "wood2": "#8c6038", "plank": "#c79a62",
+    "pine": "#2f7d4f", "pine2": "#3b9160", "trunk": "#6b4a2f",
+    "flower_y": "#ffd34d", "flower_p": "#f28bb3",
+    "hull": "#d8443c", "hull2": "#f4f1ea",
+    "sail2": "#f2c14e", "wave": "#5aa8d2",
 }
 
 N = 58          # plot size
@@ -194,6 +195,4 @@ def build():
 
 
 if __name__ == "__main__":
-    s = build()
-    print(len(s.v), s.bounds())
-    s.render(sys.argv[1] if len(sys.argv) > 1 else "lighthouse.png")
+    build().emit(P)

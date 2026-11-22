@@ -1,21 +1,22 @@
-import math
-import sys
+"""Mushroom house. Usage: python3 mushroom.py | rox apply --new - -o mushroom-house.rox"""
 
-from voxlib import Scene, hexc
+import math
+
+from voxlib import Scene
 
 P = {
-    "grass": hexc("8ccf5e"), "grass2": hexc("78bd4e"), "grass3": hexc("a3dc72"),
-    "soil": hexc("9a6a44"), "soil2": hexc("7d5436"), "root": hexc("5f3f28"),
-    "stem": hexc("f3e6c8"), "stem2": hexc("e6d4ae"), "stem3": hexc("d8c39a"),
-    "cap": hexc("e0483e"), "cap2": hexc("c63a33"), "cap_dk": hexc("9e2c2a"),
-    "spot": hexc("fbf3e4"), "gill": hexc("e9c9a0"),
-    "door": hexc("7a4a2c"), "door2": hexc("5f381f"), "knob": hexc("f2c14e"),
-    "window": hexc("ffe08a"), "frame": hexc("7a4a2c"),
-    "stone": hexc("b9b2a6"), "stone2": hexc("9d968a"),
-    "fence": hexc("c99b66"), "lantern": hexc("ffd25e"), "iron": hexc("3a3f4b"),
-    "flower_r": hexc("ff7a8a"), "flower_b": hexc("7ab8ff"), "flower_y": hexc("ffd34d"),
-    "leaf": hexc("4f9a48"), "pond": hexc("5fb7e0"), "pond2": hexc("8fd3ee"),
-    "small_cap": hexc("f29b38"), "small_cap2": hexc("8a6ad8"),
+    "grass": "#8ccf5e", "grass2": "#78bd4e", "grass3": "#a3dc72",
+    "soil": "#9a6a44", "soil2": "#7d5436", "root": "#5f3f28",
+    "stem": "#f3e6c8", "stem2": "#e6d4ae", "stem3": "#d8c39a",
+    "cap": "#e0483e", "cap2": "#c63a33", "cap_dk": "#9e2c2a",
+    "spot": "#fbf3e4", "gill": "#e9c9a0",
+    "door": "#7a4a2c", "door2": "#5f381f", "knob": "#f2c14e",
+    "window": "#ffe08a", "frame": "#7a4a2c",
+    "stone": "#b9b2a6", "stone2": "#9d968a",
+    "fence": "#c99b66", "lantern": "#ffd25e", "iron": "#3a3f4b",
+    "flower_r": "#ff7a8a", "flower_b": "#7ab8ff", "flower_y": "#ffd34d",
+    "leaf": "#4f9a48", "pond": "#5fb7e0", "pond2": "#8fd3ee",
+    "small_cap": "#f29b38", "small_cap2": "#8a6ad8",
 }
 
 
@@ -172,6 +173,4 @@ def build():
 
 
 if __name__ == "__main__":
-    s = build()
-    print(len(s.v), s.bounds())
-    s.render(sys.argv[1] if len(sys.argv) > 1 else "mushroom.png", tile=10)
+    build().emit(P)
