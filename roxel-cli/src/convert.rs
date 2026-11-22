@@ -40,7 +40,7 @@ pub fn convert(input: &Path, output: &Path) -> Result<()> {
     write(output, format, &model).with_context(|| format!("can't write {}", output.display()))
 }
 
-fn write(path: &Path, format: Format, model: &Model) -> Result<()> {
+pub fn write(path: &Path, format: Format, model: &Model) -> Result<()> {
     let grid = &model.grid;
     match (format, grid.bounding_box()) {
         (Format::Rox, _) => io::project::save(path, grid, model.palette.as_ref(), None),

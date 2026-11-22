@@ -4852,6 +4852,7 @@ dependencies = [
  "anyhow",
  "glam",
  "image",
+ "ron",
  "roxel-core",
  "serde",
  "serde_json",

@@ -1,6 +1,6 @@
 # Command Line
 
-`rox` is a command-line companion to Roxel. It reads Roxel projects and other voxel files without opening the app, so you can inspect or preview models from scripts, build tools or a terminal.
+`rox` is a command-line companion to Roxel. It reads Roxel projects and other voxel files without opening the app, so you can inspect, preview, convert or build models from scripts, build tools or a terminal.
 
 ## Installing
 
@@ -28,7 +28,7 @@ cargo install --git https://github.com/starzonmyarmz/roxel roxel-cli
 
 ## Supported files
 
-Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension. `rox convert` can also write `.glb`, `.obj` and `.svg`.
+Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension. `rox convert` and `rox apply` can also write `.glb`, `.obj` and `.svg`.
 
 ## `rox info`
 
@@ -93,6 +93,50 @@ Saves the model in another format, chosen by the output file's extension.
 | `.svg` | Vector image from the same camera angle as `rox render`'s default view |
 
 A `.rox` written by `rox convert` has no preview image. Open and save it in Roxel to add one.
+
+## `rox apply`
+
+```sh
+rox apply --new scene.ron -o scene.rox
+rox apply castle.rox tower.ron
+python gen.py | rox apply --new - -o scene.rox
+```
+
+Builds a model from a list of ops written in [RON](https://github.com/ron-rs/ron). Ops run on an existing model, or on an empty scene with `--new`, and the result is saved to `-o`. Without `-o` the input file is overwritten. Pass `-` instead of an ops file to read the ops from standard input, so a script can generate them.
+
+The output can be any format `rox convert` writes. If an op fails, nothing is written.
+
+```ron
+(
+  colors: { "soil": "#f6a82e", "grass": "#7ec63e", "leaves": "#7cbe3c", "trunk": "#603e28" },
+  ops: [
+    Box(min: (0, 0, 0), max: (47, 10, 47), color: "soil"),
+    Box(min: (0, 11, 0), max: (47, 11, 47), color: "grass"),
+    Cylinder(min: (22, 12, 22), max: (24, 20, 24), axis: Y, color: "trunk"),
+    Ellipsoid(min: (18, 18, 18), max: (28, 26, 28), color: "leaves"),
+    Line(from: (0, 12, 0), to: (10, 16, 4), color: "#ffffff"),
+    Clear(min: (20, 11, 26), max: (30, 11, 34)),
+    Recolor(from: "grass", to: "#5a9e30", within: (min: (0, 0, 0), max: (10, 20, 10))),
+    Voxels(color: "leaves", cells: [(1, 12, 1), (5, 12, 9)]),
+  ],
+)
+```
+
+Ops run in order, and later ones overwrite earlier ones. Points are `(x, y, z)` voxel coordinates, with `y` pointing up. Anything placed below `y = 0` is dropped, the same as in the app.
+
+| Op | Effect |
+| -- | ------ |
+| `Box(min, max, color)` | Fills every voxel from `min` to `max` |
+| `Cylinder(min, max, axis, color)` | Fills a cylinder that fits the box from `min` to `max`, running along `axis`: `X`, `Y` or `Z`. `axis` defaults to `Y`. |
+| `Ellipsoid(min, max, color)` | Fills an ellipsoid, or a sphere when every side is the same length, that fits the box from `min` to `max` |
+| `Line(from, to, color)` | Draws a line of voxels from `from` to `to`, both included |
+| `Clear(min, max)` | Removes every voxel from `min` to `max` |
+| `Recolor(from, to, within)` | Changes every voxel of color `from` to color `to`. `within` is optional and limits it to a box, written `(min: …, max: …)`. |
+| `Voxels(color, cells)` | Places a voxel at each point in `cells` |
+
+Boxes include both corners, so `Box(min: (0, 0, 0), max: (1, 1, 1), …)` fills 8 voxels. A shape can cover at most 16,777,216 voxels, the size of a 256 × 256 × 256 box.
+
+A color is a name from `colors` or an inline `#rrggbb` or `#rrggbbaa`. `colors` is optional. Its named colors are saved as the `.rox` file's palette, in the order listed, after any colors already in the input's palette.
 
 ## Exit status
 
