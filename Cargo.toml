@@ -3,7 +3,7 @@ members = ["roxel-core"]
 
 [package]
 name = "roxel"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 
 [[bin]]
@@ -12,8 +12,27 @@ path = "src/main.rs"
 
 [dependencies]
 roxel-core = { path = "roxel-core" }
-bevy = "0.20"
-bevy_egui = "0.43"
+bevy = { version = "0.20", default-features = false, features = [
+    "default_app",
+    "std",
+    "multi_threaded",
+    "bevy_winit",
+    "x11",
+    "wayland",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_post_process",
+    "bevy_pbr",
+    "bevy_gizmos_render",
+    "png",
+    "tonemapping_luts",
+] }
+bevy_egui = { version = "0.43", default-features = false, features = [
+    "manage_clipboard",
+    "open_url",
+    "default_fonts",
+    "render",
+] }
 bevy_panorbit_camera = { version = "0.36", features = ["bevy_egui"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -50,6 +69,10 @@ muda = "0.19"
 # Faster dev iteration: own crate at -O1, everything else at 0.
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
 
 # `cargo install cargo-bundle` then `cargo bundle --release` to produce Roxel.app.
 [package.metadata.bundle]

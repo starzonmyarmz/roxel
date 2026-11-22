@@ -49,7 +49,7 @@ jobs:
       - name: Install Bevy Linux deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
       - run: cargo clippy --workspace --all-targets --no-deps -- -D warnings
 
   test:
@@ -67,6 +67,6 @@ jobs:
       - name: Install Bevy Linux deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
       - name: cargo nextest
         run: cargo nextest run --workspace --no-fail-fast
