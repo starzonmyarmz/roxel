@@ -1,0 +1,16 @@
+[package]
+name = "roxel-cli"
+version = "1.0.1"
+edition = "2024"
+
+[[bin]]
+name = "rox"
+path = "src/main.rs"
+
+[dependencies]
+roxel-core = { path = "../roxel-core" }
+anyhow = "1"
+glam = "0.33"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

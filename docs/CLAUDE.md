@@ -21,6 +21,7 @@ When a change adds, removes, or alters **user-facing behavior**, update the matc
 | Theme, canvas color, floor grid, axis triad, color format, focus | `src/preferences.md`  |
 | First-run flow, install/packaging, platform launch quirks | `src/installation.md`        |
 | Onboarding-level overview, marquee feature                | `src/introduction.md` + `getting-started.md` |
+| A `rox` command, option or output field                   | `src/command-line.md`        |
 | A new feature area with no home above                     | new `src/<page>.md` + `SUMMARY.md` entry |
 
 ## Conventions

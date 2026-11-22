@@ -12,6 +12,7 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- New `rox` command-line tool: `rox info` prints a model's size and colors as JSON, and `rox render` saves an isometric PNG. See Command Line in the docs.
 - Smaller downloads: the macOS zip drops from 81 MB to 48 MB, and the Windows and Linux builds shrink too.
 
 ## [1.0.0] - 2026-11-21

@@ -8,12 +8,13 @@ Guidance for Claude Code working in this repo.
 - `cargo run --features dev` — faster link via Bevy shared lib
 - `cargo run --release` — release
 - `cargo check` — iterate with this, not `cargo build`
-- `cargo test --workspace` — unit tests (root crate + `roxel-core`)
+- `cargo test --workspace` — unit tests (root crate, `roxel-core`, `roxel-cli`)
+- `cargo run -p roxel-cli -- <args>` — the headless `rox` CLI
 - `cargo fmt` / `cargo clippy`
 
 ## Tests
 
-Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs` and `roxel-core/src/*.rs`. No `tests/` dir; the only lib target is `roxel-core`. Coverage focuses on pure logic (grid, history, shapes, picking, mesh, camera, theme, io::*). **Don't spin up a Bevy `App` in tests** — exercise pure functions. File-IO tests use `std::env::temp_dir()`; don't add `tempfile`.
+Tests are inline `#[cfg(test)] mod tests` at the bottom of each `src/*.rs` and `roxel-core/src/*.rs`. No `tests/` dir; the only lib target is `roxel-core` (`roxel-cli` tests live in its bin target). Coverage focuses on pure logic (grid, history, shapes, picking, mesh, camera, theme, io::*). **Don't spin up a Bevy `App` in tests** — exercise pure functions. File-IO tests use `std::env::temp_dir()`; don't add `tempfile`.
 
 **Always add/update tests when adding/modifying a feature** — `cargo test --workspace` is a pre-push gate.
 
@@ -40,7 +41,7 @@ Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml
 
 ## Architecture
 
-Single-window Bevy 0.20 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Two-crate workspace: the `roxel` binary (`src/main.rs`) and the `roxel-core` lib (grid, history, shapes, mesher, palettes and every file format, imported as `roxel::`).
+Single-window Bevy 0.20 app, `bevy_egui` UI, `bevy_panorbit_camera` viewport. Three-crate workspace: the `roxel` binary (`src/main.rs`), the `roxel-core` lib (grid, history, shapes, mesher, palettes, face projection and every file format, imported as `roxel::`), and `roxel-cli`, the headless `rox` binary (no Bevy renderer; `info` and `render`, the latter an ortho camera plus a depth-buffered rasterizer over `roxel::projection`). The CLI bin is `rox`, never `roxel`: it would collide with the app's `Roxel` bin on case-insensitive macOS.
 
 Documentation is split by subdirectory so context windows stay small — Claude Code lazy-loads each subdir's `CLAUDE.md` only when reading files in or under that directory. Open the relevant one before editing:
 

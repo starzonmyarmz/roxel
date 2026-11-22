@@ -19,6 +19,8 @@ pub struct ProjectedQuad {
     /// Cell-center view-space z (negative in front of the camera). Smaller
     /// (more negative) = further along the camera forward direction.
     pub cell_view_z: f32,
+    /// View-space z of each corner in `pts`.
+    pub depths: [f32; 4],
     pub color: [u8; 4],
     pub face_idx: usize,
 }
@@ -70,6 +72,7 @@ pub fn project_quads(
     let mut out = Vec::with_capacity(quads.len());
     for q in quads {
         let mut pts = [Vec2::ZERO; 4];
+        let mut depths = [0.0; 4];
         let mut behind = false;
         for (i, c) in q.corners.iter().enumerate() {
             let clip_pos = view_proj * Vec4::new(c.x, c.y, c.z, 1.0);
@@ -80,6 +83,7 @@ pub fn project_quads(
             let ndc_x = clip_pos.x / clip_pos.w;
             let ndc_y = clip_pos.y / clip_pos.w;
             pts[i] = Vec2::new(half.x + ndc_x * half.x, half.y - ndc_y * half.y);
+            depths[i] = (view * Vec4::new(c.x, c.y, c.z, 1.0)).z;
         }
         if behind {
             continue;
@@ -88,6 +92,7 @@ pub fn project_quads(
         out.push(ProjectedQuad {
             pts,
             cell_view_z: view_pos.z,
+            depths,
             color: q.color,
             face_idx: q.face_idx,
         });

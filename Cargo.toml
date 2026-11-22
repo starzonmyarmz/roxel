@@ -1,5 +1,5 @@
 [workspace]
-members = ["roxel-core"]
+members = ["roxel-core", "roxel-cli"]
 
 [package]
 name = "roxel"
