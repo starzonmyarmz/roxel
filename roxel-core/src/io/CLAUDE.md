@@ -19,6 +19,7 @@ Buttons disabled while `pending.is_active()`. **Never reintroduce sync `rfd::Fil
 - `grid::iter_occupied()` — `(IVec3, Color8)` over all chunks. Use in every exporter.
 - `grid::bounding_box()` — `Option<(min, max)>` inclusive.
 - `mesh_util::greedy_quads(grid, None, None)` — the renderer's greedy mesher (same-color faces merged, chunk by chunk). glTF and OBJ export through it. SVG walks unit faces itself: its painter's sort needs per-cell quads.
+- `projection::{collect_cell_quads, project_quads, shade_color}` — camera-facing unit faces, projected to pixels and flat-shaded. SVG export and the CLI's `rox render` share them.
 - `io::atomic::write` / `write_with` — temp file + fsync + rename. **Every file the app writes goes through it** (projects, exporters, palettes, recents, preferences, PNGs); never `fs::write`/`File::create` a user-visible file directly.
 - `io::reader::LeReader` / `BeReader` — the one bounds-checked binary reader (`Reader<const BE: bool>`). LE for qb/gox import and `.rox` load, BE for `.ase`.
 - `io::test_util::tmp_path(name, ext)` — `#[cfg(test)]` temp-file helper. Don't add `tempfile`.

@@ -1,9 +1,9 @@
 [workspace]
-members = ["roxel-core"]
+members = ["roxel-core", "roxel-cli"]
 
 [package]
 name = "roxel"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2024"
 
 [[bin]]
