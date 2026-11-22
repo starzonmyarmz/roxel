@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump the version in Cargo.toml and roxel-core/Cargo.toml, commit, tag, and push.
+# Bump the version in every workspace Cargo.toml, commit, tag, and push.
 # The "v*" tag push triggers .github/workflows/release.yml, which builds
 # the macOS/Windows/Linux artifacts, finalizes CHANGELOG.md, and creates the
 # GitHub Release. Nothing else to do locally.
@@ -35,8 +35,10 @@ cd "$repo_root"
 
 cargo_toml="Cargo.toml"
 core_toml="roxel-core/Cargo.toml"
+cli_toml="roxel-cli/Cargo.toml"
 [[ -f "$cargo_toml" ]] || { echo "no Cargo.toml at $repo_root" >&2; exit 1; }
 [[ -f "$core_toml" ]] || { echo "no $core_toml at $repo_root" >&2; exit 1; }
+[[ -f "$cli_toml" ]] || { echo "no $cli_toml at $repo_root" >&2; exit 1; }
 
 run() {
   if (( dry_run )); then
@@ -149,12 +151,13 @@ bump_manifest() {
 
 bump_manifest "$cargo_toml"
 bump_manifest "$core_toml"
+bump_manifest "$cli_toml"
 
 # Refresh Cargo.lock so the package entries match the new version.
 # `cargo update -p` is fast and doesn't touch unrelated deps.
-run cargo update -p roxel -p roxel-core --offline >/dev/null 2>&1 || run cargo update -p roxel -p roxel-core
+run cargo update -p roxel -p roxel-core -p roxel-cli --offline >/dev/null 2>&1 || run cargo update -p roxel -p roxel-core -p roxel-cli
 
-run git add "$cargo_toml" "$core_toml" Cargo.lock
+run git add "$cargo_toml" "$core_toml" "$cli_toml" Cargo.lock
 run git commit -m "chore: bump to $next"
 run git tag -a "$tag" -m "$tag"
 run git push origin main
