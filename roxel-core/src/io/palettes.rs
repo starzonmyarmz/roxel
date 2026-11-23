@@ -83,6 +83,10 @@ fn backup_path(p: &Path, unix_secs: u64) -> PathBuf {
 }
 
 pub fn load_from(p: &Path) -> Loaded {
+    load_from_with(p, super::config_writable())
+}
+
+fn load_from_with(p: &Path, writable: bool) -> Loaded {
     let text = match std::fs::read_to_string(p) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -111,7 +115,12 @@ pub fn load_from(p: &Path) -> Loaded {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             let backup = backup_path(p, secs);
-            let issue = match std::fs::rename(p, &backup) {
+            let moved = if writable {
+                std::fs::rename(p, &backup)
+            } else {
+                Err(std::io::Error::other("config files are read-only"))
+            };
+            let issue = match moved {
                 Ok(()) => LoadIssue::MovedAside { backup },
                 Err(_) => LoadIssue::SaveDisabled {
                     reason: parse_err.to_string(),
@@ -150,7 +159,7 @@ pub fn load() -> Loaded {
 }
 
 pub fn save(palettes: &[Palette]) {
-    if SAVE_DISABLED.load(Ordering::Relaxed) {
+    if SAVE_DISABLED.load(Ordering::Relaxed) || !super::config_writable() {
         return;
     }
     let Some(p) = path() else { return };
@@ -232,6 +241,20 @@ mod tests {
 
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(&backup);
+    }
+
+    #[test]
+    fn read_only_load_leaves_a_malformed_file_in_place() {
+        let p = tmp_path("palettes_malformed_read_only", "ron");
+        let corrupt = "not valid ron $$$";
+        std::fs::write(&p, corrupt).unwrap();
+
+        let loaded = load_from_with(&p, false);
+        assert!(loaded.palettes.is_empty());
+        assert!(matches!(loaded.issue, Some(LoadIssue::SaveDisabled { .. })));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), corrupt);
+
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

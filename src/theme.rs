@@ -763,6 +763,9 @@ pub fn load_preferences() -> Preferences {
 }
 
 pub fn save_preferences(prefs: &Preferences) {
+    if !roxel::io::config_writable() {
+        return;
+    }
     let Some(path) = prefs_path() else { return };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
