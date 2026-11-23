@@ -33,6 +33,8 @@ pub const ENV_VAR: &str = "ROXEL_CAPTURE";
 /// Share of the span between the inspector and the tool rail the model may
 /// fill sideways.
 const SIDE_FILL: f32 = 0.8;
+/// Smallest silhouette side, in points, the framing solver divides by.
+const MIN_SILHOUETTE: f32 = 1e-3;
 /// Frames the framed window must hold steady before the screenshot.
 const SETTLE_FRAMES: u32 = 30;
 /// Give up if the scene hasn't loaded, meshed and been captured by then.
@@ -459,7 +461,7 @@ pub fn frame(lens: &Lens, comp: &Composition, cells: &[IVec3]) -> Option<Orbit> 
     };
     for _ in 0..32 {
         let s = silhouette(lens, &orbit, cells)?;
-        let size = (s.max - s.min).max(Vec2::splat(1e-3));
+        let size = (s.max - s.min).max(Vec2::splat(MIN_SILHOUETTE));
         let scale = (comp.max_size.x / size.x).min(comp.max_size.y / size.y);
         let delta = comp.target - s.anchor(comp.mass);
         if (scale - 1.0).abs() < 1e-4 && delta.length() < 0.05 {
