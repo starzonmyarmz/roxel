@@ -65,9 +65,14 @@ const PREVIEW_LONG_EDGE: u32 = 800;
 /// Fraction of empty margin around the framed model.
 const FRAME_MARGIN: f32 = 0.18;
 
-/// Isometric view direction (camera sits at focus + this).
-fn iso_dir() -> Vec3 {
-    Vec3::new(1.0, 0.85, 1.0).normalize()
+/// Camera yaw that frames the model from the default isometric corner.
+pub const DEFAULT_YAW: f32 = std::f32::consts::FRAC_PI_4;
+
+/// Unit view direction (camera sits at focus + this) for a camera `yaw`
+/// around the model, in `bevy_panorbit_camera`'s convention.
+fn view_dir(yaw: f32) -> Vec3 {
+    let h = std::f32::consts::SQRT_2;
+    Vec3::new(yaw.sin() * h, 0.85, yaw.cos() * h).normalize()
 }
 
 /// Frames to wait between spawning the scene and requesting the screenshots,
@@ -197,6 +202,9 @@ pub struct ShotParams {
     /// World-space height the model floats above the ground.
     pub lift: f32,
     pub resolution: ResPreset,
+    /// Camera yaw around the model. The lights turn with it, so the shading
+    /// stays the same and only the model's side facing the camera changes.
+    pub yaw: f32,
 }
 
 impl Default for ShotParams {
@@ -211,6 +219,7 @@ impl Default for ShotParams {
             saturation: 1.0,
             lift: 0.0,
             resolution: ResPreset::Landscape,
+            yaw: DEFAULT_YAW,
         }
     }
 }
@@ -223,6 +232,7 @@ impl ShotParams {
         self.saturation != other.saturation
             || self.lift != other.lift
             || self.resolution.aspect() != other.resolution.aspect()
+            || self.yaw != other.yaw
     }
 }
 
@@ -591,7 +601,8 @@ fn build_scene(
     session.entities.push(ground_entity);
 
     // ---- Lighting + real cast shadow ----
-    let key_dir = Vec3::new(-0.5, -1.0, 0.32).normalize();
+    let turn = Quat::from_rotation_y(params.yaw - DEFAULT_YAW);
+    let key_dir = turn * Vec3::new(-0.5, -1.0, 0.32).normalize();
     let cascade = CascadeShadowConfigBuilder {
         num_cascades: 1,
         maximum_distance: scene_size * 4.0 + params.lift + 50.0,
@@ -619,7 +630,7 @@ fn build_scene(
                 shadow_maps_enabled: false,
                 ..default()
             },
-            Transform::IDENTITY.looking_to(Vec3::new(0.4, -0.5, -0.4).normalize(), Vec3::Y),
+            Transform::IDENTITY.looking_to(turn * Vec3::new(0.4, -0.5, -0.4).normalize(), Vec3::Y),
             light_layers,
         ))
         .id();
@@ -666,11 +677,11 @@ fn build_scene(
     let focus = (union_min + union_max) * 0.5;
     let corners = aabb_corners(union_min, union_max);
     let aspect = res.0 as f32 / res.1 as f32;
-    let look = Transform::from_translation(focus + iso_dir()).looking_at(focus, Vec3::Y);
+    let dir = view_dir(params.yaw);
+    let look = Transform::from_translation(focus + dir).looking_at(focus, Vec3::Y);
     let view_h = fit_ortho_height(&corners, look.rotation, aspect, FRAME_MARGIN);
     let dist = scene_size * 3.0 + params.lift + 50.0;
-    let cam_transform =
-        Transform::from_translation(focus + iso_dir() * dist).looking_at(focus, Vec3::Y);
+    let cam_transform = Transform::from_translation(focus + dir * dist).looking_at(focus, Vec3::Y);
 
     let image_a = images.add(Image::new_target_texture(
         res.0,
@@ -1083,6 +1094,23 @@ mod tests {
         let mut res = base.clone();
         res.resolution = ResPreset::Square;
         assert!(base.scene_differs(&res));
+        let mut yaw = base.clone();
+        yaw.yaw = 1.0;
+        assert!(base.scene_differs(&yaw));
+    }
+
+    #[test]
+    fn default_yaw_keeps_the_isometric_corner() {
+        let dir = view_dir(ShotParams::default().yaw);
+        assert!((dir - Vec3::new(1.0, 0.85, 1.0).normalize()).length() < 1e-6);
+    }
+
+    #[test]
+    fn yaw_turns_the_view_around_the_vertical_axis() {
+        let a = view_dir(DEFAULT_YAW);
+        let b = view_dir(DEFAULT_YAW + std::f32::consts::PI);
+        assert!((a.y - b.y).abs() < 1e-6);
+        assert!((a.x + b.x).abs() < 1e-6 && (a.z + b.z).abs() < 1e-6);
     }
 
     #[test]
