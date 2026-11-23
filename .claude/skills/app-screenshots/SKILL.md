@@ -1,64 +1,21 @@
 ---
 name: app-screenshots
-description: Take screenshots of the Roxel app with a model loaded (README/docs hero images, itch.io page, marketing) and export branded Roxel Shot PNGs. Use when asked to take, retake or refresh screenshots of the app or to make Roxel Shot images. Drives the user's mouse and keyboard on macOS, so it always warns first.
+description: Take screenshots of the Roxel app with a model loaded (README/docs hero images, itch.io page, marketing) and export branded Roxel Shot PNGs. Use when asked to take, retake or refresh screenshots of the app or to make Roxel Shot images.
 ---
 
 # Roxel app screenshots
 
-Drives a release build of Roxel with synthetic input, composes each shot
-like a designer would, and captures the window. macOS only. Scripts live in
-`scripts/` next to this file.
-
-## Rules
-
-- **Warn before touching the screen.** Every takeover starts with
-  `scripts/takeover.sh` (10 s countdown, a beep each second, a notification),
-  which also confirms Roxel is frontmost. Run it again after any pause where
-  the user may have used the machine. `roxctl` refuses to send input unless
-  Roxel is frontmost, so a click into another app aborts the run instead of
-  typing into it.
-- **Never edit the scene.** Camera moves run under the Select tool (`M`), so
-  a drag that loses its modifier only makes a selection. Shoot copies of the
-  scenes in a scratch folder and never save. If a scene changes, quit
-  without saving and regenerate it.
-- **Leave preferences as found.** `session.sh begin` backs up
-  `preferences.ron`; `session.sh end` quits Roxel and restores it. The
-  session flips the theme, hides the origin axes and changes `last_dir`.
-- Window is **1280×832** points (2560×1664 captures).
-- Default to a **clean idle canvas**: Brush selected, no selection, cursor
-  parked over the inspector, origin axes hidden. Mid-edit moments, the
-  command palette, modals or focus mode only when the user asks.
-
-## Design brief
-
-- **3 angles per model**, each in **light and dark** with identical framing,
-  so the user can choose. Make them vary: a hero 3/4 view, a low dramatic
-  angle, a higher overview or the opposite side. Not three nudges of the
-  same view.
-- **Show the front.** Find each model's front before choosing angles:
-  `rox render <scene> -o v.png --view 0..3` renders the four sides (view 0
-  is the editor's default isometric angle). Faces, doors and paths should
-  face the camera. A bunny seen from behind is a wasted shot.
-- **Optically center.** `frame.py` centers on a blend of the bounding box
-  and the model's visual-mass centroid (`--mass`), so a tall thin part
-  (a lighthouse tower) doesn't leave the heavy part looking off-center.
-  Look at every result; if it still feels lopsided, reshoot with
-  `--nudge-x` / `--nudge-y` (points) or adjust `--mass`. Don't let the
-  model run into the tool rail or the window edges.
-- **Detail shots** for complex models: zoom in on a focal area that shows
-  craft (a lighthouse lamp, a door, a waterfall, castle towers) with a 5th
-  spec field `fx,fy,steps` (see Shooting). Skip them on simple models
-  like the island or bunny; zooming into big plain voxels shows only flat
-  slabs.
-- Review contact sheets of everything before handing over; reshoot what
-  doesn't look good.
+Roxel has a hidden scripted capture mode: with `ROXEL_CAPTURE` set, it
+loads a scene, frames it, writes one PNG and quits. Nothing drives the
+mouse or keyboard. A window pops up on top for a few seconds without
+taking focus, and a shot takes about a second. Capture runs on default
+preferences plus the flags and never writes the user's preferences,
+recents or palettes. Scripts live in `scripts/` next to this file.
 
 ## Setup
 
 ```sh
 S=.claude/skills/app-screenshots/scripts
-mkdir -p .claude/skills/app-screenshots/.bin
-swiftc -O -o .claude/skills/app-screenshots/.bin/roxctl $S/roxctl.swift
 cargo build --release --workspace
 ```
 
@@ -70,96 +27,89 @@ python3 samples/generators/lighthouse.py | target/release/rox apply --new - -o $
 target/release/rox convert samples/bunny.vox $SCRATCH/bunny.rox
 ```
 
-Ghostty (or whatever runs the session) needs **Screen Recording** and
-**Accessibility** permission. Screen Recording only applies after the
-terminal is fully quit and reopened.
+## Design brief
+
+- **3 angles per model**, each in **light and dark** with identical framing,
+  so the user can choose. Make them vary: a hero 3/4 view, a low dramatic
+  angle, a higher overview or the opposite side. Not three nudges of the
+  same view.
+- **Show the front.** Find each model's front before choosing angles:
+  `rox render <scene> -o v.png --view 0..3` renders the four sides (view 0
+  is the editor's isometric angle, yaw 45). Faces, doors and paths should
+  face the camera. A bunny seen from behind is a wasted shot.
+- **Optically center.** Framing blends the bounding-box center with the
+  model's visual-mass centroid (`--mass`, default 0.15), centers it
+  between the inspector and the tool rail and fills 72% of the height
+  (`--fill`). Look at every result; if one still feels lopsided, reshoot
+  with `--nudge x,y` (points) or another `--mass`.
+- **Detail shots** for complex models: zoom in on a focal area that shows
+  craft (a lighthouse lamp, a door, a waterfall, castle towers). Skip them
+  on simple models like the island or bunny; zooming into big plain voxels
+  shows only flat slabs.
+- Default to a **clean idle canvas**: Brush selected, no selection, origin
+  axes hidden. Capture mode gives you exactly that.
+- Review the contact sheets before handing over; reshoot what doesn't look
+  good.
 
 ## Shooting
 
 ```sh
-$S/session.sh begin $SCRATCH/prefs
-$S/model.sh $SCRATCH/bunny.rox $SCRATCH/out a:-430:-10 b:-570:-50 c:-480:-90
-$S/session.sh end $SCRATCH/prefs
+$S/capture.sh $SCRATCH/lighthouse.rox $SCRATCH/out a:45:35 b:118:22 c:315:53 \
+  "d:45:35:--focus 0.5,0.87,0.5 --zoom 3"
 ```
 
-`model.sh` runs the countdown, relaunches Roxel on the scene at 1280×832
-and hides the origin axes. Then, for each
-`name:yaw:pitch[:frame args[:fx,fy,steps]]`, it runs `angle.sh`:
+Each `name:yaw:pitch[:more flags]` writes `<scene>-<name>-light.png` and
+`-dark.png` (2560×1664, a 1280×832 window at 2×), then
+`<scene>-sheet.png`. Read the sheet.
 
-1. Start from the isometric preset (Cmd+5) and right-drag by the yaw and
-   pitch pixels.
-2. Let `compose.sh` zoom and pan until `frame.py` is satisfied.
-3. Capture `<scene>-<name>-light.png` and `-dark.png` with identical
-   framing; the theme is switched through the command palette.
+One capture by hand:
 
-With the detail field, `angle.sh` zooms `steps` wheel steps (19 ≈ 2×) on
-the point at fraction (fx, fy) of the model's bounding box and centers it.
-For example, `d:0:0::0.5,0.13,19` zooms on the lighthouse lamp.
+```sh
+ROXEL_CAPTURE=1 target/release/Roxel scene.rox --capture out.png --yaw 45 --pitch 30 --theme dark
+```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `--yaw <deg>` | Orbit angle; 45 is the isometric preset, +90 turns a quarter to the right |
+| `--pitch <deg>` | Elevation; 35 is isometric, higher looks down more |
+| `--theme light\|dark` | Window captures only, default light |
+| `--size WxH` | Window points, default `1280x832` |
+| `--fill`, `--mass`, `--nudge x,y` | Framing, see the brief |
+| `--focus fx,fy,fz` | Detail shot on a fraction of the bounding box (y up from the floor) |
+| `--focus-voxel x,y,z` | Detail shot on a voxel |
+| `--zoom <n>` | Detail zoom, default 2 (radius ÷ n) |
+
+Pitch near 80 or more, or straight at a face with no yaw offset, flattens
+the model into an elevation. Keep some yaw off-axis.
 
 Angles that worked for the samples:
 
 | Model | Angles |
 | ----- | ------ |
-| bunny | `a:-430:-10 b:-570:-50 c:-400:-80` |
-| island | `a:-640:0 b:-540:-60 c:-780:70` |
-| mushroom-house | `a:40:-20 b:-200:-60 c:200:70 d:40:-20::0.52,0.55,19` |
-| lighthouse | `a:0:0 b:-260:-60 c:320:80 d:0:0::0.5,0.13,19` |
-| diorama | `a:0:0 b:-300:-50 c:120:90 d:0:0::0.75,0.76,19` |
-| castle | `a:0:0 b:-200:-70 c:420:60 d:0:0::0.54,0.3,19` |
+| bunny | `a:166:33 b:205:24 c:158:18` |
+| island | `a:225:35 b:197:22 c:264:50` |
+| mushroom-house | `a:34:31 b:101:22 c:349:50 "d:34:31:--focus 0.5,0.45,0.5 --zoom 2"` |
+| lighthouse | `a:45:35 b:118:22 c:315:53 "d:45:35:--focus 0.5,0.87,0.5 --zoom 3"` |
+| diorama | `a:45:35 b:129:24 c:11:55 "d:45:35:--focus 1,0.45,0.6 --zoom 2"` |
+| castle | `a:45:35 b:101:20 c:287:48 "d:45:35:--focus 0.5,0.75,0.5 --zoom 2"` |
 
-Pitch around −80 or below, looking straight at a face, flattens the model
-into an elevation. Keep some yaw off-axis.
-
-The detail zoom (pivot found from two bounding boxes, then wheel zoom) is
-approximate and untested on these scenes. Its one trial overshot (about
-3× for 22 steps) and landed off the focal point, so check every detail
-shot and adjust `fx,fy,steps`.
-
-Camera calibration at 1280×832:
-
-- **Yaw:** −320 px is one quarter turn, so view k ≈ −320·k px.
-- **Pitch:** positive pitch px raises the camera (looks down more);
-  negative lowers it.
-- **Pan:** follows the drag about 1:1. It is Space + left-drag, and the
-  drag events must carry motion deltas, which Bevy reads instead of
-  positions. `roxctl` sets them.
-- **Zoom:** one 20 px wheel step changes the model's size by about 3.7%.
-  The wheel zooms about the camera focus.
-- **Z+click zoom:** don't use it. Under synthetic input it was erratic,
-  6× on one run and about 0.6× on the next.
-- **Easing:** the camera eases after every move, so `compose.sh` captures
-  only once two probes in a row agree.
+The capture is the window's content only: no macOS title bar buttons and
+square corners.
 
 ## Roxel Shot exports
 
-Roxel Shot (`Export Shot` in the command palette) always renders from one
-isometric corner, ignoring the editor camera. To show a model's front,
-turn a copy: `rox convert` to `.vox`, `scripts/turn_vox.py in.vox out.vox
-<quarter-turns>`, `rox convert` back to `.rox`. One turn equals one
-`rox render --view` step.
-
-Curate the look per model instead of taking defaults, then export:
-
 ```sh
-$S/takeover.sh --launch $SCRATCH/turned/bunny.rox
-$S/shot.sh $SCRATCH/shots bunny aspect=3:4 style=radial strength=0.6 grain=0.15 vignette=0.3
+ROXEL_CAPTURE=1 target/release/Roxel scene.rox --export-shot bunny.png \
+  --yaw 225 --aspect 3:4 --style radial --strength 0.6 --grain 4 --vignette 0.3
 ```
 
-`shot.sh` resets the panel, clicks the knobs (sliders jump to a clicked
-point) and saves a `<name>.panel.png` preview. It then clicks **Export…**
-and fills the save panel.
+`--yaw` turns the shot camera (and its lights) around the model; 45 is the
+panel's default corner. The other flags set the panel's knobs: `--aspect
+4:3|1:1|16:9|3:4`, `--style solid|vertical|radial`, `--strength 0–1`,
+`--flip`, `--grain 0–24`, `--vignette 0–1`, `--saturation 0–1.5`,
+`--lift 0–8`, `--bg <hex>` (default: auto from the model).
 
-The save panel has two quirks:
-
-- **Slow to open:** it takes a few seconds, and keystrokes sent before it
-  appears land on the canvas as tool shortcuts. Cmd+A selects every voxel.
-  `roxctl dialog` waits for it.
-- **Ignores synthetic keys:** it ignores `roxctl` key events, so
-  `shot.sh` types there with System Events after re-checking focus.
-
-The panel can append a second `.png`; `shot.sh` renames it.
-
-Looks that suit the samples:
+Curate the look per model instead of taking defaults:
 
 | Model | Look |
 | ----- | ---- |
@@ -167,8 +117,7 @@ Looks that suit the samples:
 | compact dioramas | 1:1, radial |
 | wide scenes | 16:9, vertical |
 
-Grain at 0.1–0.2 and vignette at 0.25–0.4 add finish without getting
-muddy.
+Grain at 2–5 and vignette at 0.25–0.4 add finish without getting muddy.
 
 ## Repo images
 
@@ -180,8 +129,8 @@ muddy.
 | `.github/assets/roxel_cover.png` | itch.io cover, 630×500 |
 | `.github/assets/roxel_ss_light.jpg` / `roxel_ss_dark.jpg` | spare window shots |
 
-Hero shots keep the capture's transparent corners and get a drop shadow,
-so they sit on any page background. JPG would fill the corners:
+Hero shots get a drop shadow on a transparent background, so they sit on
+any page background:
 
 ```sh
 magick in.png -resize 1600x \( +clone -background black -shadow 35x24+0+16 \) \
