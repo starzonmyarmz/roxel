@@ -6,7 +6,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 **[Read the docs](https://starzonmyarmz.github.io/roxel/)** for a walkthrough, every tool and shortcut, and the supported file formats.
 
-![Roxel editing a lighthouse island scene](.github/assets/screenshot.jpg)
+![Roxel editing a lighthouse island scene](.github/assets/screenshot.png)
 
 ## Features
 
