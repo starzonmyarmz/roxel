@@ -39,7 +39,16 @@ A `.vox` file holds at most 255 colors. If your scene uses more, the most-used c
 
 **File → Export → Roxel Shot (PNG)…** (or "Export Shot" in the command palette) makes a polished image to share: your model, lit, on a soft background with a cast shadow and a small Roxel watermark.
 
-![A Roxel Shot of a lighthouse island on a vertical gradient background](images/roxel-shot.jpg)
+<div class="roxel-gallery">
+
+- [![A Roxel Shot of a lighthouse island](images/gallery/shot-lighthouse-thumb.jpg)](images/gallery/shot-lighthouse.jpg)
+- [![A Roxel Shot of a mushroom house](images/gallery/shot-mushroom-house-thumb.jpg)](images/gallery/shot-mushroom-house.jpg)
+- [![A Roxel Shot of a river diorama with a waterfall](images/gallery/shot-diorama-thumb.jpg)](images/gallery/shot-diorama.jpg)
+- [![A Roxel Shot of a castle](images/gallery/shot-castle-thumb.jpg)](images/gallery/shot-castle.jpg)
+- [![A Roxel Shot of a small island with a house](images/gallery/shot-island-thumb.jpg)](images/gallery/shot-island.jpg)
+- [![A Roxel Shot of a bunny](images/gallery/shot-bunny-thumb.jpg)](images/gallery/shot-bunny.jpg)
+
+</div>
 
 A panel shows a live preview next to these settings:
 

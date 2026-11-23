@@ -1,5 +1,7 @@
 # Palettes
 
+<a class="roxel-aside" href="images/screenshot.png" data-dark-href="images/screenshot-dark.png"><img src="images/gallery/crop-palette.jpg" alt="The Palette section of the inspector, with its … menu and a + button to add a swatch" width="243"></a>
+
 A palette is the set of colors you paint with. Roxel ships with classic pixel-art palettes and lets you build your own.
 
 ## Built-in palettes
