@@ -37,6 +37,7 @@ Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml
 
 - Cut releases with `scripts/release.sh <major|minor|patch>` on a clean, up-to-date `main`.
 - If `main` already has the bumped version, tag it by hand. Tags are **always** `v` + the exact `Cargo.toml` version, annotated: `git tag -a v0.14.0 -m v0.14.0 && git push origin v0.14.0`. A tag without the `v` (`0.14.0`) silently never triggers the workflow.
+- The release's `publish-homebrew` job renders the `rox` formula (`packaging/homebrew/rox.rb`) and the `Roxel.app` cask (`packaging/homebrew/roxel.rb`) by substituting their `@…@` placeholders, and pushes them to the shared `starzonmyarmz/homebrew-tap`. It needs the `HOMEBREW_TAP_TOKEN` secret. Edit them here, never in the tap.
 - Put release notes under `## [Unreleased]` in `CHANGELOG.md`. The workflow renames that section to the version; don't add version headings yourself.
 
 ## Architecture

@@ -1,5 +1,16 @@
 # Installation
 
+## Homebrew
+
+With [Homebrew](https://brew.sh), install the app (macOS) and the `rox` command-line tool (macOS and Linux x86_64):
+
+```sh
+brew install --cask starzonmyarmz/tap/roxel
+brew install starzonmyarmz/tap/rox
+```
+
+`brew upgrade` picks up new releases. The app's first launch is blocked the same way as a download, so follow [macOS — first launch](#macos--first-launch) once.
+
 ## Prebuilt downloads
 
 Each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) has these downloads. Grab the latest.
