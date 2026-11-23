@@ -4,6 +4,14 @@
 
 ## Installing
 
+On macOS or Linux (x86_64), install it with [Homebrew](https://brew.sh):
+
+```sh
+brew install starzonmyarmz/tap/rox
+```
+
+`brew upgrade` picks up new releases.
+
 Each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases) includes `rox` as its own download, separate from the app:
 
 | Platform | Download |

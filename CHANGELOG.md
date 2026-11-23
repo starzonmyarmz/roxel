@@ -12,6 +12,9 @@ the commit subjects since the previous tag.
 
 ## [Unreleased]
 
+- `rox` installs with Homebrew: `brew install starzonmyarmz/tap/rox`.
+- Roxel installs with Homebrew on macOS: `brew install --cask starzonmyarmz/tap/roxel`.
+
 ## [1.3.2] - 2026-11-22
 
 - New `rox` command-line tool: `rox info` prints a model's size and colors as JSON, and `rox render` saves an isometric PNG. Download it from the release as `rox-macos.zip`, `rox-windows.zip` or `rox-linux.tar.gz`.

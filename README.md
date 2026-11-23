@@ -33,6 +33,13 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 
 Prebuilt downloads for macOS (a universal `Roxel.app`), Windows (an installer, or a plain `Roxel.exe`) and Linux (a tarball with an install script) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases), along with the `rox` command-line tool for each platform and a `SHA256SUMS` file. They're also published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date. See [Installation](https://starzonmyarmz.github.io/roxel/installation.html) for each platform's steps.
 
+With [Homebrew](https://brew.sh), install the app (macOS) and the `rox` command-line tool (macOS and Linux x86_64):
+
+```sh
+brew install --cask starzonmyarmz/tap/roxel
+brew install starzonmyarmz/tap/rox
+```
+
 > [!WARNING]
 > **macOS builds are self-signed and not notarized.** Gatekeeper will block first launch — either as "unidentified developer" or, on recent macOS versions, as "damaged and can't be opened" (the quarantine attribute set on downloaded files). To bypass:
 >
