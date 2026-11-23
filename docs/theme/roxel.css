@@ -389,8 +389,8 @@ h1 img {
     content: url("{{ resource "images/roxel-banner-dark.png" }}");
 }
 
-:is(.navy, .coal, .ayu) .roxel-hero img[src$="screenshot.jpg"] {
-    content: url("{{ resource "images/screenshot-dark.jpg" }}");
+:is(.navy, .coal, .ayu) .roxel-hero img[src$="screenshot.png"] {
+    content: url("{{ resource "images/screenshot-dark.png" }}");
 }
 
 .roxel-hero img {
