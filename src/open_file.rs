@@ -31,11 +31,11 @@ fn drain(queue: &Mutex<Vec<PathBuf>>) -> Vec<PathBuf> {
     std::mem::take(&mut *guard)
 }
 
-/// Queue the file named in `argv`, if any, and register the macOS "open
-/// document" hook. Call once, on the main thread, before the Bevy event loop
-/// starts.
-pub fn install() {
-    if let Some(path) = path_from_args(std::env::args_os()) {
+/// Queue `scene`, or else the file named in `argv`, and register the macOS
+/// "open document" hook. Call once, on the main thread, before the Bevy event
+/// loop starts.
+pub fn install(scene: Option<PathBuf>) {
+    if let Some(path) = scene.or_else(|| path_from_args(std::env::args_os())) {
         OPEN_QUEUE
             .lock()
             .unwrap_or_else(|e| e.into_inner())

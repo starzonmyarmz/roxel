@@ -42,6 +42,9 @@ pub fn load() -> Vec<PathBuf> {
 }
 
 pub fn save(paths: &[PathBuf]) {
+    if !super::config_writable() {
+        return;
+    }
     let Some(p) = path() else { return };
     let _ = save_to(&p, paths);
 }
