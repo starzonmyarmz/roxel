@@ -29,6 +29,19 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Color readouts and inputs in Hex, RGB, HSL, HSB or OKLCH
 - Canvas-first UI: a single left inspector with floating tool island and (on Win/Linux) a top-center menu pill, all hideable for focus mode
 
+## Roxel Shots
+
+**File → Export → Roxel Shot (PNG)…** turns a model into a lit, framed image for sharing. These were all made with it:
+
+<p>
+  <img src=".github/assets/shots/lighthouse.jpg" alt="Roxel Shot of a lighthouse island" height="200">
+  <img src=".github/assets/shots/mushroom-house.jpg" alt="Roxel Shot of a mushroom house" height="200">
+  <img src=".github/assets/shots/diorama.jpg" alt="Roxel Shot of a river diorama with a waterfall" height="200">
+  <img src=".github/assets/shots/castle.jpg" alt="Roxel Shot of a castle" height="200">
+  <img src=".github/assets/shots/island.jpg" alt="Roxel Shot of a small island with a house" height="200">
+  <img src=".github/assets/shots/bunny.jpg" alt="Roxel Shot of a bunny" height="200">
+</p>
+
 ## Install
 
 Prebuilt downloads for macOS (a universal `Roxel.app`), Windows (an installer, or a plain `Roxel.exe`) and Linux (a tarball with an install script) are attached to each [GitHub Release](https://github.com/starzonmyarmz/roxel/releases), along with the `rox` command-line tool for each platform and a `SHA256SUMS` file. They're also published to [itch.io](https://starzonmyarmz.itch.io/roxel), where the [itch app](https://itch.io/app) keeps them up to date. See [Installation](https://starzonmyarmz.github.io/roxel/installation.html) for each platform's steps.
