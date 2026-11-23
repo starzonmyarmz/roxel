@@ -12,7 +12,7 @@ MIT licensed: free to use, fork, and build on.
 
 <div class="roxel-hero">
 
-![Roxel editing a diorama scene](images/screenshot.jpg)
+![Roxel editing a lighthouse island scene](images/screenshot.jpg)
 
 </div>
 
