@@ -37,7 +37,11 @@ A `.vox` file holds at most 255 colors. If your scene uses more, the most-used c
 
 ## Export Shot
 
-**File → Export → Roxel Shot (PNG)…** (or "Export Shot" in the command palette) makes a polished image to share: your model, lit, on a soft background with a cast shadow and a small Roxel watermark. A panel shows a live preview next to these settings:
+**File → Export → Roxel Shot (PNG)…** (or "Export Shot" in the command palette) makes a polished image to share: your model, lit, on a soft background with a cast shadow and a small Roxel watermark.
+
+![A Roxel Shot of a lighthouse island on a vertical gradient background](images/roxel-shot.jpg)
+
+A panel shows a live preview next to these settings:
 
 - **Aspect** — 4:3, 1:1, 16:9 or 3:4. The export is about 2000 pixels on its long side.
 - **Background** — solid, vertical or radial gradient, with strength and direction. The color comes from the model's most vivid color, or pick your own.
