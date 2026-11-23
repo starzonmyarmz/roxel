@@ -1,5 +1,7 @@
 # Tools
 
+<a class="roxel-aside" href="images/screenshot.png" data-dark-href="images/screenshot-dark.png"><img src="images/gallery/crop-tools.jpg" alt="The tool island: Brush, Erase, Paint, Eyedropper, Shape, Select and Move" width="110"></a>
+
 Roxel has seven tools, reachable from the floating tool island or by keyboard. Left-mouse drag in the viewport applies the current tool.
 
 ## Brush — `B`

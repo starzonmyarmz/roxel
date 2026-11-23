@@ -33,6 +33,24 @@ Roxel reads and writes the common voxel formats (MagicaVoxel, Qubicle, Goxel) an
 
 </div>
 
+## Gallery
+
+Models built in Roxel, up close and as a whole. Click one to see the full window.
+
+<div class="roxel-gallery">
+
+- [![The lamp room at the top of a lighthouse](images/gallery/lighthouse-d-thumb.jpg)](images/gallery/lighthouse-d.png)
+- [![A waterfall spilling off the edge of a river diorama](images/gallery/diorama-d-thumb.jpg)](images/gallery/diorama-d.png)
+- [![The front door of a mushroom house](images/gallery/mushroom-house-d-thumb.jpg)](images/gallery/mushroom-house-d.png)
+- [![Castle towers with blue roofs and red flags](images/gallery/castle-d-thumb.jpg)](images/gallery/castle-d.png)
+- [![A castle on a grassy hill](images/gallery/castle-b-thumb.jpg)](images/gallery/castle-b.png)
+- [![A mushroom house in a fenced garden](images/gallery/mushroom-house-a-thumb.jpg)](images/gallery/mushroom-house-a.png)
+- [![A river diorama with tall trees, in the dark theme](images/gallery/diorama-b-thumb.jpg)](images/gallery/diorama-b.png)
+- [![A bunny, in the dark theme](images/gallery/bunny-a-thumb.jpg)](images/gallery/bunny-a.png)
+- [![A small island with a red-roofed house](images/gallery/island-b-thumb.jpg)](images/gallery/island-b.png)
+
+</div>
+
 ## Where to go next
 
 - New here? Start with [Installation](installation.md), then [Getting Started](getting-started.md).

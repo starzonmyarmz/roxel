@@ -176,6 +176,7 @@ muddy.
 | ---- | ------- |
 | `.github/assets/screenshot.png` | README hero |
 | `docs/src/images/screenshot.png` / `screenshot-dark.png` | docs introduction (CSS swaps in dark) |
+| `docs/src/images/gallery/*` | docs thumbnails that open in a lightbox: intro gallery, Roxel Shots, panel crops |
 | `.github/assets/roxel_cover.png` | itch.io cover, 630×500 |
 | `.github/assets/roxel_ss_light.jpg` / `roxel_ss_dark.jpg` | spare window shots |
 
@@ -186,6 +187,12 @@ so they sit on any page background. JPG would fill the corners:
 magick in.png -resize 1600x \( +clone -background black -shadow 35x24+0+16 \) \
   +swap -background none -layers merge +repage out.png
 ```
+
+Rebuild the docs gallery with
+`$S/docs-gallery.sh <picks dir> <roxel-shots dir>`. It expects the picked
+captures by name (`lighthouse-d-light.png`, …) and crops the panels from
+`lighthouse-a-{light,dark}.png`. Change the crop offsets if the UI layout
+moves.
 
 Write the spare JPGs with `magick in.png -resize 1600x -quality 82 -strip out.jpg`.
 itch.io images are uploaded by hand; put a copy of everything in a

@@ -14,12 +14,14 @@ An RGB axis triad marks the world origin so you know which way is which on an em
 
 ## Moving the camera
 
+<a class="roxel-aside" href="images/screenshot.png" data-dark-href="images/screenshot-dark.png"><img src="images/gallery/crop-cube.jpg" alt="The orientation cube" width="118"></a>
+
 - **Right-mouse drag** — orbit
 - **Scroll** — zoom
 - **`Space` + left-drag** — pan (Figma / Photoshop style)
 - **`Cmd/Ctrl + 0`** — frame the view on your voxels (panel-aware)
 
-The default angle is isometric.
+The default angle is isometric. The orientation cube in the top-right corner orbits when you drag it; click one of its faces to look straight at that side.
 
 ## Placing your first voxels
 

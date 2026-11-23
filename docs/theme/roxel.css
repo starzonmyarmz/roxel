@@ -393,8 +393,172 @@ h1 img {
     content: url("{{ resource "images/screenshot-dark.png" }}");
 }
 
+:is(.navy, .coal, .ayu) .roxel-aside img {
+    &[src$="crop-tools.jpg"] {
+        content: url("{{ resource "images/gallery/crop-tools-dark.jpg" }}");
+    }
+
+    &[src$="crop-palette.jpg"] {
+        content: url("{{ resource "images/gallery/crop-palette-dark.jpg" }}");
+    }
+
+    &[src$="crop-cube.jpg"] {
+        content: url("{{ resource "images/gallery/crop-cube-dark.jpg" }}");
+    }
+}
+
 .roxel-hero img {
     margin-block: 2.4rem;
+}
+
+.roxel-gallery ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(20rem, calc(50% - 0.6rem)), 1fr));
+    gap: 1.2rem;
+    padding: 0;
+    list-style: none;
+
+    & li {
+        margin: 0;
+    }
+
+    & a {
+        display: block;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        cursor: zoom-in;
+    }
+
+    & img {
+        width: 100%;
+        transition: scale 0.2s ease;
+    }
+
+    & a:hover img {
+        scale: 1.04;
+    }
+}
+
+.content a.roxel-aside {
+    float: inline-end;
+    margin: 0.4rem 0 1.6rem 2.4rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: zoom-in;
+}
+
+.roxel-lightbox {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+
+    &::backdrop {
+        background: rgb(10 10 12 / 0.9);
+        backdrop-filter: blur(8px);
+    }
+
+    & figure {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.2rem;
+        height: 100%;
+        margin: 0;
+        padding: 6rem 8rem;
+        box-sizing: border-box;
+    }
+
+    & img {
+        min-height: 0;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    & figcaption {
+        color: #DCE1EB;
+        font-size: 1.4rem;
+        text-align: center;
+    }
+
+    & button {
+        position: fixed;
+        display: grid;
+        place-items: center;
+        width: 4.4rem;
+        height: 4.4rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: rgb(255 255 255 / 0.12);
+        color: #FFFFFF;
+        cursor: pointer;
+
+        &:hover {
+            background: rgb(255 255 255 / 0.22);
+        }
+    }
+
+    & svg {
+        width: 2.4rem;
+        height: 2.4rem;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    & .roxel-lightbox-close {
+        inset-block-start: 1.6rem;
+        inset-inline-end: 1.6rem;
+    }
+
+    & .roxel-lightbox-prev,
+    & .roxel-lightbox-next {
+        inset-block-start: calc(50% - 2.2rem);
+    }
+
+    & .roxel-lightbox-prev {
+        inset-inline-start: 1.6rem;
+    }
+
+    & .roxel-lightbox-next {
+        inset-inline-end: 1.6rem;
+    }
+
+    &.roxel-lightbox-single :is(.roxel-lightbox-prev, .roxel-lightbox-next) {
+        display: none;
+    }
+}
+
+html:has(.roxel-lightbox[open]) {
+    overflow: hidden;
+}
+
+@media (max-width: 600px) {
+    .content a.roxel-aside {
+        float: none;
+        display: inline-block;
+        margin-inline-start: 0;
+    }
+
+    .roxel-lightbox figure {
+        padding-inline: 1.6rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .roxel-gallery img {
+        transition: none;
+    }
 }
 
 .roxel-cta {
