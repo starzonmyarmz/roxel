@@ -29,7 +29,7 @@ pub use palette::{
     save_as_new,
 };
 pub use shortcuts::ShortcutsWindow;
-pub use toast::{Toasts, toast_lifetime_system};
+pub use toast::{ToastKind, Toasts, toast_lifetime_system};
 pub use visibility::UiVisible;
 
 use crate::gizmo::{GizmoDrag, GizmoRect};

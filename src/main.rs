@@ -2,6 +2,7 @@
 
 mod actions;
 mod camera;
+mod capture;
 mod clipboard;
 mod crash_log;
 mod gizmo;
@@ -90,7 +91,15 @@ use roxel::history::History;
 
 fn main() {
     crash_log::install();
-    let prefs = load_preferences();
+    let capture = crate::capture::from_env();
+    let prefs = match &capture {
+        Some(args) => {
+            roxel::io::set_config_read_only();
+            crate::capture::preferences(args)
+        }
+        None => load_preferences(),
+    };
+    let window_size = capture.as_ref().map_or(UVec2::new(1280, 800), |a| a.size);
     let theme = resolve_theme(prefs.theme);
     let initial_shape = ShapeOptions {
         primitive: prefs.last_shape,
@@ -111,13 +120,25 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Roxel".into(),
-                resolution: (1280u32, 800u32).into(),
+                resolution: (window_size.x, window_size.y).into(),
+                focused: capture.is_none(),
+                // macOS skips drawing a window hidden behind others, which
+                // leaves an unfocused capture blank.
+                window_level: if capture.is_some() {
+                    bevy::window::WindowLevel::AlwaysOnTop
+                } else {
+                    bevy::window::WindowLevel::Normal
+                },
                 #[cfg(target_os = "macos")]
                 titlebar_transparent: true,
                 #[cfg(target_os = "macos")]
                 titlebar_show_title: false,
                 #[cfg(target_os = "macos")]
                 fullsize_content_view: true,
+                ..default()
+            }),
+            primary_cursor_options: Some(bevy::window::CursorOptions {
+                hit_test: capture.is_none(),
                 ..default()
             }),
             close_when_requested: false,
@@ -324,11 +345,29 @@ fn main() {
         ),
     );
 
+    let scene = capture.as_ref().map(|a| a.scene.clone());
+    if let Some(args) = capture {
+        app.insert_resource(crate::capture::Capture::new(args))
+            .add_systems(
+                Update,
+                crate::capture::capture_system
+                    .after(regenerate_mesh_system)
+                    .after(frame_view_system)
+                    .after(apply_recenter_system)
+                    .after(apply_pending_view_preset_system)
+                    .after(update_zoom_limits_system)
+                    .after(poll_png_writes_system)
+                    .after(crate::shot::shot_system),
+            );
+    }
+
     // Register the OS "open document" hook before the event loop starts so a
     // double-clicked `.rox` (delivered as an Apple Event on macOS) is captured.
-    crate::open_file::install();
+    crate::open_file::install(scene);
 
-    app.run();
+    if let AppExit::Error(code) = app.run() {
+        std::process::exit(code.get().into());
+    }
 }
 
 fn setup_scene(

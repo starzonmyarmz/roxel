@@ -184,7 +184,7 @@ fn preview_dims(res: ResPreset) -> (u32, u32) {
 
 /// All art-direction knobs. `Default` reproduces the phase-1 look (solid
 /// hero-color background, full saturation, no lift, default vignette).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct ShotParams {
     pub gradient: GradientMode,
     /// Gradient spread (0 = flat, 1 = full lighten/darken sweep).
@@ -350,6 +350,10 @@ pub struct ShotSession {
 }
 
 impl ShotSession {
+    pub fn is_idle(&self) -> bool {
+        matches!(self.phase, ShotPhase::Idle)
+    }
+
     fn reset(&mut self) {
         self.phase = ShotPhase::Idle;
         self.target = None;
