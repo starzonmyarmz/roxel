@@ -174,11 +174,19 @@ muddy.
 
 | File | Used by |
 | ---- | ------- |
-| `.github/assets/screenshot.jpg` | README hero |
-| `docs/src/images/screenshot.jpg` / `screenshot-dark.jpg` | docs introduction (CSS swaps in dark) |
+| `.github/assets/screenshot.png` | README hero |
+| `docs/src/images/screenshot.png` / `screenshot-dark.png` | docs introduction (CSS swaps in dark) |
 | `.github/assets/roxel_cover.png` | itch.io cover, 630×500 |
 | `.github/assets/roxel_ss_light.jpg` / `roxel_ss_dark.jpg` | spare window shots |
 
-Write JPGs with `magick in.png -resize 1600x -quality 82 -strip out.jpg`.
+Hero shots keep the capture's transparent corners and get a drop shadow,
+so they sit on any page background. JPG would fill the corners:
+
+```sh
+magick in.png -resize 1600x \( +clone -background black -shadow 35x24+0+16 \) \
+  +swap -background none -layers merge +repage out.png
+```
+
+Write the spare JPGs with `magick in.png -resize 1600x -quality 82 -strip out.jpg`.
 itch.io images are uploaded by hand; put a copy of everything in a
 Desktop folder for the user.
