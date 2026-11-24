@@ -110,17 +110,25 @@ matching itch.io channels (the app only, not `rox`) with
 [butler](https://itch.io/docs/butler/). The push needs a `BUTLER_API_KEY`
 repository secret (from `butler login`, or an itch.io API key).
 
-To cut a release, run `scripts/release.sh <major|minor|patch>` on an
-up-to-date `main`. It bumps `Cargo.toml`, `roxel-core/Cargo.toml` and `roxel-cli/Cargo.toml`, commits, tags and pushes. Bumping
-the version alone doesn't release anything: only the `v*` tag push does. If
-`main` already carries the bumped version, tag it instead:
+To cut a release, run `scripts/release` on an up-to-date `main`
+(`--dry-run` previews it). Commits since the last tag decide the bump:
 
-```sh
-git tag -a v0.14.0 -m v0.14.0
-git push origin v0.14.0
-```
+| Commits since the last tag | Bump |
+|---|---|
+| any `!` or `BREAKING CHANGE:` footer | major |
+| any `feat` | minor |
+| any `fix`, `perf` or `revert` | patch |
+| only other types | no release |
 
-The workflow lives at `.github/workflows/release.yml`. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds and the Linux install steps.
+Pass `patch`, `minor`, `major` or an exact version to override it. The
+script writes the version to `[workspace.package]` in `Cargo.toml`, turns
+`[Unreleased]` in `CHANGELOG.md` into the new version's section, commits
+`chore(Release): X.Y.Z`, tags `vX.Y.Z` and pushes. Only the tag push
+releases anything, and the workflow fails if the tag doesn't match
+`Cargo.toml`. The release notes are that version's changelog section.
+
+The workflow lives at `.github/workflows/release.yml`. It needs the
+`HOMEBREW_TAP_TOKEN` and `BUTLER_API_KEY` secrets. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds and the Linux install steps.
 
 ## File format
 

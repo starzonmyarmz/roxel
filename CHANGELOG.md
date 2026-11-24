@@ -1,16 +1,12 @@
 # Changelog
 
-All notable changes to Roxel are recorded here. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+What changed for people using Roxel, newest first. Code-only work stays in the git history.
 
-Add bullets under `## [Unreleased]` as you land work. When a `v*` tag is
-pushed, `.github/workflows/release.yml` renames the section to the new
-version + date, commits the result back to `main`, and uses the same
-bullets for the GitHub Release notes. If Unreleased is empty, it fills in
-the commit subjects since the previous tag.
+Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed, as you land work. `scripts/release` renames the section to the new version + date, and the release workflow uses the same bullets for the GitHub Release notes.
 
 ## [Unreleased]
+
+### Added
 
 - `rox` installs with Homebrew: `brew install starzonmyarmz/tap/rox`.
 - Roxel installs with Homebrew on macOS: `brew install --cask starzonmyarmz/tap/roxel`.
