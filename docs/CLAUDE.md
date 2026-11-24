@@ -2,7 +2,7 @@
 
 User-facing docs. Plain markdown in `docs/src/`, rendered by **mdBook** (`book.toml`), deployed to GitHub Pages by `.github/workflows/docs.yml`. Content is generator-agnostic — the `.md` files survive any future swap to another site generator; only `book.toml` + `src/SUMMARY.md` are mdBook-specific.
 
-This is end-user documentation (how to *use* Roxel), **not** developer docs. No internal architecture, no `src/` module talk — that's the `CLAUDE.md` files under `src/`.
+This is end-user documentation (how to *use* Roxel), **not** developer docs. No internal architecture, no `src/` module talk — that's `AGENTS.md` and the `CLAUDE.md` files under `src/`.
 
 ## The keep-current rule
 

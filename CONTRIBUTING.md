@@ -44,7 +44,7 @@ it automatically the first time you build.
 - **No sync `rfd::FileDialog`.** It blocks winit's event loop on macOS. All
   file dialogs go through `PendingDialog` + `poll_dialogs_system`.
 
-See `CLAUDE.md` for the deeper architecture tour.
+See `AGENTS.md` for the deeper architecture tour.
 
 ## Commit style
 
