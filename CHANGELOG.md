@@ -6,6 +6,8 @@ Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-24
+
 ### Added
 
 - `rox` installs with Homebrew: `brew install starzonmyarmz/tap/rox`.
