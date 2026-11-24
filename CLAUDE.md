@@ -33,12 +33,13 @@ CI re-runs all three (fmt, clippy `-D warnings`, test), so `--no-verify` is caug
 
 ## Releases
 
-Only a pushed `v*` tag runs `.github/workflows/release.yml`. Bumping `Cargo.toml` alone releases nothing.
+Releases happen only when asked. Never bump, tag or publish on your own.
 
-- Cut releases with `scripts/release.sh <major|minor|patch>` on a clean, up-to-date `main`.
-- If `main` already has the bumped version, tag it by hand. Tags are **always** `v` + the exact `Cargo.toml` version, annotated: `git tag -a v0.14.0 -m v0.14.0 && git push origin v0.14.0`. A tag without the `v` (`0.14.0`) silently never triggers the workflow.
+- `scripts/release [auto|patch|minor|major|X.Y.Z] [--dry-run]` works out the bump from commits since the last tag, writes `[workspace.package] version` in `Cargo.toml`, turns `## [Unreleased]` into the version's section, commits `chore(Release): X.Y.Z`, tags `vX.Y.Z` and pushes. It stops if `[Unreleased]` is empty while there are `feat`/`fix`/`perf` commits.
+- Only the pushed `v*` tag runs `.github/workflows/release.yml`. It fails when the tag doesn't match `Cargo.toml`, and uses `scripts/changelog-notes` for the release body. A tag without the `v` (`0.14.0`) silently never triggers the workflow.
+- Breaking, for the bump, means `.rox` files or `preferences.ron` that no longer open, or changed `rox` flags or output.
 - The release's `publish-homebrew` job renders the `rox` formula (`packaging/homebrew/rox.rb`) and the `Roxel.app` cask (`packaging/homebrew/roxel.rb`) by substituting their `@…@` placeholders, and pushes them to the shared `starzonmyarmz/homebrew-tap`. It needs the `HOMEBREW_TAP_TOKEN` secret. Edit them here, never in the tap.
-- Put release notes under `## [Unreleased]` in `CHANGELOG.md`. The workflow renames that section to the version; don't add version headings yourself.
+- Put release notes under `## [Unreleased]` in `CHANGELOG.md`. `scripts/release` renames that section to the version; don't add version headings yourself.
 
 ## Architecture
 

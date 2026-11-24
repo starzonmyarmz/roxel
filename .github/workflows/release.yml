@@ -155,78 +155,28 @@ jobs:
             rox-*.zip
             rox-*.tar.gz
 
-  changelog:
+  release:
+    needs: [build, macos-universal]
     runs-on: ubuntu-latest
-    outputs:
-      notes_path: release-notes.md
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Finalize CHANGELOG.md
-        env:
-          TAG_NAME: ${{ github.ref_name }}
+      - name: Check the tag matches Cargo.toml and write the notes
         run: |
-          set -e
-          VERSION="${TAG_NAME#v}"
-          DATE="$(date -u +%Y-%m-%d)"
-          PREV_TAG="$(git tag --sort=-version:refname | grep -v "^${TAG_NAME}\$" | head -n 1 || true)"
-          if [ -n "$PREV_TAG" ]; then RANGE="${PREV_TAG}..${TAG_NAME}"; else RANGE="$TAG_NAME"; fi
-          git log --pretty=format:'- %s' "$RANGE" > /tmp/bullets.txt
-          VERSION="$VERSION" DATE="$DATE" python3 <<'PY'
-          import os, pathlib
-          version = os.environ["VERSION"]
-          date = os.environ["DATE"]
-          path = pathlib.Path("CHANGELOG.md")
-          text = path.read_text()
-          lines = text.splitlines(keepends=True)
-          out, i, header = [], 0, f"## [{version}] - {date}\n"
-          bullets = None
-          while i < len(lines):
-              line = lines[i]
-              if bullets is None and line.startswith("## [Unreleased]"):
-                  i += 1
-                  body = []
-                  while i < len(lines) and not lines[i].startswith("## "):
-                      body.append(lines[i])
-                      i += 1
-                  bullets = "".join(body).strip()
-                  if not bullets:
-                      bullets = pathlib.Path("/tmp/bullets.txt").read_text().strip()
-                  bullets += "\n"
-                  out += [line, "\n", header, "\n", bullets]
-                  if i < len(lines):
-                      out.append("\n")
-                  continue
-              out.append(line)
-              i += 1
-          if bullets is None:
-              raise SystemExit("CHANGELOG.md has no '## [Unreleased]' section")
-          path.write_text("".join(out))
-          pathlib.Path("release-notes.md").write_text(header + "\n" + bullets)
-          PY
-      - name: Commit + push to main
-        env:
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          if ! git diff --cached --quiet; then
-            git commit -m "docs: finalize CHANGELOG for ${TAG_NAME} [skip ci]"
-            git push origin main
-          fi
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-notes
-          path: release-notes.md
-
-  release:
-    needs: [build, macos-universal, changelog]
-    runs-on: ubuntu-latest
-    steps:
+          set -euo pipefail
+          source scripts/version.sh
+          version="${GITHUB_REF_NAME#v}"
+          [[ "$(read_version)" == "$version" ]] || {
+            echo "::error::tag $GITHUB_REF_NAME doesn't match Cargo.toml version $(read_version)"
+            exit 1
+          }
+          scripts/changelog-notes "$version" > release-notes.md
+          [[ -s release-notes.md ]] || {
+            echo "::error::CHANGELOG.md has no [$version] section"
+            exit 1
+          }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          [[ "$version" == *-* ]] && prerelease=true || prerelease=false
+          echo "PRERELEASE=$prerelease" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -238,11 +188,13 @@ jobs:
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
+          name: Roxel ${{ env.VERSION }}
+          prerelease: ${{ env.PRERELEASE }}
           files: |
             dist/Roxel-*
             dist/rox-*
             dist/SHA256SUMS
-          body_path: dist/release-notes.md
+          body_path: release-notes.md
 
   publish-homebrew:
     needs: release

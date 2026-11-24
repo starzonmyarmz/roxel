@@ -54,6 +54,8 @@ explains *why* when it isn't obvious from the diff. Types in use: `feat`,
 
 ## Releases
 
-Tag with `v*` and push. `.github/workflows/release.yml` builds macOS,
-Windows and Linux artifacts, renames the `Unreleased` section in `CHANGELOG.md` to
-the new version + date, and publishes a GitHub Release.
+The maintainer runs `scripts/release`, which works out the version from the
+commits, turns `## [Unreleased]` in `CHANGELOG.md` into that version's
+section, tags and pushes. The tag runs `.github/workflows/release.yml`,
+which builds the macOS, Windows and Linux artifacts and publishes a GitHub
+Release with that section as its notes.
