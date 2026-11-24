@@ -5,13 +5,13 @@ class Rox < Formula
 
   on_macos do
     url "https://github.com/starzonmyarmz/roxel/releases/download/v@VERSION@/rox-macos.zip"
-    sha256 "@MACOS_SHA256@"
+    sha256 "@SHA256:rox-macos.zip@"
   end
 
   on_linux do
     on_intel do
       url "https://github.com/starzonmyarmz/roxel/releases/download/v@VERSION@/rox-linux.tar.gz"
-      sha256 "@LINUX_SHA256@"
+      sha256 "@SHA256:rox-linux.tar.gz@"
     end
   end
 

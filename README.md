@@ -128,7 +128,10 @@ releases anything, and the workflow fails if the tag doesn't match
 `Cargo.toml`. The release notes are that version's changelog section.
 
 The workflow lives at `.github/workflows/release.yml`. It needs the
-`HOMEBREW_TAP_TOKEN` and `BUTLER_API_KEY` secrets. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds and the Linux install steps.
+`BUTLER_API_KEY` secret. The Homebrew formula and cask in
+`packaging/homebrew/` are picked up by
+[starzonmyarmz/homebrew-tap](https://github.com/starzonmyarmz/homebrew-tap),
+which renders them from each new release. See [Install](#install) for first-run bypass on unsigned macOS / Windows builds and the Linux install steps.
 
 ## File format
 

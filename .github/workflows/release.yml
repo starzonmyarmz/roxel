@@ -196,49 +196,6 @@ jobs:
             dist/SHA256SUMS
           body_path: release-notes.md
 
-  publish-homebrew:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: roxel
-      - uses: actions/checkout@v7
-        with:
-          repository: starzonmyarmz/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: build-*
-          path: dist
-          merge-multiple: true
-      - name: Render the rox formula and Roxel cask and push them to the tap
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          macos_sha="$(sha256sum dist/rox-macos.zip | cut -d' ' -f1)"
-          linux_sha="$(sha256sum dist/rox-linux.tar.gz | cut -d' ' -f1)"
-          app_sha="$(sha256sum dist/Roxel-macos.zip | cut -d' ' -f1)"
-          mkdir -p tap/Formula tap/Casks
-          sed -e "s/@VERSION@/${version}/g" \
-              -e "s/@MACOS_SHA256@/${macos_sha}/g" \
-              -e "s/@LINUX_SHA256@/${linux_sha}/g" \
-              roxel/packaging/homebrew/rox.rb > tap/Formula/rox.rb
-          sed -e "s/@VERSION@/${version}/g" \
-              -e "s/@APP_SHA256@/${app_sha}/g" \
-              roxel/packaging/homebrew/roxel.rb > tap/Casks/roxel.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/rox.rb Casks/roxel.rb
-          if git diff --cached --quiet; then
-            echo "Tap already at ${version}"
-            exit 0
-          fi
-          git commit -m "chore: bump rox and roxel to v${version}"
-          git push
-
   publish-itch:
     needs: release
     runs-on: ubuntu-latest

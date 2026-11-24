@@ -1,6 +1,6 @@
 cask "roxel" do
   version "@VERSION@"
-  sha256 "@APP_SHA256@"
+  sha256 "@SHA256:Roxel-macos.zip@"
 
   url "https://github.com/starzonmyarmz/roxel/releases/download/v#{version}/Roxel-macos.zip"
   name "Roxel"
