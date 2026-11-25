@@ -36,7 +36,7 @@ cargo install --git https://github.com/starzonmyarmz/roxel roxel-cli
 
 ## Supported files
 
-Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension. `rox convert` and `rox apply` can also write `.glb`, `.obj` and `.svg`.
+Every command reads `.rox`, `.vox`, `.qb` and `.gox`, chosen by the file's extension. `rox convert`, `rox apply` and `rox run` can also write `.glb`, `.obj` and `.svg`.
 
 ## `rox info`
 
@@ -145,6 +145,30 @@ Ops run in order, and later ones overwrite earlier ones. Points are `(x, y, z)` 
 Boxes include both corners, so `Box(min: (0, 0, 0), max: (1, 1, 1), …)` fills 8 voxels. A shape can cover at most 16,777,216 voxels, the size of a 256 × 256 × 256 box.
 
 A color is a name from `colors` or an inline `#rrggbb` or `#rrggbbaa`. `colors` is optional. Its named colors are saved as the `.rox` file's palette, in the order listed, after any colors already in the input's palette.
+
+## `rox run`
+
+> **Experimental.** Plugins and the plugin API may still change.
+
+```sh
+rox run tree.js -o tree.rox
+rox run gradient.js castle.rox --color "#ffcc00"
+rox run trees.js forest.vox -o forest.glb --command pine
+```
+
+Runs a command from a [plugin](plugin-api.md), a JavaScript file, on an existing model or on an empty scene, and saves the result to `-o`. Without `-o` the input file is overwritten. The output can be any format `rox convert` writes. If the plugin fails or hits a limit, nothing is written and `rox` prints the file, the line and the error.
+
+| Option | Meaning | Default |
+| ------ | ------- | ------- |
+| `-o`, `--output <path>` | The file to write. Required without an input file. | the input file |
+| `--command <id>` | The command to run. Required when the plugin has more than one. | the plugin's only command |
+| `--color <color>` | The current color the command sees as `ctx.color`, `#rrggbb` or `#rrggbbaa` | `#ffffff` |
+
+The command sees the input's palette as `ctx.palette`: a `.rox` file's saved palette, or the colors a `.vox` file uses. Nothing is selected, so `ctx.selection` is `null`. The run is limited the same way as in the app; see [Limits and errors](plugin-api.md#limits-and-errors).
+
+Saving works as it does for `rox convert`: only a `.rox` output keeps the palette, and it has no preview image, so rewriting a `.rox` drops its preview until you open and save it in Roxel.
+
+The [example plugins](plugin-api.md#examples) are a good place to start.
 
 ## Exit status
 
