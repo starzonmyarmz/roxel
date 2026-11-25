@@ -145,10 +145,12 @@ impl std::error::Error for ScriptError {}
 /// Reads the manifest without running any command.
 pub fn load(file: &str, source: &str, limits: &Limits) -> Result<Manifest, ScriptError> {
     let host = Host::new(limits)?;
-    host.context.with(|ctx| {
+    let result = host.context.with(|ctx| {
         let (manifest, _) = host.check(&ctx, file, eval_manifest(&ctx, file, source))?;
         Ok(manifest)
-    })
+    });
+    host.caught_limit()?;
+    result
 }
 
 /// Runs one command and returns the cells it changed, in the order first
@@ -190,6 +192,7 @@ pub fn run(
     if staged.borrow().overflowed {
         return Err(ScriptError::EditLimit(cx.limits.edits));
     }
+    host.caught_limit()?;
     result?;
     let staged = staged.take();
     Ok(staged
@@ -345,6 +348,14 @@ impl Host {
             return Err(ScriptError::MemoryLimit(self.limits.memory));
         }
         Err(ScriptError::Load(describe(ctx, file, caught)))
+    }
+
+    /// A script can catch the out-of-memory error and return normally.
+    fn caught_limit(&self) -> Result<(), ScriptError> {
+        if self.out_of_memory.load(Ordering::Relaxed) {
+            return Err(ScriptError::MemoryLimit(self.limits.memory));
+        }
+        Ok(())
     }
 }
 
@@ -1146,6 +1157,21 @@ mod tests {
         assert_eq!(err, ScriptError::Run("test.js: uncaught null".into()));
         let err = run_body(&mut VoxelGrid::default(), "throw 'nope';").unwrap_err();
         assert_eq!(err, ScriptError::Run("test.js: uncaught \"nope\"".into()));
+    }
+
+    #[test]
+    fn memory_limit_holds_even_if_caught() {
+        let cx = ScriptCtx {
+            command: "go".into(),
+            limits: Limits {
+                memory: 8 << 20,
+                ..Limits::default()
+            },
+            ..Default::default()
+        };
+        let src = plugin("try { new Array(1 << 24).fill(1); } catch (e) {}");
+        let err = run("mem.js", &src, &mut VoxelGrid::default(), &cx).unwrap_err();
+        assert_eq!(err, ScriptError::MemoryLimit(8 << 20));
     }
 
     #[test]
