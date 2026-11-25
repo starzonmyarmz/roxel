@@ -4,6 +4,7 @@ mod convert;
 mod info;
 mod load;
 mod render;
+mod run;
 
 use anyhow::{Context, Result, anyhow, bail};
 use render::{MAX_SCALE, RenderOptions, VIEWS};
@@ -19,6 +20,7 @@ Usage:
   rox convert <in> <out>
   rox apply <file> <ops.ron|-> [-o <out>]
   rox apply --new <ops.ron|-> -o <out>
+  rox run <plugin.js> [file] [-o <out>] [--command <id>] [--color #rrggbb[aa]]
 
 Reads .rox, .vox, .qb and .gox files.
 
@@ -30,12 +32,19 @@ Commands:
   apply    Run a RON list of ops on <file>, or on an empty scene with
            --new, and save to <out> (default: <file>). `-` reads ops
            from stdin.
+  run      Run a plugin command on <file>, or on an empty scene, and
+           save to <out> (default: <file>)
 
 Render options:
   -o, --output <path>   PNG to write
   --view <0-3>          Camera angle, stepping 90° around the model [default: 0]
   --scale <N>           Pixels per voxel [default: 8]
   --bg <color>          Background color [default: transparent]
+
+Run options:
+  -o, --output <path>   File to write
+  --command <id>        Command to run, when the plugin has several
+  --color <color>       The current color, ctx.color [default: #ffffff]
 
   -h, --help            Show this help
   -V, --version         Show the version";
@@ -60,6 +69,13 @@ enum Command {
         input: Option<PathBuf>,
         ops: Option<PathBuf>,
         output: PathBuf,
+    },
+    Run {
+        script: PathBuf,
+        input: Option<PathBuf>,
+        output: PathBuf,
+        command: Option<String>,
+        color: [u8; 4],
     },
 }
 
@@ -87,6 +103,7 @@ fn parse_args(args: &[String]) -> Result<Command> {
             _ => bail!("usage: rox convert <in> <out>"),
         },
         "apply" => parse_apply(rest),
+        "run" => parse_run(rest),
         other => bail!("unknown command '{other}'; run `rox --help`"),
     }
 }
@@ -172,6 +189,50 @@ fn parse_apply(args: &[String]) -> Result<Command> {
     })
 }
 
+fn parse_run(args: &[String]) -> Result<Command> {
+    let usage = "usage: rox run <plugin.js> [file] [-o <out>]";
+    let mut output = None;
+    let mut command = None;
+    let mut color = [255; 4];
+    let mut positional = Vec::new();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        let mut value = || {
+            it.next()
+                .ok_or_else(|| anyhow!("{arg} needs a value"))
+                .map(String::as_str)
+        };
+        match arg.as_str() {
+            "-o" | "--output" => output = Some(PathBuf::from(value()?)),
+            "--command" => command = Some(value()?.to_string()),
+            "--color" => {
+                let v = value()?;
+                color = color::parse_hex(v)
+                    .ok_or_else(|| anyhow!("--color must be #rrggbb or #rrggbbaa, not '{v}'"))?;
+            }
+            s if s.starts_with('-') && s.len() > 1 => bail!("unknown option '{s}'"),
+            _ => positional.push(arg.as_str()),
+        }
+    }
+    let (script, input) = match positional.as_slice() {
+        [script] => (PathBuf::from(script), None),
+        [script, input] => (PathBuf::from(script), Some(PathBuf::from(input))),
+        _ => bail!(usage),
+    };
+    let output = match (output, &input) {
+        (Some(o), _) => o,
+        (None, Some(i)) => i.clone(),
+        (None, None) => bail!("rox run without a file needs -o <out>"),
+    };
+    Ok(Command::Run {
+        script,
+        input,
+        output,
+        command,
+        color,
+    })
+}
+
 fn run(cmd: Command) -> Result<()> {
     match cmd {
         Command::Help => println!("{USAGE}"),
@@ -197,6 +258,21 @@ fn run(cmd: Command) -> Result<()> {
                 .map_or(apply::Source::Stdin, apply::Source::File);
             apply::run(input.as_deref(), source, &output)?;
         }
+        Command::Run {
+            script,
+            input,
+            output,
+            command,
+            color,
+        } => run::run(
+            &script,
+            input.as_deref(),
+            &output,
+            run::Options {
+                command: command.as_deref(),
+                color,
+            },
+        )?,
     }
     Ok(())
 }
@@ -343,6 +419,46 @@ mod tests {
             ("apply --new ops.ron", "--new needs -o"),
             ("apply a.rox ops.ron -o", "needs a value"),
             ("apply a.rox ops.ron --append", "unknown option"),
+        ] {
+            let err = parse(args).unwrap_err().to_string();
+            assert!(err.contains(msg), "{args}: {err}");
+        }
+    }
+
+    #[test]
+    fn parses_run() {
+        assert_eq!(
+            parse("run tree.js scene.rox").unwrap(),
+            Command::Run {
+                script: "tree.js".into(),
+                input: Some("scene.rox".into()),
+                output: "scene.rox".into(),
+                command: None,
+                color: [255; 4],
+            }
+        );
+        assert_eq!(
+            parse("run --color #10203080 -o out.vox plugin.js --command oak").unwrap(),
+            Command::Run {
+                script: "plugin.js".into(),
+                input: None,
+                output: "out.vox".into(),
+                command: Some("oak".into()),
+                color: [0x10, 0x20, 0x30, 0x80],
+            }
+        );
+    }
+
+    #[test]
+    fn run_rejects_bad_usage() {
+        for (args, msg) in [
+            ("run", "usage: rox run"),
+            ("run a.js b.rox c.rox", "usage: rox run"),
+            ("run a.js", "needs -o"),
+            ("run a.js -o", "needs a value"),
+            ("run a.js --command", "needs a value"),
+            ("run a.js -o b.rox --color red", "--color"),
+            ("run a.js -o b.rox --select 1", "unknown option"),
         ] {
             let err = parse(args).unwrap_err().to_string();
             assert!(err.contains(msg), "{args}: {err}");

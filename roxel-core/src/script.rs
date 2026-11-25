@@ -4,6 +4,7 @@
 //! and the caller applies them, so all writes still go through `History`.
 
 use crate::grid::{Color8, VoxelGrid};
+use crate::history::History;
 use glam::IVec3;
 use rquickjs::allocator::{Allocator, RustAllocator};
 use rquickjs::{
@@ -200,6 +201,15 @@ pub fn run(
         .into_iter()
         .filter(|e| grid.get(e.pos) != e.color)
         .collect())
+}
+
+/// Writes a run's edits as one stroke, so one Undo reverts the whole run.
+pub fn apply(edits: &[Edit], history: &mut History, grid: &mut VoxelGrid) {
+    history.begin();
+    for e in edits {
+        history.record(grid, e.pos, e.color);
+    }
+    history.end();
 }
 
 /// Moves the grid into an `Rc` the JS bindings can hold, and back on drop.
@@ -845,6 +855,108 @@ mod tests {
         );
         assert!(edits.iter().all(|e| e.color == Some([255; 4])));
         assert_eq!(grid.count(), 0, "run never writes the grid");
+    }
+
+    const TREE: &str = include_str!("../../docs/src/plugins/examples/tree.js");
+    const GRADIENT: &str = include_str!("../../docs/src/plugins/examples/gradient.js");
+
+    #[test]
+    fn example_tree_plants_an_oak() {
+        let mut grid = VoxelGrid::default();
+        let edits = run("tree.js", TREE, &mut grid, &ctx("oak")).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        let trunk = Some([96, 62, 40, 255]);
+        let leaves = Some([124, 190, 60, 255]);
+        for y in 0..6 {
+            assert_eq!(grid.get(IVec3::new(0, y, 0)), trunk, "y = {y}");
+        }
+        assert_eq!(grid.get(IVec3::new(0, 7, 0)), leaves);
+        assert_eq!(grid.get(IVec3::new(3, 7, 0)), leaves);
+        assert_eq!(grid.get(IVec3::new(3, 7, 3)), None);
+        let (min, max) = grid.bounding_box().unwrap();
+        assert_eq!((min, max), (IVec3::new(-3, 0, -3), IVec3::new(3, 10, 3)));
+    }
+
+    #[test]
+    fn example_tree_stands_under_the_selection() {
+        let mut grid = VoxelGrid::default();
+        let cx = ScriptCtx {
+            selection: Some(Selection {
+                min: IVec3::new(10, 2, 20),
+                max: IVec3::new(14, 5, 24),
+                mask: None,
+            }),
+            ..ctx("oak")
+        };
+        let edits = run("tree.js", TREE, &mut grid, &cx).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        assert_eq!(grid.get(IVec3::new(12, 2, 22)), Some([96, 62, 40, 255]));
+        assert_eq!(grid.bounding_box().unwrap().0, IVec3::new(9, 2, 19));
+    }
+
+    fn column(height: i32) -> VoxelGrid {
+        let mut grid = VoxelGrid::default();
+        for y in 0..height {
+            grid.set(IVec3::new(0, y, 0), Some([9, 9, 9, 200]));
+        }
+        grid
+    }
+
+    #[test]
+    fn example_gradient_covers_the_whole_model() {
+        let mut grid = column(5);
+        let cx = ScriptCtx {
+            color: [200, 100, 40, 255],
+            ..ctx("vertical")
+        };
+        let edits = run("gradient.js", GRADIENT, &mut grid, &cx).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        assert_eq!(grid.get(IVec3::ZERO), Some([0, 0, 0, 200]));
+        assert_eq!(grid.get(IVec3::new(0, 2, 0)), Some([100, 50, 20, 200]));
+        assert_eq!(grid.get(IVec3::new(0, 4, 0)), Some([200, 100, 40, 200]));
+        assert_eq!(grid.count(), 5, "empty cells stay empty");
+    }
+
+    #[test]
+    fn example_gradient_keeps_to_the_selection() {
+        let mut grid = column(5);
+        let cx = ScriptCtx {
+            color: [200, 100, 40, 255],
+            selection: Some(Selection {
+                min: IVec3::new(-1, 3, -1),
+                max: IVec3::new(1, 4, 1),
+                mask: None,
+            }),
+            ..ctx("vertical")
+        };
+        let edits = run("gradient.js", GRADIENT, &mut grid, &cx).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        assert_eq!(grid.get(IVec3::new(0, 2, 0)), Some([9, 9, 9, 200]));
+        assert_eq!(grid.get(IVec3::new(0, 3, 0)), Some([0, 0, 0, 200]));
+        assert_eq!(grid.get(IVec3::new(0, 4, 0)), Some([200, 100, 40, 200]));
+        assert_eq!(grid.count(), 5);
+    }
+
+    #[test]
+    fn apply_writes_one_undo_step() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(5, 0, 0), Some(RED));
+        let mut history = History::default();
+        let edits = run_body(
+            &mut grid,
+            "ctx.grid.set(0, 0, 0, ctx.color); ctx.grid.set(1, 0, 0, ctx.color);\
+             ctx.grid.clear(5, 0, 0);",
+        )
+        .unwrap();
+        apply(&edits, &mut history, &mut grid);
+        assert_eq!(grid.count(), 2);
+        assert_eq!(history.undo.len(), 1);
+        history.undo(&mut grid);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(grid.get(IVec3::new(5, 0, 0)), Some(RED));
+
+        apply(&[], &mut history, &mut grid);
+        assert!(history.undo.is_empty(), "an empty run adds no undo step");
     }
 
     #[test]

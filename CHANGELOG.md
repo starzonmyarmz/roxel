@@ -6,6 +6,10 @@ Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed
 
 ## [Unreleased]
 
+### Added
+
+- `rox run` runs a JavaScript plugin command on a model and saves the result. Plugins are experimental and may still change.
+
 ## [1.4.0] - 2026-11-24
 
 ### Added
