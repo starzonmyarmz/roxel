@@ -16,3 +16,8 @@ ron = "0.12"
 serde = { version = "1", features = ["derive"] }
 dirs = "7"
 zstd = "0.13"
+rquickjs = { version = "0.14", optional = true, features = ["allocator"] }
+
+[features]
+default = ["scripting"]
+scripting = ["dep:rquickjs"]

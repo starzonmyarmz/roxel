@@ -5,4 +5,6 @@ pub mod io;
 pub mod mesh_util;
 pub mod palette;
 pub mod projection;
+#[cfg(feature = "scripting")]
+pub mod script;
 pub mod shapes;
