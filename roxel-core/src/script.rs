@@ -1174,6 +1174,45 @@ mod tests {
         assert_eq!(err, ScriptError::MemoryLimit(8 << 20));
     }
 
+    /// Every full plugin in the API docs must load, and every command run.
+    #[test]
+    fn plugin_api_doc_examples_run() {
+        let doc = include_str!("../../docs/src/plugin-api.md");
+        let mut grid = VoxelGrid::default();
+        for p in [IVec3::ZERO, IVec3::new(1, 2, 0), IVec3::new(-3, 0, 4)] {
+            grid.set(p, Some(RED));
+        }
+        let cx = ScriptCtx {
+            selection: Some(Selection {
+                min: IVec3::ZERO,
+                max: IVec3::new(1, 2, 0),
+                mask: None,
+            }),
+            palette: vec![RED, [0, 0, 255, 255]],
+            ..Default::default()
+        };
+        let blocks: Vec<&str> = doc
+            .split("```js\n")
+            .skip(1)
+            .filter_map(|b| b.split("```").next())
+            .filter(|b| b.contains("export default"))
+            .collect();
+        assert!(blocks.len() >= 4, "found {} plugins", blocks.len());
+        for src in blocks {
+            let manifest =
+                load("doc.js", src, &Limits::default()).unwrap_or_else(|e| panic!("{e}\n{src}"));
+            for cmd in manifest.commands {
+                let cx = ScriptCtx {
+                    command: cmd.id,
+                    ..cx.clone()
+                };
+                let edits =
+                    run("doc.js", src, &mut grid, &cx).unwrap_or_else(|e| panic!("{e}\n{src}"));
+                assert!(!edits.is_empty(), "{src}");
+            }
+        }
+    }
+
     #[test]
     fn edit_limit_stops_the_run_even_if_caught() {
         let cx = ScriptCtx {
