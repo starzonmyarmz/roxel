@@ -4,6 +4,7 @@
 //! and the caller applies them, so all writes still go through `History`.
 
 use crate::grid::{Color8, VoxelGrid};
+use crate::history::History;
 use glam::IVec3;
 use rquickjs::allocator::{Allocator, RustAllocator};
 use rquickjs::{
@@ -200,6 +201,15 @@ pub fn run(
         .into_iter()
         .filter(|e| grid.get(e.pos) != e.color)
         .collect())
+}
+
+/// Writes a run's edits as one stroke, so one Undo reverts the whole run.
+pub fn apply(edits: &[Edit], history: &mut History, grid: &mut VoxelGrid) {
+    history.begin();
+    for e in edits {
+        history.record(grid, e.pos, e.color);
+    }
+    history.end();
 }
 
 /// Moves the grid into an `Rc` the JS bindings can hold, and back on drop.
@@ -845,6 +855,28 @@ mod tests {
         );
         assert!(edits.iter().all(|e| e.color == Some([255; 4])));
         assert_eq!(grid.count(), 0, "run never writes the grid");
+    }
+
+    #[test]
+    fn apply_writes_one_undo_step() {
+        let mut grid = VoxelGrid::default();
+        grid.set(IVec3::new(5, 0, 0), Some(RED));
+        let mut history = History::default();
+        let edits = run_body(
+            &mut grid,
+            "ctx.grid.set(0, 0, 0, ctx.color); ctx.grid.set(1, 0, 0, ctx.color);\
+             ctx.grid.clear(5, 0, 0);",
+        )
+        .unwrap();
+        apply(&edits, &mut history, &mut grid);
+        assert_eq!(grid.count(), 2);
+        assert_eq!(history.undo.len(), 1);
+        history.undo(&mut grid);
+        assert_eq!(grid.count(), 1);
+        assert_eq!(grid.get(IVec3::new(5, 0, 0)), Some(RED));
+
+        apply(&[], &mut history, &mut grid);
+        assert!(history.undo.is_empty(), "an empty run adds no undo step");
     }
 
     #[test]
