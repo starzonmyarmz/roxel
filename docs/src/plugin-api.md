@@ -185,6 +185,13 @@ When a plugin fails to load or a run throws, Roxel shows the file name, the line
 trees.js:12: TypeError: grid.set: color must be [r, g, b] or [r, g, b, a] of integers 0-255
 ```
 
+## Examples
+
+Download these to try them, or use them as a starting point:
+
+- [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin.
+- [`gradient.js`](plugins/examples/gradient.js) — a recolor that shades the selection, or the whole model, from black at the bottom to the current color at the top.
+
 ## What plugins can't do
 
 A plugin only sees what's in `ctx`. It can't read or write files, use the network, start programs, change preferences or `import` other modules. It can't change the model except through `ctx.grid`, so every change it makes can be undone.
