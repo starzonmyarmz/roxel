@@ -56,7 +56,8 @@ Apply everywhere — read before editing any module.
 - Conventional Commits with Title-Case scopes: `feat(Tools): …`. The body explains why.
 - A `feat`, `fix` or `perf` commit that someone using Roxel would notice adds a line under `## [Unreleased]` in `CHANGELOG.md` (Added, Changed, Fixed or Removed), in the same commit, written for them, not as a code summary.
 - This repo is public. Keep real names, logins, paths and work data out of code, fixtures, docs, the changelog and commits.
-- Breaking means `.rox` files or `preferences.ron` that no longer open, or changed `rox` flags or output.
+- Breaking means `.rox` files or `preferences.ron` that no longer open, changed `rox` flags or output, or plugins written for the current `apiVersion` that stop working.
+- The plugin API is the JS surface in `docs/src/roxel.d.ts`, the spec: change it first, with `docs/src/plugin-api.md`. `roxel-core` types behind it stay free to refactor.
 
 ### Tests
 
