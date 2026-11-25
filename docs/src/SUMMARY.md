@@ -9,3 +9,4 @@
 [Import & Export](import-export.md)
 [Preferences & Themes](preferences.md)
 [Command Line](command-line.md)
+[Plugin API](plugin-api.md)
