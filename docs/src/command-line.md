@@ -154,7 +154,7 @@ A color is a name from `colors` or an inline `#rrggbb` or `#rrggbbaa`. `colors` 
 rox run tree.js -o tree.rox
 rox run gradient.js castle.rox --color "#ffcc00"
 rox run trees.js forest.vox -o forest.glb --command pine
-rox run tower.js -o tower.rox --param height=12 --param shape=Round
+rox run tree.js -o tall-tree.rox --param height=12 --param leaves=#3c8c3c
 ```
 
 Runs a command from a [plugin](plugin-api.md), a JavaScript file, on an existing model or on an empty scene, and saves the result to `-o`. Without `-o` the input file is overwritten. The output can be any format `rox convert` writes. If the plugin fails or hits a limit, nothing is written and `rox` prints the file, the line and the error.

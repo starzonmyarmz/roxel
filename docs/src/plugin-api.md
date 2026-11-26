@@ -240,7 +240,7 @@ trees.js:12: TypeError: grid.set: color must be [r, g, b] or [r, g, b, a] of int
 
 Download these to try them, or use them as a starting point:
 
-- [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin.
+- [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin, with params for its height, crown size and colors.
 - [`gradient.js`](plugins/examples/gradient.js) — a recolor that shades the selection, or the whole model, from black at the bottom to the current color at the top.
 
 ## What plugins can't do

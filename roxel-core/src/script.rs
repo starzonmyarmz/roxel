@@ -1045,6 +1045,25 @@ mod tests {
     }
 
     #[test]
+    fn example_tree_takes_its_size_and_colors_from_params() {
+        let mut grid = VoxelGrid::default();
+        let cx = ScriptCtx {
+            params: vec![
+                ("height".into(), Param::Number(2.0)),
+                ("radius".into(), Param::Number(1.0)),
+                ("trunk".into(), Param::Color(RED)),
+            ],
+            ..ctx("oak")
+        };
+        let edits = run("tree.js", TREE, &mut grid, &cx).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        assert_eq!(grid.get(IVec3::new(0, 1, 0)), Some(RED));
+        assert_eq!(grid.get(IVec3::new(1, 3, 0)), Some([124, 190, 60, 255]));
+        let (min, max) = grid.bounding_box().unwrap();
+        assert_eq!((min, max), (IVec3::new(-1, 0, -1), IVec3::new(1, 4, 1)));
+    }
+
+    #[test]
     fn example_tree_stands_under_the_selection() {
         let mut grid = VoxelGrid::default();
         let cx = ScriptCtx {
