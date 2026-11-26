@@ -18,6 +18,7 @@ use crate::ui::tokens::{font, radius, size, space, swatch, width};
 use crate::ui::widgets;
 use bevy_egui::egui;
 use roxel::io;
+use roxel::script::{Param, ParamKind, ParamSpec};
 use std::path::PathBuf;
 
 const UI_SCALE_LABELS: [(u16, &str); 6] = [
@@ -258,6 +259,124 @@ pub fn draw_about(ctx: &egui::Context, theme: &Theme) -> bool {
     });
     let keyed = ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
     close || keyed || !open
+}
+
+/// The form shown before a plugin command with params runs: one row per
+/// param, then Cancel / Run. `values` are in the same order as `specs`.
+/// Returns `Some(true)` to run, `Some(false)` to cancel, `None` while open.
+/// Enter runs unless a number is being typed, so committing it doesn't run
+/// the command.
+pub fn draw_plugin_params(
+    ctx: &egui::Context,
+    theme: &Theme,
+    title: &str,
+    specs: &[ParamSpec],
+    values: &mut [(String, Param)],
+    color_space: roxel::color_space::ColorSpace,
+) -> Option<bool> {
+    let mut open = true;
+    let mut chosen = None;
+    widgets::modal_window(theme, title, &mut open).show(ctx, |ui| {
+        ui.set_width(width::MODAL_PLUGIN_PARAMS);
+        for (spec, (_, value)) in specs.iter().zip(values.iter_mut()) {
+            widgets::prefs_row(ui, theme, &spec.label, |ui| {
+                param_field(ui, theme, spec, value, color_space);
+            });
+        }
+        ui.add_space(space::SM);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = space::SX;
+            if widgets::dialog_button(ui, theme, "Run", true).clicked() {
+                chosen = Some(true);
+            }
+            if widgets::dialog_button(ui, theme, "Cancel", false).clicked() {
+                chosen = Some(false);
+            }
+        });
+    });
+    if !open {
+        return Some(false);
+    }
+    chosen.or_else(|| {
+        let typing = ctx.egui_wants_keyboard_input();
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Escape) {
+                Some(false)
+            } else if i.key_pressed(egui::Key::Enter) && !typing {
+                Some(true)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn param_field(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    spec: &ParamSpec,
+    value: &mut Param,
+    color_space: roxel::color_space::ColorSpace,
+) {
+    match (&spec.kind, value) {
+        (ParamKind::Number { min, max, .. }, Param::Number(n)) => match (min, max) {
+            (Some(lo), Some(hi)) => {
+                ui.add(egui::Slider::new(n, *lo..=*hi));
+            }
+            _ => {
+                let range = min.unwrap_or(f64::NEG_INFINITY)..=max.unwrap_or(f64::INFINITY);
+                ui.add(egui::DragValue::new(n).speed(0.1).range(range));
+            }
+        },
+        (ParamKind::Int { min, max, .. }, Param::Number(n)) => match (min, max) {
+            (Some(lo), Some(hi)) => {
+                ui.add(egui::Slider::new(n, f64::from(*lo)..=f64::from(*hi)).integer());
+            }
+            _ => {
+                let lo = min.map_or(f64::from(i32::MIN), f64::from);
+                let hi = max.map_or(f64::from(i32::MAX), f64::from);
+                ui.add(
+                    egui::DragValue::new(n)
+                        .speed(1.0)
+                        .fixed_decimals(0)
+                        .range(lo..=hi),
+                );
+                *n = n.round();
+            }
+        },
+        (ParamKind::Bool { .. }, Param::Bool(b)) => {
+            ui.checkbox(b, "");
+        }
+        (ParamKind::Color { .. }, Param::Color(c)) => {
+            let mut rgb = [c[0], c[1], c[2]];
+            if color_picker::space_color_swatch(
+                ui,
+                theme,
+                &mut rgb,
+                color_space,
+                swatch::PREVIEW,
+                radius::XS,
+            ) {
+                c[..3].copy_from_slice(&rgb);
+            }
+        }
+        (ParamKind::Choice { options, .. }, Param::Text(s)) => {
+            let current = options.iter().position(|o| o == s).unwrap_or(0);
+            if let Some(i) = widgets::select_dropdown(
+                ui,
+                theme,
+                &format!("plugin_param_{}", spec.id),
+                width::PREFS_DROPDOWN,
+                &options[current],
+                options,
+                current,
+            ) {
+                *s = options[i].clone();
+            }
+        }
+        // `resolve_params` gives every param a value of its own type.
+        _ => {}
+    }
 }
 
 /// A `prefs_row`-style label + content row whose content **wraps** — chips that

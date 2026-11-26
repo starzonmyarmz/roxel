@@ -8,7 +8,8 @@
 use bevy::prelude::*;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
-use roxel::script::{self, Limits, Manifest, ScriptCtx, ScriptError};
+use roxel::script::{self, Limits, Manifest, Param, ScriptCtx, ScriptError};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::select::Selection;
@@ -163,6 +164,60 @@ pub struct RunInput<'a> {
     pub selection: &'a Selection,
     pub color: Color8,
     pub palette: &'a [Color8],
+    pub params: &'a [(String, Param)],
+}
+
+/// The params form shown before a command with params runs.
+pub struct OpenForm {
+    /// Index into [`Plugins::commands`].
+    pub command: usize,
+    /// The [`Plugins::generation`] the form was opened in; a reload since
+    /// renumbers commands, so the form no longer applies.
+    pub generation: u64,
+    pub values: Vec<(String, Param)>,
+}
+
+#[derive(Resource, Default)]
+pub struct ParamForms {
+    pub open: Option<OpenForm>,
+    /// Last values run, by plugin file and command id. Kept across reloads.
+    remembered: HashMap<(String, String), Vec<(String, Param)>>,
+}
+
+impl ParamForms {
+    /// Opens the form for command `i`, filled with the values it last ran
+    /// with. Returns `false`, opening nothing, when the command has no params.
+    pub fn open(&mut self, plugins: &Plugins, i: usize) -> bool {
+        let Some((plugin, command)) = plugins.command(i) else {
+            return false;
+        };
+        if command.params.is_empty() {
+            return false;
+        }
+        let key = (plugin.file.clone(), command.id.clone());
+        let last = self.remembered.get(&key).map_or(&[][..], Vec::as_slice);
+        self.open = Some(OpenForm {
+            command: i,
+            generation: plugins.generation,
+            values: script::resolve_params(&command.params, last),
+        });
+        true
+    }
+
+    /// Closes the form and returns its command and values, remembered for
+    /// next time, or `None` when plugins reloaded while it was open.
+    pub fn submit(&mut self, plugins: &Plugins) -> Option<(usize, Vec<(String, Param)>)> {
+        let form = self.open.take()?;
+        if form.generation != plugins.generation {
+            return None;
+        }
+        let (plugin, command) = plugins.command(form.command)?;
+        self.remembered.insert(
+            (plugin.file.clone(), command.id.clone()),
+            form.values.clone(),
+        );
+        Some((form.command, form.values))
+    }
 }
 
 /// Runs command `i` and applies its edits as one undo step. Returns how many
@@ -182,6 +237,7 @@ pub fn run_command(
         selection: script_selection(input.selection),
         color: input.color,
         palette: input.palette.to_vec(),
+        params: input.params.to_vec(),
         ..Default::default()
     };
     let edits = script::run(&plugin.file, &plugin.source, grid, &cx)
@@ -241,7 +297,95 @@ mod tests {
             selection,
             color: [200, 10, 10, 255],
             palette: &[],
+            params: &[],
         }
+    }
+
+    const SIZED: &str = "export default { apiVersion: 1, name: 'Sized', commands: [\
+        { id: 'row', label: 'Row', params: [\
+            { id: 'n', label: 'Length', type: 'int', min: 1, max: 9, default: 2 },\
+            { id: 'c', label: 'Color', type: 'color', default: [1, 2, 3] }],\
+          run(ctx) { for (let x = 0; x < ctx.params.n; x++) ctx.grid.set(x, 0, 0, ctx.params.c); } },\
+        { id: 'dot', label: 'Dot', run(ctx) { ctx.grid.set(0, 0, 0, ctx.color); } }] };";
+
+    #[test]
+    fn commands_without_params_open_no_form() {
+        let dir = TmpDir::new("form-none");
+        dir.write("sized.js", SIZED);
+        let (plugins, _) = Plugins::load_dir(&dir.0);
+        let mut forms = ParamForms::default();
+        assert!(!forms.open(&plugins, 1));
+        assert!(!forms.open(&plugins, 9));
+        assert!(forms.open.is_none());
+    }
+
+    #[test]
+    fn the_form_starts_with_defaults_then_remembers_the_last_run() {
+        let dir = TmpDir::new("form-remember");
+        dir.write("sized.js", SIZED);
+        let (mut plugins, _) = Plugins::load_dir(&dir.0);
+        let mut forms = ParamForms::default();
+        assert!(forms.open(&plugins, 0));
+        let form = forms.open.as_mut().unwrap();
+        assert_eq!(
+            form.values,
+            [
+                ("n".to_string(), Param::Number(2.0)),
+                ("c".to_string(), Param::Color([1, 2, 3, 255])),
+            ]
+        );
+        form.values[0].1 = Param::Number(5.0);
+        let (i, values) = forms.submit(&plugins).unwrap();
+        assert_eq!((i, values[0].1.clone()), (0, Param::Number(5.0)));
+        assert!(forms.open.is_none());
+
+        plugins.reload(&dir.0);
+        forms.open(&plugins, 0);
+        assert_eq!(
+            forms.open.as_ref().unwrap().values[0].1,
+            Param::Number(5.0),
+            "remembered across a reload"
+        );
+
+        dir.write("sized.js", &SIZED.replace("max: 9", "max: 3"));
+        plugins.reload(&dir.0);
+        forms.open(&plugins, 0);
+        assert_eq!(
+            forms.open.as_ref().unwrap().values[0].1,
+            Param::Number(3.0),
+            "remembered values fit the plugin's new range"
+        );
+    }
+
+    #[test]
+    fn a_form_opened_before_a_reload_submits_nothing() {
+        let dir = TmpDir::new("form-stale");
+        dir.write("sized.js", SIZED);
+        let (mut plugins, _) = Plugins::load_dir(&dir.0);
+        let mut forms = ParamForms::default();
+        forms.open(&plugins, 0);
+        plugins.reload(&dir.0);
+        assert!(forms.submit(&plugins).is_none());
+        assert!(forms.open.is_none());
+    }
+
+    #[test]
+    fn a_run_gets_the_form_values() {
+        let dir = TmpDir::new("form-run");
+        dir.write("sized.js", SIZED);
+        let (plugins, _) = Plugins::load_dir(&dir.0);
+        let (mut history, mut grid) = (History::default(), VoxelGrid::default());
+        let sel = Selection::default();
+        let params = [("n".to_string(), Param::Number(4.0))];
+        let run = RunInput {
+            params: &params,
+            ..input(&sel)
+        };
+        assert_eq!(
+            run_command(&plugins, 0, run, &mut history, &mut grid).unwrap(),
+            4
+        );
+        assert_eq!(grid.get(IVec3::new(3, 0, 0)), Some([1, 2, 3, 255]));
     }
 
     #[test]

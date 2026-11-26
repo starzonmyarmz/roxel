@@ -143,6 +143,7 @@ pub struct UiState<'w> {
     pub about: ResMut<'w, crate::menu::AboutWindow>,
     pub shortcuts: ResMut<'w, ShortcutsWindow>,
     pub plugins: Res<'w, crate::plugins::Plugins>,
+    pub param_forms: ResMut<'w, crate::plugins::ParamForms>,
 }
 
 #[derive(SystemParam)]
@@ -218,6 +219,7 @@ pub fn ui_system(
         mut about,
         mut shortcuts,
         plugins,
+        mut param_forms,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -251,6 +253,7 @@ pub fn ui_system(
         || shot_panel.open
         || about.0
         || shortcuts.0
+        || param_forms.open.is_some()
         || cmd_palette.open;
     modal_active.0 = modal_open;
 
@@ -481,6 +484,27 @@ pub fn ui_system(
 
     if shortcuts.0 && shortcuts::draw(ctx, &theme) {
         shortcuts.0 = false;
+    }
+
+    if let Some(form) = param_forms.open.as_mut() {
+        let choice = match plugins.command(form.command) {
+            Some((_, command)) if form.generation == plugins.generation => {
+                modals::draw_plugin_params(
+                    ctx,
+                    &theme,
+                    &command.label,
+                    &command.params,
+                    &mut form.values,
+                    prefs.color_space,
+                )
+            }
+            _ => Some(false),
+        };
+        match choice {
+            Some(true) => actions.push(crate::actions::Action::ConfirmPluginParams, Origin::Ui),
+            Some(false) => param_forms.open = None,
+            None => {}
+        }
     }
 
     if cmd_palette.open {
