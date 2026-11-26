@@ -1110,6 +1110,52 @@ mod tests {
     }
 
     #[test]
+    fn the_swap_color_example_counts_and_swaps_from_its_panel() {
+        let dir = TmpDir::new("swap-color");
+        dir.write("swap-color.js", &example("swap-color.js"));
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
+        let (mut history, mut grid) = (History::default(), VoxelGrid::default());
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(1, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 0, 0), Some(blue));
+        let mut panels = PluginPanels::default();
+        let sel = PanelSelection::default();
+        panels.refresh(&plugins, &mut grid, &sel, red, &[]);
+        assert_eq!(panels.views[0].title, "Swap Color");
+        assert_eq!(text_values(&panels), ["2", "2"]);
+
+        let rows = panels.views[0].rows.as_ref().unwrap();
+        let button = rows
+            .iter()
+            .find_map(|r| match r {
+                script::Row::Button { command, .. } => plugins.command_index(0, *command),
+                _ => None,
+            })
+            .unwrap();
+        let mut forms = ParamForms::default();
+        let green = [0, 200, 0, 255];
+        forms.remember(&plugins, button, vec![("to".into(), Param::Color(green))]);
+        let params = forms.values(&plugins, button);
+        let sel = Selection::default();
+        let run = RunInput {
+            color: red,
+            params: &params,
+            ..input(&sel)
+        };
+        assert_eq!(
+            run_command(&plugins, button, run, &mut history, &mut grid).unwrap(),
+            2
+        );
+        assert_eq!(grid.get(IVec3::new(1, 0, 0)), Some(green));
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(blue));
+        let panel_sel = PanelSelection::default();
+        panels.refresh(&plugins, &mut grid, &panel_sel, red, &[]);
+        assert_eq!(text_values(&panels), ["2", "0"]);
+    }
+
+    #[test]
     fn selection_passes_the_mask_when_there_is_one() {
         let aabb = SelectionAabb {
             min: IVec3::ZERO,

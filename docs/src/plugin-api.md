@@ -341,6 +341,7 @@ Download these to try them, or use them as a starting point:
 - [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin, with params for its height, crown size and colors.
 - [`gradient.js`](plugins/examples/gradient.js) — a recolor that shades the selection, or the whole model, from black at the bottom to the current color at the top.
 - [`mirror.js`](plugins/examples/mirror.js) — mirrors the selection, or the whole model, left to right or top to bottom, from two buttons on the tool rail.
+- [`swap-color.js`](plugins/examples/swap-color.js) — a section in the inspector that counts the voxels in the current color, with a field and a button to swap them for another color.
 
 ## What plugins can't do
 
