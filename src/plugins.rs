@@ -790,6 +790,45 @@ mod tests {
     }
 
     #[test]
+    fn runs_the_mirror_example_from_its_toolbar_buttons() {
+        let dir = TmpDir::new("mirror");
+        dir.write("mirror.js", &example("mirror.js"));
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let icons: Vec<_> = plugins.toolbar.iter().map(|b| b.icon.clone()).collect();
+        assert_eq!(
+            icons,
+            [
+                PluginIcon::Bundled("flip-horizontal-2"),
+                PluginIcon::Bundled("flip-vertical-2"),
+            ]
+        );
+        let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
+        let (mut history, mut grid) = (History::default(), VoxelGrid::default());
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 3, 0), Some(blue));
+        let sel = Selection::default();
+        let x = plugins.toolbar[0].command;
+        run_command(&plugins, x, input(&sel), &mut history, &mut grid).unwrap();
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(red));
+        assert_eq!(grid.get(IVec3::new(0, 3, 0)), Some(blue));
+        assert_eq!(grid.count(), 2);
+
+        let boxed = Selection {
+            aabb: Some(SelectionAabb {
+                min: IVec3::ZERO,
+                max: IVec3::new(2, 3, 0),
+            }),
+            cells: None,
+        };
+        let y = plugins.toolbar[1].command;
+        run_command(&plugins, y, input(&boxed), &mut history, &mut grid).unwrap();
+        assert_eq!(grid.get(IVec3::new(2, 3, 0)), Some(red));
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(blue));
+        assert_eq!(history.undo.len(), 2);
+    }
+
+    #[test]
     fn selection_passes_the_mask_when_there_is_one() {
         let aabb = SelectionAabb {
             min: IVec3::ZERO,
