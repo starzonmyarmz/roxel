@@ -16,7 +16,7 @@ use roxel::shapes::ShapePrimitive;
 #[cfg(not(target_os = "macos"))]
 use crate::actions::{Action, ActionQueue, ActionState, Origin};
 #[cfg(not(target_os = "macos"))]
-use crate::menu::{MenuEntry, menu_bar, recent_item_label};
+use crate::menu::{MenuEntry, NO_PLUGINS_LABEL, menu_bar, recent_item_label};
 #[cfg(not(target_os = "macos"))]
 use crate::ui::tokens::{font, icon, width};
 
@@ -319,8 +319,30 @@ fn menu_entries(
                     });
                 });
             }
+            MenuEntry::PluginList => plugin_list(ui, theme, s, out),
             MenuEntry::System(_) => {}
         }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn plugin_list(ui: &mut egui::Ui, theme: &Theme, s: &ActionState, out: &mut ActionQueue) {
+    if s.plugins.commands.is_empty() {
+        ui.add_enabled(
+            false,
+            egui::Button::new(egui::RichText::new(NO_PLUGINS_LABEL).size(font::BODY)),
+        );
+        return;
+    }
+    for p in s.plugins.listed() {
+        let title = egui::RichText::new(&s.plugins.list[p].manifest.name).size(font::BODY);
+        ui.menu_button(title, |ui| {
+            ui.set_min_width(width::TOP_BAR_MENU);
+            for i in s.plugins.commands_of(p) {
+                let action = Action::RunPlugin(i);
+                menu_item(ui, theme, s, out, action, &action.menu_label(s));
+            }
+        });
     }
 }
 

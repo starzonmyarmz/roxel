@@ -142,6 +142,7 @@ pub struct UiState<'w> {
     pub recent_files: Res<'w, RecentFiles>,
     pub about: ResMut<'w, crate::menu::AboutWindow>,
     pub shortcuts: ResMut<'w, ShortcutsWindow>,
+    pub plugins: Res<'w, crate::plugins::Plugins>,
 }
 
 #[derive(SystemParam)]
@@ -216,6 +217,7 @@ pub fn ui_system(
         recent_files,
         mut about,
         mut shortcuts,
+        plugins,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -281,6 +283,7 @@ pub fn ui_system(
                 current_color: color.0,
                 prefs: &prefs,
                 recent: &recent_files.0,
+                plugins: &plugins,
             }
         };
     }

@@ -9,8 +9,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use super::{MenuEntry, SystemItem, menu_bar, recent_item_label};
+use super::{MenuEntry, NO_PLUGINS_LABEL, SystemItem, menu_bar, recent_item_label};
 use crate::actions::{Action, ActionQueue, ActionStateParams, Chord, Origin};
+use crate::plugins::Plugins;
 use crate::ui::RecentFiles;
 use roxel::io::recent::MAX_RECENT;
 
@@ -27,6 +28,14 @@ pub struct MenuStore {
     recent_items: Vec<MenuItem>,
     clear_recent_item: MenuItem,
     recent_snapshot: Vec<PathBuf>,
+    plugins_sub: Submenu,
+    /// Where the plugin submenus start in `plugins_sub`.
+    plugins_at: usize,
+    /// The plugin submenus (or placeholder) currently in `plugins_sub`.
+    plugin_entries: usize,
+    plugin_actions: HashMap<String, Action>,
+    plugin_items: Vec<(Action, MenuItem)>,
+    plugins_generation: Option<u64>,
 }
 
 pub fn install_menu_system(world: &mut World, mut done: Local<bool>) {
@@ -76,6 +85,7 @@ struct Builder {
     actions: HashMap<String, Action>,
     items: Vec<(Action, NativeItem)>,
     recent_sub: Option<Submenu>,
+    plugins_sub: Option<(Submenu, usize)>,
 }
 
 impl Builder {
@@ -115,6 +125,9 @@ impl Builder {
                     sub.append(&child).expect("append recent submenu");
                     self.recent_sub = Some(child);
                 }
+                MenuEntry::PluginList => {
+                    self.plugins_sub = Some((sub.clone(), sub.items().len()));
+                }
                 MenuEntry::System(item) => {
                     sub.append(&system_item(*item)).expect("append system item");
                 }
@@ -129,6 +142,7 @@ fn build_menu() -> MenuStore {
         actions: HashMap::new(),
         items: Vec::new(),
         recent_sub: None,
+        plugins_sub: None,
     };
     for (title, entries) in menu_bar() {
         let sub = Submenu::new(title, true);
@@ -147,6 +161,7 @@ fn build_menu() -> MenuStore {
         .insert(clear_recent_item.id().0.clone(), Action::ClearRecent);
 
     menu.init_for_nsapp();
+    let (plugins_sub, plugins_at) = b.plugins_sub.expect("menu bar has a plugin list");
 
     MenuStore {
         _menu: menu,
@@ -156,6 +171,12 @@ fn build_menu() -> MenuStore {
         recent_items,
         clear_recent_item,
         recent_snapshot: Vec::new(),
+        plugins_sub,
+        plugins_at,
+        plugin_entries: 0,
+        plugin_actions: HashMap::new(),
+        plugin_items: Vec::new(),
+        plugins_generation: None,
     }
 }
 
@@ -167,7 +188,11 @@ pub fn poll_menu_events_system(
     let Some(store) = store else { return };
     let rx = MenuEvent::receiver();
     while let Ok(ev) = rx.try_recv() {
-        if let Some(action) = store.actions.get(&ev.id.0) {
+        let action = store
+            .actions
+            .get(&ev.id.0)
+            .or_else(|| store.plugin_actions.get(&ev.id.0));
+        if let Some(action) = action {
             queue.push(*action, Origin::Canvas);
         }
     }
@@ -185,6 +210,12 @@ pub fn update_menu_enabled_system(
     // still reaches a focused text field.
     let typing = crate::ui::egui_wants_keyboard(&mut contexts);
     let s = state.get();
+    for (action, item) in &store.plugin_items {
+        let enabled = action.enabled(&s);
+        if item.is_enabled() != enabled {
+            item.set_enabled(enabled);
+        }
+    }
     for (action, item) in &mut store.items {
         let enabled = action.enabled(&s) && !(typing && action.clashes_with_typing());
         match item {
@@ -235,6 +266,47 @@ pub fn update_recent_menu_system(
         store.recent_sub.set_enabled(true);
     }
     store.recent_snapshot = recent.0.clone();
+}
+
+/// Rebuilds the Plugins menu's per-plugin submenus after a (re)load.
+pub fn update_plugins_menu_system(
+    _marker: NonSendMarker,
+    store: Option<NonSendMut<MenuStore>>,
+    plugins: Res<Plugins>,
+) {
+    let Some(mut store) = store else { return };
+    if store.plugins_generation == Some(plugins.generation) {
+        return;
+    }
+    let at = store.plugins_at;
+    for _ in 0..store.plugin_entries {
+        store.plugins_sub.remove_at(at);
+    }
+    store.plugin_actions.clear();
+    store.plugin_items.clear();
+    if plugins.commands.is_empty() {
+        let placeholder = MenuItem::new(NO_PLUGINS_LABEL, false, None);
+        let _ = store.plugins_sub.insert(&placeholder, at);
+        store.plugin_entries = 1;
+    } else {
+        let mut shown = 0;
+        for p in plugins.listed() {
+            let child = Submenu::new(&plugins.list[p].manifest.name, true);
+            for i in plugins.commands_of(p) {
+                let (_, command) = plugins.command(i).expect("indexed command");
+                let item = MenuItem::new(&command.label, true, None);
+                let _ = child.append(&item);
+                store
+                    .plugin_actions
+                    .insert(item.id().0.clone(), Action::RunPlugin(i));
+                store.plugin_items.push((Action::RunPlugin(i), item));
+            }
+            let _ = store.plugins_sub.insert(&child, at + shown);
+            shown += 1;
+        }
+        store.plugin_entries = shown;
+    }
+    store.plugins_generation = Some(plugins.generation);
 }
 
 #[cfg(test)]

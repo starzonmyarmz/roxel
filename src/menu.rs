@@ -47,6 +47,9 @@ pub enum MenuEntry {
     Submenu(&'static str, Vec<MenuEntry>),
     /// The Open Recent submenu: one item per recent file, then Clear Menu.
     OpenRecent,
+    /// One submenu per loaded plugin, listing its commands, or a disabled
+    /// placeholder when none are loaded.
+    PluginList,
     System(SystemItem),
 }
 
@@ -126,6 +129,17 @@ fn view_menu() -> Vec<MenuEntry> {
     ]
 }
 
+pub const NO_PLUGINS_LABEL: &str = "No Plugins Installed";
+
+fn plugins_menu() -> Vec<MenuEntry> {
+    vec![
+        MenuEntry::PluginList,
+        Separator,
+        Item(Action::ReloadPlugins),
+        Item(Action::OpenPluginsFolder),
+    ]
+}
+
 /// The menu bar for this platform: macOS puts app-level items in a Roxel
 /// menu and adds a Window menu; the Win/Linux pill folds them into File and
 /// Help.
@@ -169,6 +183,7 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
             ),
             ("Edit", edit_menu()),
             ("View", view_menu()),
+            ("Plugins", plugins_menu()),
             (
                 "Window",
                 vec![
@@ -209,6 +224,7 @@ pub fn menu_bar() -> Vec<(&'static str, Vec<MenuEntry>)> {
             ),
             ("Edit", edit_menu()),
             ("View", view_menu()),
+            ("Plugins", plugins_menu()),
             (
                 "Help",
                 vec![
@@ -250,6 +266,14 @@ mod tests {
         }
         assert!(all.contains(&Action::Quit));
         assert!(all.contains(&Action::ExportShot));
+        assert!(all.contains(&Action::ReloadPlugins));
+    }
+
+    #[test]
+    fn plugins_menu_lists_the_plugins_first() {
+        let bar = menu_bar();
+        let (_, plugins) = bar.iter().find(|(t, _)| *t == "Plugins").unwrap();
+        assert_eq!(plugins[0], MenuEntry::PluginList);
     }
 
     #[test]

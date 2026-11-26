@@ -346,6 +346,7 @@ mod tests {
             current_color: [10, 20, 30, 255],
             prefs,
             recent: &[],
+            plugins: &crate::actions::NO_PLUGINS,
         }
     }
 
