@@ -215,6 +215,9 @@ Each param has an `id`, unique within the command, a `label` shown next to its f
 `ctx.params` always has a value for every param, and only for those. Values outside `min` and `max` are clamped, and an `int` is rounded. A command without `params` runs as soon as you choose it, and its `ctx.params` is an empty object.
 
 Roxel checks `params` when it loads the plugin, and refuses one with a missing `id`, `label` or `type`, a duplicate `id`, a `min` above its `max`, or a `default` that's out of range or not one of the `options`.
+
+[`rox run`](command-line.md#rox-run) runs a command with its defaults, or with values you pass with `--param`.
+
 ## Limits and errors
 
 Every run has limits, so a plugin can't freeze Roxel:
