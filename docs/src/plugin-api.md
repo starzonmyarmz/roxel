@@ -26,7 +26,7 @@ export default {
 
 - **`apiVersion`** — the API version the plugin is written for. It's `1`.
 - **`name`** — the plugin's name, shown in the [Plugins menu](plugins.md#running-a-command).
-- **`commands`** — what the plugin can do. Each command has an `id` that's unique within the plugin, a `label` shown in menus and the command palette, and a `run` function.
+- **`commands`** — what the plugin can do. Each command has an `id` that's unique within the plugin, a `label` shown in menus and the command palette, and a `run` function. It can also list [`params`](#params), values to ask for before it runs.
 
 Roxel checks the manifest when it loads the plugin, and refuses one with a missing field, a duplicate `id` or a `run` that isn't a function.
 
@@ -51,7 +51,7 @@ Every plugin declares `apiVersion: 1`. A plugin written for a version this copy 
 | `ctx.selection` | The selection, or `null` when nothing is selected. |
 | `ctx.color` | The current color. |
 | `ctx.palette` | The active palette's colors, in order. |
-| `ctx.params` | Parameter values for this run, by name. |
+| `ctx.params` | The values of the command's [params](#params), by `id`. |
 
 ```js
 export default {
@@ -165,8 +165,56 @@ export default {
 
 ## Params
 
-`ctx.params` holds this run's parameter values by name: numbers, booleans, strings, and colors as `[r, g, b, a]`. Commands can't declare parameters yet, so for now it's an empty object.
+A command can ask for values before it runs. List them in its `params`, and Roxel shows a form with one field per param when you choose the command. **Run** runs it with those values, and **Cancel** doesn't run it. The form starts with the values you used last time for that command, or the defaults the first time.
 
+```js
+export default {
+  apiVersion: 1,
+  name: "Tower",
+  commands: [
+    {
+      id: "tower",
+      label: "Tower",
+      params: [
+        { id: "height", label: "Height", type: "int", min: 1, max: 32, default: 8 },
+        { id: "hollow", label: "Hollow", type: "bool" },
+        { id: "wall", label: "Wall", type: "color", default: [180, 170, 150] },
+        { id: "shape", label: "Shape", type: "choice", options: ["Square", "Round"] },
+      ],
+      run(ctx) {
+        const { height, hollow, wall, shape } = ctx.params;
+        for (let y = 0; y < height; y++) {
+          for (let x = -2; x <= 2; x++) {
+            for (let z = -2; z <= 2; z++) {
+              const round = shape === "Round";
+              const d = x * x + z * z;
+              if (round && d > 5) continue;
+              const edge = round ? d >= 3 : Math.max(Math.abs(x), Math.abs(z)) === 2;
+              if (edge || !hollow) ctx.grid.set(x, y, z, wall);
+            }
+          }
+        }
+      },
+    },
+  ],
+};
+```
+
+Each param has an `id`, unique within the command, a `label` shown next to its field, and a `type`:
+
+| `type` | Field | Value in `ctx.params` | Options |
+| ------ | ----- | --------------------- | ------- |
+| `"number"` | A number field, or a slider when it has both `min` and `max` | A number | `min`, `max`, `default` (0) |
+| `"int"` | The same, in whole numbers | A whole number | `min`, `max`, `default` (0) |
+| `"bool"` | A checkbox | `true` or `false` | `default` (`false`) |
+| `"color"` | A color swatch | `[r, g, b, a]` | `default` (white) |
+| `"choice"` | A dropdown | One of the `options` strings | `options` (required), `default` (the first option) |
+
+`default` is optional. When a number's default is left out and 0 is out of range, it's the nearest of `min` and `max`.
+
+`ctx.params` always has a value for every param, and only for those. Values outside `min` and `max` are clamped, and an `int` is rounded. A command without `params` runs as soon as you choose it, and its `ctx.params` is an empty object.
+
+Roxel checks `params` when it loads the plugin, and refuses one with a missing `id`, `label` or `type`, a duplicate `id`, a `min` above its `max`, or a `default` that's out of range or not one of the `options`.
 ## Limits and errors
 
 Every run has limits, so a plugin can't freeze Roxel:

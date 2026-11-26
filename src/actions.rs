@@ -1894,6 +1894,7 @@ mod tests {
         let command = |id: &str, label: &str| Command {
             id: id.into(),
             label: label.into(),
+            params: Vec::new(),
         };
         Plugins {
             list: vec![crate::plugins::Plugin {
