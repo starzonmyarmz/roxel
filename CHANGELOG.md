@@ -6,6 +6,8 @@ Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-25
+
 ### Added
 
 - Plugins: drop JavaScript plugins in the plugins folder and run their commands from the new Plugins menu or the command palette. Plugins are experimental and may still change.
