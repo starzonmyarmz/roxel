@@ -30,6 +30,68 @@ export interface Plugin {
   commands: Command[];
   /** Buttons on the tool rail, each running one of `commands`. */
   toolbar?: ToolbarButton[];
+  /** A section of the inspector. */
+  panel?: Panel;
+}
+
+/** A section of the inspector, described as rows that Roxel draws. */
+export interface Panel {
+  /** The section's heading. */
+  title: string;
+  /**
+   * Returns the rows to show. Roxel calls it when the plugin loads and again
+   * when the model, the selection, the color or the palette changes. Must be
+   * synchronous and quick: it stops after 250 ms. If it throws, the panel
+   * shows the error instead of the rows.
+   */
+  rows(ctx: PanelContext): PanelRow[];
+}
+
+/** A panel's `ctx`: the same as a command's, but read-only and without `params`. */
+export interface PanelContext {
+  grid: ReadonlyGrid;
+  /** The selection, or `null` when nothing is selected. */
+  selection: Selection | null;
+  /** The current color. */
+  color: Color;
+  /** The colors of the active palette, in order. */
+  palette: Color[];
+}
+
+/** The reads of `Grid`. In a panel, `set` and `clear` throw. */
+export type ReadonlyGrid = Omit<Grid, "set" | "clear">;
+
+export type PanelRow = TextRow | ButtonRow | ParamRow;
+
+/** A label, with a value on the right when there is one. */
+export interface TextRow {
+  type: "text";
+  label: string;
+  value?: string | number;
+}
+
+/**
+ * Runs one of the plugin's commands, with the values of its params as the
+ * panel's param rows show them. It doesn't open the command's form.
+ */
+export interface ButtonRow {
+  type: "button";
+  /** The `id` of one of the plugin's commands. */
+  command: string;
+  /** Defaults to the command's `label`. */
+  label?: string;
+}
+
+/**
+ * An editable field for one of a command's params, labeled with the param's
+ * `label`. It holds the same value the command's form does.
+ */
+export interface ParamRow {
+  type: "param";
+  /** The `id` of one of the plugin's commands. */
+  command: string;
+  /** The `id` of one of that command's params. */
+  param: string;
 }
 
 /** A tool rail button. Clicking it is the same as choosing its command from the Plugins menu. */

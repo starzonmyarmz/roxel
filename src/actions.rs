@@ -1925,6 +1925,7 @@ mod tests {
                     name: "Trees".into(),
                     commands: vec![command("oak", "Oak"), command("pine", "Pine")],
                     toolbar: Vec::new(),
+                    panel: None,
                 },
             }],
             commands: vec![

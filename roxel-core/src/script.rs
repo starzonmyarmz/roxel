@@ -18,7 +18,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+mod panel;
 mod params;
+pub use panel::{Panel, PanelCtx, Row, panel_rows};
 pub use params::{ParamKind, ParamSpec, resolve_params};
 
 pub const API_VERSION: i32 = 1;
@@ -47,6 +49,18 @@ impl Default for Limits {
             time: Duration::from_secs(5),
             memory: 256 << 20,
             edits: MAX_EDITS,
+        }
+    }
+}
+
+impl Limits {
+    /// Tighter than a command's: a panel recomputes on every change to the
+    /// model, the selection or the color, and the app waits for it.
+    pub fn panel() -> Self {
+        Self {
+            time: Duration::from_millis(250),
+            memory: 64 << 20,
+            edits: 0,
         }
     }
 }
@@ -105,6 +119,7 @@ pub struct Manifest {
     pub name: String,
     pub commands: Vec<Command>,
     pub toolbar: Vec<ToolbarButton>,
+    pub panel: Option<Panel>,
 }
 
 /// A tool rail button that runs one of the plugin's commands.
@@ -191,8 +206,13 @@ pub fn run(
         let params = resolve_params(&command.params, &cx.params);
         let run_fn = command_run(&plugin, &cx.command).catch(&ctx);
         let run_fn = host.check(&ctx, file, run_fn.map_err(Into::into))?;
+        let view = View {
+            selection: cx.selection.as_ref(),
+            color: cx.color,
+            palette: &cx.palette,
+        };
         let out = (|| {
-            let js_ctx = build_ctx(&ctx, &grid, &staged, cx, &params)?;
+            let js_ctx = build_ctx(&ctx, &grid, Some(&staged), &view, Some(&params))?;
             run_fn.call::<_, Value>((js_ctx,))
         })()
         .catch(&ctx);
@@ -570,10 +590,12 @@ fn read_manifest<'js>(
         out.push(Command { id, label, params });
     }
     let toolbar = read_toolbar(ctx, file, plugin, &out)?;
+    let panel = panel::read_panel(ctx, file, plugin)?;
     Ok(Manifest {
         name,
         commands: out,
         toolbar,
+        panel,
     })
 }
 
@@ -820,26 +842,38 @@ fn command_run<'js>(plugin: &Object<'js>, id: &str) -> rquickjs::Result<Function
     Err(rquickjs::Error::Unknown)
 }
 
+/// What every `ctx` shows besides the grid.
+struct View<'a> {
+    selection: Option<&'a Selection>,
+    color: Color8,
+    palette: &'a [Color8],
+}
+
+/// A command's `ctx`, or with no `staged` and no `params`, a panel's
+/// read-only one.
 fn build_ctx<'js>(
     ctx: &Ctx<'js>,
     grid: &Rc<VoxelGrid>,
-    staged: &Rc<RefCell<Staged>>,
-    cx: &ScriptCtx,
-    params: &[(String, Param)],
+    staged: Option<&Rc<RefCell<Staged>>>,
+    view: &View,
+    params: Option<&[(String, Param)]>,
 ) -> rquickjs::Result<Object<'js>> {
     let out = Object::new(ctx.clone())?;
     out.set("grid", grid_object(ctx, grid, staged)?)?;
-    let selection = match &cx.selection {
+    let selection = match view.selection {
         Some(sel) => selection_object(ctx, sel)?.into_value(),
         None => Value::new_null(ctx.clone()),
     };
     out.set("selection", selection)?;
-    out.set("color", color_js(ctx, Some(cx.color))?)?;
+    out.set("color", color_js(ctx, Some(view.color))?)?;
     let palette = Array::new(ctx.clone())?;
-    for (i, c) in cx.palette.iter().enumerate() {
+    for (i, c) in view.palette.iter().enumerate() {
         palette.set(i, color_js(ctx, Some(*c))?)?;
     }
     out.set("palette", palette)?;
+    let Some(params) = params else {
+        return Ok(out);
+    };
     let js_params = Object::new(ctx.clone())?;
     for (key, value) in params {
         let v = match value {
@@ -857,21 +891,22 @@ fn build_ctx<'js>(
 fn grid_object<'js>(
     ctx: &Ctx<'js>,
     grid: &Rc<VoxelGrid>,
-    staged: &Rc<RefCell<Staged>>,
+    staged: Option<&Rc<RefCell<Staged>>>,
 ) -> rquickjs::Result<Object<'js>> {
     let obj = Object::new(ctx.clone())?;
-
-    let g = grid.clone();
-    obj.set(
-        "get",
-        Function::new(
-            ctx.clone(),
-            move |ctx: Ctx<'js>, x: Value<'js>, y: Value<'js>, z: Value<'js>| {
-                let p = point(&ctx, "grid.get", &x, &y, &z)?;
-                color_js(&ctx, g.get(p))
-            },
-        )?,
-    )?;
+    read_only_grid(ctx, &obj, grid)?;
+    let Some(staged) = staged else {
+        for name in ["set", "clear"] {
+            let msg = format!("grid.{name}: a panel can't change the model");
+            obj.set(
+                name,
+                Function::new(ctx.clone(), move |ctx: Ctx<'js>| {
+                    Err::<(), _>(Exception::throw_type(&ctx, &msg))
+                })?,
+            )?;
+        }
+        return Ok(obj);
+    };
 
     let s = staged.clone();
     obj.set(
@@ -898,6 +933,27 @@ fn grid_object<'js>(
         )?,
     )?;
 
+    Ok(obj)
+}
+
+/// The reads, which commands and panels share.
+fn read_only_grid<'js>(
+    ctx: &Ctx<'js>,
+    obj: &Object<'js>,
+    grid: &Rc<VoxelGrid>,
+) -> rquickjs::Result<()> {
+    let g = grid.clone();
+    obj.set(
+        "get",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, x: Value<'js>, y: Value<'js>, z: Value<'js>| {
+                let p = point(&ctx, "grid.get", &x, &y, &z)?;
+                color_js(&ctx, g.get(p))
+            },
+        )?,
+    )?;
+
     let g = grid.clone();
     obj.set(
         "bounds",
@@ -918,7 +974,7 @@ fn grid_object<'js>(
         })?,
     )?;
 
-    Ok(obj)
+    Ok(())
 }
 
 fn selection_object<'js>(ctx: &Ctx<'js>, sel: &Selection) -> rquickjs::Result<Object<'js>> {
@@ -1780,6 +1836,11 @@ mod tests {
         for src in blocks {
             let manifest =
                 load("doc.js", src, &Limits::default()).unwrap_or_else(|e| panic!("{e}\n{src}"));
+            if manifest.panel.is_some() {
+                let rows = panel_rows("doc.js", src, &mut grid, &PanelCtx::default())
+                    .unwrap_or_else(|e| panic!("{e}\n{src}"));
+                assert!(!rows.is_empty(), "{src}");
+            }
             for cmd in manifest.commands {
                 let cx = ScriptCtx {
                     command: cmd.id,
