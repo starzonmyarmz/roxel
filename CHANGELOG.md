@@ -12,6 +12,7 @@ Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed
 - `rox run` runs a JavaScript plugin command on a model and saves the result, with `--param` to set the command's settings. Plugins are experimental and may still change.
 - Plugin commands can ask for settings (numbers, checkboxes, colors and choices) in a form before they run. The form remembers what you used last time.
 - Plugins can add buttons to the tool rail that run their commands, with a bundled icon or their own SVG.
+- Plugins can add a section to the inspector that shows facts about the model or selection, with settings and buttons for their commands.
 
 ## [1.4.0] - 2026-11-24
 

@@ -28,6 +28,7 @@ export default {
 - **`name`** — the plugin's name, shown in the [Plugins menu](plugins.md#running-a-command).
 - **`commands`** — what the plugin can do. Each command has an `id` that's unique within the plugin, a `label` shown in menus and the command palette, and a `run` function. It can also list [`params`](#params), values to ask for before it runs.
 - **`toolbar`** — optional. Buttons on the tool rail that run commands. See [Toolbar](#toolbar).
+- **`panel`** — optional. A section of the inspector. See [Panel](#panel).
 
 Roxel checks the manifest when it loads the plugin, and refuses one with a missing field, a duplicate `id` or a `run` that isn't a function.
 
@@ -262,15 +263,68 @@ To use your own, ship an `.svg` file with the plugin and give its path relative 
 
 Roxel reads the file when it loads the plugin, so reload after you change it. If it can't show an icon, because the name isn't bundled, or the file is missing, isn't a valid SVG or is over 64 KB, the button shows the `puzzle` icon and Roxel says why.
 
+## Panel
+
+A plugin can add a section to the inspector, under the built-in ones. Its `panel` has a `title`, the section's heading, and a `rows` function that returns what to show, as data:
+
+```js
+export default {
+  apiVersion: 1,
+  name: "Floor",
+  commands: [
+    {
+      id: "floor",
+      label: "Lay Floor",
+      params: [{ id: "size", label: "Size", type: "int", min: 1, max: 32, default: 8 }],
+      run(ctx) {
+        const n = ctx.params.size;
+        for (let x = 0; x < n; x++)
+          for (let z = 0; z < n; z++) ctx.grid.set(x, 0, z, ctx.color);
+      },
+    },
+  ],
+  panel: {
+    title: "Floor",
+    rows(ctx) {
+      let onFloor = 0;
+      ctx.grid.forEach((x, y) => {
+        if (y === 0) onFloor++;
+      });
+      return [
+        { type: "text", label: "On the floor", value: onFloor },
+        { type: "param", command: "floor", param: "size" },
+        { type: "button", command: "floor" },
+      ];
+    },
+  },
+};
+```
+
+Each row is one of:
+
+| `type` | Shows | Fields |
+| ------ | ----- | ------ |
+| `"text"` | A label, with a value on the right | `label`, `value` (optional, a string or a number) |
+| `"button"` | A button that runs a command | `command`, `label` (optional, the command's `label` when left out) |
+| `"param"` | An editable field for one of a command's [params](#params), labeled with the param's `label` | `command`, `param` (the param's `id`) |
+
+A param row holds the same value as the command's form: change it in the panel and the form shows the new value, and the other way round. A button runs its command at once with those values, without opening the form. Params the panel doesn't show use the values from the last run, or their defaults. A button can be clicked only when a command could run from the Plugins menu.
+
+`rows` gets a `ctx` like a command's, with `grid`, `selection`, `color` and `palette`, but no `params`, and it can only read: `ctx.grid.set` and `ctx.grid.clear` throw. Roxel calls it when the plugin loads, and again when the model, the selection, the color or the palette changes, not while you're still drawing. It must be synchronous and quick, because Roxel waits for it: it has its own, tighter [limits](#limits-and-errors).
+
+If `rows` throws, hits a limit or returns a row Roxel can't show, the section shows the error instead of the rows, and tries again on the next change.
+
+Roxel checks `panel` when it loads the plugin, and refuses one without a `title` or a `rows` function. The rows themselves are checked each time `rows` returns: an unknown `type`, a `command` that isn't one of the plugin's or a `param` that isn't one of the command's is an error.
+
 ## Limits and errors
 
-Every run has limits, so a plugin can't freeze Roxel:
+Every run has limits, so a plugin can't freeze Roxel. A panel's `rows` has tighter ones, because Roxel calls it on every change:
 
-| Limit | |
-| ----- | - |
-| Time | 5 seconds |
-| Memory | 256 MB for the script |
-| Changed voxels | 4,194,304 per run |
+| Limit | Command | Panel `rows` |
+| ----- | ------- | ------------ |
+| Time | 5 seconds | 250 milliseconds |
+| Memory | 256 MB for the script | 64 MB for the script |
+| Changed voxels | 4,194,304 per run | None: a panel can't change voxels |
 
 A run that hits a limit stops, and nothing changes. Catching the exception doesn't get around a limit.
 
@@ -287,6 +341,7 @@ Download these to try them, or use them as a starting point:
 - [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin, with params for its height, crown size and colors.
 - [`gradient.js`](plugins/examples/gradient.js) — a recolor that shades the selection, or the whole model, from black at the bottom to the current color at the top.
 - [`mirror.js`](plugins/examples/mirror.js) — mirrors the selection, or the whole model, left to right or top to bottom, from two buttons on the tool rail.
+- [`swap-color.js`](plugins/examples/swap-color.js) — a section in the inspector that counts the voxels in the current color, with a field and a button to swap them for another color.
 
 ## What plugins can't do
 

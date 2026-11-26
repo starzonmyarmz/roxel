@@ -2,7 +2,7 @@
 
 > **Experimental.** Plugins and the plugin API may still change before they settle. When they do, the change is listed in the changelog.
 
-A plugin is a JavaScript file that adds commands to Roxel: generators that build something, like a tree or terrain, filters that change what's there, and recolors. Plugin commands show up in the **Plugins** menu and the command palette, and some add buttons to the tool rail. They run on the open model.
+A plugin is a JavaScript file that adds commands to Roxel: generators that build something, like a tree or terrain, filters that change what's there, and recolors. Plugin commands show up in the **Plugins** menu and the command palette, and some add buttons to the tool rail or a section to the inspector. They run on the open model.
 
 To write your own, see the [Plugin API](plugin-api.md).
 
@@ -50,9 +50,19 @@ The rail shows up to five plugin buttons, fewer when the window is short. When p
 
 If a button's icon can't be shown, it gets a puzzle-piece icon, and Roxel says why when it loads the plugin.
 
+## Inspector panels
+
+A plugin can also add a section to the inspector, under the built-in ones, with a heading of its choosing. It can show facts about the model or the selection, fields for a command's settings and buttons that run its commands.
+
+The section updates when the model, the selection, the current color or the palette changes. While you're drawing, it waits until you let go.
+
+A field in a plugin's section is the same setting as the matching field in that command's form: change one and the other follows. A button in the section runs its command straight away with the settings the section shows, without opening the form. Like the menu, the buttons wait while you're in the middle of an edit.
+
+If the plugin fails to fill its section, the section shows the error, with the file and the line, instead. To remove a plugin's section, remove the plugin.
+
 ## What plugins can't do
 
-Plugins run in a sandbox. A plugin can read the model, the selection, the current color and the active palette, and change voxels. It can't read or write files, use the network, start programs or change your preferences. Every change it makes can be undone.
+Plugins run in a sandbox. A plugin can read the model, the selection, the current color and the active palette, and change voxels. A plugin's inspector section can only read them. It can't read or write files, use the network, start programs or change your preferences. Every change it makes can be undone.
 
 Running a plugin is still running someone else's code on your model, so install plugins you trust.
 

@@ -14,8 +14,10 @@ use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use crate::GridResource;
 use crate::select::Selection;
-use crate::ui::icons;
+use crate::tools::CurrentColor;
+use crate::ui::{PaletteChoice, Palettes, WorkingPalette, display_colors, icons};
 
 pub struct Plugin {
     /// Shown in errors: the module's file name, or `folder/index.js`.
@@ -126,14 +128,7 @@ impl Plugins {
         for (plugin, (p, module_dir)) in self.list.iter().zip(&module_dirs).enumerate() {
             for b in &p.manifest.toolbar {
                 let command = self
-                    .commands
-                    .iter()
-                    .position(|r| {
-                        *r == CommandRef {
-                            plugin,
-                            command: b.command,
-                        }
-                    })
+                    .command_index(plugin, b.command)
                     .expect("the manifest checked toolbar commands");
                 let icon = resolve_icon(module_dir, &p.file, &b.icon, self.generation)
                     .unwrap_or_else(|why| {
@@ -167,6 +162,12 @@ impl Plugins {
     /// The plugins the Plugins menu lists: those with at least one command.
     pub fn listed(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.list.len()).filter(|&p| !self.list[p].manifest.commands.is_empty())
+    }
+
+    /// Index into [`Self::commands`] of plugin `plugin`'s `command`th command.
+    pub fn command_index(&self, plugin: usize, command: usize) -> Option<usize> {
+        let want = CommandRef { plugin, command };
+        self.commands.iter().position(|r| *r == want)
     }
 
     /// Index into [`Self::commands`] of each command of plugin `plugin`.
@@ -325,20 +326,37 @@ impl ParamForms {
     /// Opens the form for command `i`, filled with the values it last ran
     /// with. Returns `false`, opening nothing, when the command has no params.
     pub fn open(&mut self, plugins: &Plugins, i: usize) -> bool {
-        let Some((plugin, command)) = plugins.command(i) else {
+        let Some((_, command)) = plugins.command(i) else {
             return false;
         };
         if command.params.is_empty() {
             return false;
         }
-        let key = (plugin.file.clone(), command.id.clone());
-        let last = self.remembered.get(&key).map_or(&[][..], Vec::as_slice);
         self.open = Some(OpenForm {
             command: i,
             generation: plugins.generation,
-            values: script::resolve_params(&command.params, last),
+            values: self.values(plugins, i),
         });
         true
+    }
+
+    /// The values command `i` runs with outside the form: the last ones,
+    /// fitted to its params, or their defaults.
+    pub fn values(&self, plugins: &Plugins, i: usize) -> Vec<(String, Param)> {
+        let Some((plugin, command)) = plugins.command(i) else {
+            return Vec::new();
+        };
+        let key = (plugin.file.clone(), command.id.clone());
+        let last = self.remembered.get(&key).map_or(&[][..], Vec::as_slice);
+        script::resolve_params(&command.params, last)
+    }
+
+    /// Remembers `values` for command `i`, as a run from the form would.
+    pub fn remember(&mut self, plugins: &Plugins, i: usize, values: Vec<(String, Param)>) {
+        if let Some((plugin, command)) = plugins.command(i) {
+            self.remembered
+                .insert((plugin.file.clone(), command.id.clone()), values);
+        }
     }
 
     /// Closes the form and returns its command and values, remembered for
@@ -348,11 +366,8 @@ impl ParamForms {
         if form.generation != plugins.generation {
             return None;
         }
-        let (plugin, command) = plugins.command(form.command)?;
-        self.remembered.insert(
-            (plugin.file.clone(), command.id.clone()),
-            form.values.clone(),
-        );
+        plugins.command(form.command)?;
+        self.remember(plugins, form.command, form.values.clone());
         Some((form.command, form.values))
     }
 }
@@ -381,6 +396,135 @@ pub fn run_command(
         .map_err(|e| error_message(&plugin.file, &e))?;
     script::apply(&edits, history, grid);
     Ok(edits.len())
+}
+
+/// One plugin's inspector section, as its `rows` last returned it.
+pub struct PanelView {
+    /// Index into [`Plugins::list`].
+    pub plugin: usize,
+    pub title: String,
+    /// The error replaces the rows.
+    pub rows: Result<Vec<script::Row>, String>,
+}
+
+/// The selection as panels see it, with a stamp that moves when it changes,
+/// so a frame without a change doesn't compare masks.
+#[derive(Default)]
+pub struct PanelSelection {
+    stamp: u64,
+    selection: Option<script::Selection>,
+}
+
+impl PanelSelection {
+    pub fn update(&mut self, selection: &Selection) {
+        let selection = script_selection(selection);
+        if selection != self.selection {
+            self.selection = selection;
+            self.stamp += 1;
+        }
+    }
+}
+
+/// Everything `rows` can see, as of its last call.
+#[derive(PartialEq)]
+struct PanelInputs {
+    generation: u64,
+    revision: u64,
+    selection: u64,
+    color: Color8,
+    palette: Vec<Color8>,
+}
+
+#[derive(Resource, Default)]
+pub struct PluginPanels {
+    inputs: Option<PanelInputs>,
+    pub views: Vec<PanelView>,
+}
+
+impl PluginPanels {
+    /// Calls every plugin's `rows` again when anything they can see has
+    /// changed since the last call. Returns whether it did.
+    pub fn refresh(
+        &mut self,
+        plugins: &Plugins,
+        grid: &mut VoxelGrid,
+        selection: &PanelSelection,
+        color: Color8,
+        palette: &[Color8],
+    ) -> bool {
+        if plugins.list.iter().all(|p| p.manifest.panel.is_none()) {
+            self.inputs = None;
+            self.views.clear();
+            return false;
+        }
+        let inputs = PanelInputs {
+            generation: plugins.generation,
+            revision: grid.revision(),
+            selection: selection.stamp,
+            color,
+            palette: palette.to_vec(),
+        };
+        if self.inputs.as_ref() == Some(&inputs) {
+            return false;
+        }
+        let cx = script::PanelCtx {
+            selection: selection.selection.clone(),
+            color,
+            palette: palette.to_vec(),
+            ..Default::default()
+        };
+        self.views = plugins
+            .list
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| {
+                let panel = p.manifest.panel.as_ref()?;
+                let rows = script::panel_rows(&p.file, &p.source, grid, &cx)
+                    .map_err(|e| error_message(&p.file, &e));
+                Some(PanelView {
+                    plugin: i,
+                    title: panel.title.clone(),
+                    rows,
+                })
+            })
+            .collect();
+        self.inputs = Some(inputs);
+        true
+    }
+}
+
+/// Keeps [`PluginPanels`] current. Waits while a stroke is open or a mouse
+/// button is held, so a brush drag or a color picker drag recomputes once,
+/// when it ends, instead of every frame.
+#[allow(clippy::too_many_arguments)]
+pub fn refresh_plugin_panels_system(
+    plugins: Res<Plugins>,
+    mut panels: ResMut<PluginPanels>,
+    mut grid: ResMut<GridResource>,
+    history: Res<History>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    selection: Res<Selection>,
+    mut seen: Local<PanelSelection>,
+    color: Res<CurrentColor>,
+    palettes: Res<Palettes>,
+    choice: Res<PaletteChoice>,
+    working: Res<WorkingPalette>,
+) {
+    if selection.is_changed() {
+        seen.update(&selection);
+    }
+    if history.is_open() || mouse.get_pressed().next().is_some() {
+        return;
+    }
+    let active = choice.0.min(palettes.0.len().saturating_sub(1));
+    let palette = display_colors(&palettes, &working, active);
+    panels.refresh(
+        &plugins,
+        grid.bypass_change_detection(),
+        &seen,
+        color.0,
+        palette,
+    );
 }
 
 #[cfg(test)]
@@ -523,6 +667,143 @@ mod tests {
             4
         );
         assert_eq!(grid.get(IVec3::new(3, 0, 0)), Some([1, 2, 3, 255]));
+    }
+
+    const PANEL: &str = "export default { apiVersion: 1, name: 'Count', commands: [\
+        { id: 'row', label: 'Row', params: [\
+            { id: 'n', label: 'Length', type: 'int', min: 1, max: 9, default: 2 }],\
+          run(ctx) { for (let x = 0; x < ctx.params.n; x++) ctx.grid.set(x, 0, 0, ctx.color); } }],\
+        panel: { title: 'Count', rows(ctx) {\
+          let n = 0; ctx.grid.forEach(() => n++);\
+          return [{ type: 'text', label: 'Voxels', value: n },\
+                  { type: 'text', label: 'Selected', value: ctx.selection ? 'yes' : 'no' },\
+                  { type: 'param', command: 'row', param: 'n' },\
+                  { type: 'button', command: 'row' }]; } } };";
+
+    fn text_values(panels: &PluginPanels) -> Vec<String> {
+        let rows = panels.views[0].rows.as_ref().unwrap();
+        rows.iter()
+            .filter_map(|r| match r {
+                script::Row::Text { value, .. } => value.clone(),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn panels_refresh_only_when_what_they_see_changes() {
+        let dir = TmpDir::new("panel-refresh");
+        dir.write("a.js", DOT);
+        dir.write("count.js", PANEL);
+        let (mut plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut grid = VoxelGrid::default();
+        let mut panels = PluginPanels::default();
+        let mut sel = PanelSelection::default();
+        let color = [1, 2, 3, 255];
+        assert!(panels.refresh(&plugins, &mut grid, &sel, color, &[]));
+        assert_eq!(panels.views.len(), 1, "only plugins with a panel");
+        assert_eq!(panels.views[0].plugin, 1);
+        assert_eq!(panels.views[0].title, "Count");
+        assert_eq!(text_values(&panels), ["0", "no"]);
+        assert!(!panels.refresh(&plugins, &mut grid, &sel, color, &[]));
+
+        grid.set(bevy::math::IVec3::ZERO, Some(color));
+        assert!(panels.refresh(&plugins, &mut grid, &sel, color, &[]));
+        assert_eq!(text_values(&panels), ["1", "no"]);
+
+        sel.update(&Selection::default());
+        assert!(
+            !panels.refresh(&plugins, &mut grid, &sel, color, &[]),
+            "same selection"
+        );
+        sel.update(&Selection {
+            aabb: Some(SelectionAabb {
+                min: IVec3::ZERO,
+                max: IVec3::ONE,
+            }),
+            cells: None,
+        });
+        assert!(panels.refresh(&plugins, &mut grid, &sel, color, &[]));
+        assert_eq!(text_values(&panels), ["1", "yes"]);
+
+        assert!(panels.refresh(&plugins, &mut grid, &sel, [9, 9, 9, 255], &[]));
+        assert!(panels.refresh(&plugins, &mut grid, &sel, [9, 9, 9, 255], &[color]));
+        plugins.reload(&dir.0);
+        assert!(panels.refresh(&plugins, &mut grid, &sel, [9, 9, 9, 255], &[color]));
+        assert_eq!(grid.count(), 1, "the grid comes back");
+    }
+
+    #[test]
+    fn views_clear_when_no_plugin_has_a_panel() {
+        let dir = TmpDir::new("panel-none");
+        dir.write("count.js", PANEL);
+        let (mut plugins, _) = Plugins::load_dir(&dir.0);
+        let mut grid = VoxelGrid::default();
+        let mut panels = PluginPanels::default();
+        let sel = PanelSelection::default();
+        panels.refresh(&plugins, &mut grid, &sel, [0; 4], &[]);
+        assert_eq!(panels.views.len(), 1);
+        std::fs::remove_file(dir.0.join("count.js")).unwrap();
+        dir.write("dot.js", DOT);
+        plugins.reload(&dir.0);
+        assert!(!panels.refresh(&plugins, &mut grid, &sel, [0; 4], &[]));
+        assert!(panels.views.is_empty());
+    }
+
+    #[test]
+    fn a_failing_panel_shows_its_error() {
+        let dir = TmpDir::new("panel-error");
+        dir.write(
+            "bad.js",
+            "export default { apiVersion: 1, name: 'Bad', commands: [],\
+             panel: { title: 'Bad', rows(ctx) {\n ctx.grid.set(0, 0, 0, [1, 1, 1]); } } };",
+        );
+        let (plugins, _) = Plugins::load_dir(&dir.0);
+        let mut panels = PluginPanels::default();
+        let mut grid = VoxelGrid::default();
+        panels.refresh(&plugins, &mut grid, &PanelSelection::default(), [0; 4], &[]);
+        let err = panels.views[0].rows.as_ref().unwrap_err();
+        assert!(err.starts_with("bad.js:2: TypeError"), "{err}");
+        assert_eq!(grid.count(), 0);
+    }
+
+    #[test]
+    fn panel_params_share_the_forms_values() {
+        let dir = TmpDir::new("panel-params");
+        dir.write("count.js", PANEL);
+        let (plugins, _) = Plugins::load_dir(&dir.0);
+        let mut forms = ParamForms::default();
+        assert_eq!(
+            forms.values(&plugins, 0),
+            [("n".to_string(), Param::Number(2.0))]
+        );
+        forms.remember(&plugins, 0, vec![("n".to_string(), Param::Number(4.0))]);
+        forms.open(&plugins, 0);
+        assert_eq!(
+            forms.open.as_ref().unwrap().values[0].1,
+            Param::Number(4.0),
+            "the form opens with the panel's value"
+        );
+        forms.open.as_mut().unwrap().values[0].1 = Param::Number(30.0);
+        forms.submit(&plugins);
+        assert_eq!(
+            forms.values(&plugins, 0)[0].1,
+            Param::Number(9.0),
+            "and the panel shows the form's, fitted to the range"
+        );
+        assert!(forms.values(&plugins, 5).is_empty());
+    }
+
+    #[test]
+    fn command_index_finds_a_plugins_command() {
+        let dir = TmpDir::new("command-index");
+        dir.write("a.js", DOT);
+        dir.write("b.js", BOOM);
+        let (plugins, _) = Plugins::load_dir(&dir.0);
+        assert_eq!(plugins.command_index(0, 1), Some(1));
+        assert_eq!(plugins.command_index(1, 0), Some(2));
+        assert_eq!(plugins.command_index(1, 1), None);
     }
 
     #[test]
@@ -826,6 +1107,52 @@ mod tests {
         assert_eq!(grid.get(IVec3::new(2, 3, 0)), Some(red));
         assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(blue));
         assert_eq!(history.undo.len(), 2);
+    }
+
+    #[test]
+    fn the_swap_color_example_counts_and_swaps_from_its_panel() {
+        let dir = TmpDir::new("swap-color");
+        dir.write("swap-color.js", &example("swap-color.js"));
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
+        let (mut history, mut grid) = (History::default(), VoxelGrid::default());
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(1, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 0, 0), Some(blue));
+        let mut panels = PluginPanels::default();
+        let sel = PanelSelection::default();
+        panels.refresh(&plugins, &mut grid, &sel, red, &[]);
+        assert_eq!(panels.views[0].title, "Swap Color");
+        assert_eq!(text_values(&panels), ["2", "2"]);
+
+        let rows = panels.views[0].rows.as_ref().unwrap();
+        let button = rows
+            .iter()
+            .find_map(|r| match r {
+                script::Row::Button { command, .. } => plugins.command_index(0, *command),
+                _ => None,
+            })
+            .unwrap();
+        let mut forms = ParamForms::default();
+        let green = [0, 200, 0, 255];
+        forms.remember(&plugins, button, vec![("to".into(), Param::Color(green))]);
+        let params = forms.values(&plugins, button);
+        let sel = Selection::default();
+        let run = RunInput {
+            color: red,
+            params: &params,
+            ..input(&sel)
+        };
+        assert_eq!(
+            run_command(&plugins, button, run, &mut history, &mut grid).unwrap(),
+            2
+        );
+        assert_eq!(grid.get(IVec3::new(1, 0, 0)), Some(green));
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(blue));
+        let panel_sel = PanelSelection::default();
+        panels.refresh(&plugins, &mut grid, &panel_sel, red, &[]);
+        assert_eq!(text_values(&panels), ["2", "0"]);
     }
 
     #[test]

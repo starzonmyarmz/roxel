@@ -418,6 +418,9 @@ pub enum Action {
     /// Runs the command in the open params form with the form's values.
     /// Only the form queues it; it isn't listed anywhere.
     ConfirmPluginParams,
+    /// Runs a command at once with the values its panel param rows show,
+    /// without opening the form. Only a panel button queues it.
+    RunPluginFromPanel(usize),
     ReloadPlugins,
     OpenPluginsFolder,
 
@@ -991,7 +994,7 @@ impl Action {
                 None,
             ),
 
-            Action::RunPlugin(_) | Action::ConfirmPluginParams => {
+            Action::RunPlugin(_) | Action::ConfirmPluginParams | Action::RunPluginFromPanel(_) => {
                 spec("Run plugin", "Run plugin", C::Plugins, "plugin", None)
             }
             Action::ReloadPlugins => spec(
@@ -1178,7 +1181,7 @@ impl Action {
             Action::RenamePalette | Action::DeletePalette => !s.active_is_builtin(),
             Action::ExportAse => dialog_ok && s.active_palette().is_some(),
             Action::SetTheme(t) => s.prefs.theme != t,
-            Action::RunPlugin(i) => i < s.plugins.commands.len(),
+            Action::RunPlugin(i) | Action::RunPluginFromPanel(i) => i < s.plugins.commands.len(),
             Action::ConfirmPluginParams | Action::ReloadPlugins | Action::OpenPluginsFolder => true,
         }
     }
@@ -1198,6 +1201,7 @@ impl Action {
                 | Action::HalveDensity
                 | Action::RunPlugin(_)
                 | Action::ConfirmPluginParams
+                | Action::RunPluginFromPanel(_)
         )
     }
 
@@ -1426,7 +1430,8 @@ pub fn apply_actions_system(mut queue: ResMut<ActionQueue>, mut cx: ActionContex
     let generation = cx.app.plugins.generation;
     for (action, origin) in std::mem::take(&mut queue.0) {
         // A reload earlier this frame renumbers plugin commands.
-        if matches!(action, Action::RunPlugin(_)) && cx.app.plugins.generation != generation {
+        let indexed = matches!(action, Action::RunPlugin(_) | Action::RunPluginFromPanel(_));
+        if indexed && cx.app.plugins.generation != generation {
             continue;
         }
         dispatch(action, origin, &mut cx);
@@ -1684,6 +1689,10 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
                 .toasts
                 .error("Plugins were reloaded, so the command didn't run. Choose it again."),
         },
+        Action::RunPluginFromPanel(i) => {
+            let params = app.param_forms.values(&app.plugins, i);
+            run_plugin(i, &params, doc, edit, pal, &app.plugins);
+        }
         Action::ReloadPlugins => reload_plugins(&mut app.plugins, &mut doc.toasts),
         Action::OpenPluginsFolder => open_plugins_folder(&mut doc.toasts),
 
@@ -1925,6 +1934,7 @@ mod tests {
                     name: "Trees".into(),
                     commands: vec![command("oak", "Oak"), command("pine", "Pine")],
                     toolbar: Vec::new(),
+                    panel: None,
                 },
             }],
             commands: vec![
@@ -1967,7 +1977,11 @@ mod tests {
         s.stroke_open = true;
         assert!(!Action::RunPlugin(0).enabled(&s));
         assert!(!Action::ConfirmPluginParams.enabled(&s));
+        assert!(!Action::RunPluginFromPanel(0).enabled(&s));
         assert!(Action::ReloadPlugins.enabled(&s));
+        s.stroke_open = false;
+        assert!(Action::RunPluginFromPanel(1).enabled(&s));
+        assert!(!Action::RunPluginFromPanel(2).enabled(&s));
     }
 
     #[test]

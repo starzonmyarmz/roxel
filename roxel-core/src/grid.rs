@@ -88,6 +88,7 @@ pub struct VoxelGrid {
     /// untouched. Lets the per-frame inspector "Size" row skip the full-grid
     /// walk while the scene is idle.
     bbox_cache: Option<Option<(IVec3, IVec3)>>,
+    revision: u64,
 }
 
 impl VoxelGrid {
@@ -129,6 +130,9 @@ impl VoxelGrid {
         };
         chunk.cells[idx] = c;
         let count_now = chunk.count;
+        if prev != c {
+            self.revision += 1;
+        }
 
         self.mark_cell_dirty(p);
 
@@ -183,6 +187,13 @@ impl VoxelGrid {
         self.total_count = 0;
         self.warned_large = false;
         self.bbox_cache = Some(None);
+        self.revision += 1;
+    }
+
+    /// Changes whenever a cell's contents do, so a reader can tell the model
+    /// changed without comparing it.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     #[inline]
@@ -293,6 +304,23 @@ mod tests {
         assert_eq!(g.count(), 0);
         assert_eq!(g.total_count, 0);
         assert!(!g.warned_large);
+    }
+
+    #[test]
+    fn revision_moves_only_when_a_cell_changes() {
+        let mut g = VoxelGrid::default();
+        let r0 = g.revision();
+        g.set(IVec3::ZERO, Some([1, 2, 3, 255]));
+        let r1 = g.revision();
+        assert_ne!(r0, r1);
+        g.set(IVec3::ZERO, Some([1, 2, 3, 255]));
+        g.set(IVec3::new(0, -1, 0), Some([1, 2, 3, 255]));
+        assert_eq!(g.revision(), r1, "no-op and below-floor writes");
+        g.set(IVec3::ZERO, Some([9, 2, 3, 255]));
+        assert_ne!(g.revision(), r1, "a recolor counts");
+        let r2 = g.revision();
+        g.clear();
+        assert_ne!(g.revision(), r2);
     }
 
     #[test]

@@ -22,8 +22,8 @@ When a change adds, removes, or alters **user-facing behavior**, update the matc
 | First-run flow, install/packaging, platform launch quirks | `src/installation.md`        |
 | Onboarding-level overview, marquee feature                | `src/introduction.md` + `getting-started.md` |
 | A `rox` command, option or output field                   | `src/command-line.md`        |
-| Plugin loading, the plugins folder, the Plugins menu, plugin rail buttons | `src/plugins.md` |
-| The plugin API, `ctx`, the manifest, `toolbar`, bundled plugin icons | `src/plugin-api.md` + `src/roxel.d.ts` |
+| Plugin loading, the plugins folder, the Plugins menu, plugin rail buttons, plugin inspector panels | `src/plugins.md` |
+| The plugin API, `ctx`, the manifest, `toolbar`, `panel` rows, bundled plugin icons | `src/plugin-api.md` + `src/roxel.d.ts` |
 | A new feature area with no home above                     | new `src/<page>.md` + `SUMMARY.md` entry |
 
 ## Conventions

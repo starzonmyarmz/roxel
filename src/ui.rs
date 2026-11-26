@@ -144,6 +144,7 @@ pub struct UiState<'w> {
     pub shortcuts: ResMut<'w, ShortcutsWindow>,
     pub plugins: Res<'w, crate::plugins::Plugins>,
     pub param_forms: ResMut<'w, crate::plugins::ParamForms>,
+    pub plugin_panels: Res<'w, crate::plugins::PluginPanels>,
 }
 
 #[derive(SystemParam)]
@@ -220,6 +221,7 @@ pub fn ui_system(
         mut shortcuts,
         plugins,
         mut param_forms,
+        plugin_panels,
     } = ui_state;
     let ctx = contexts.ctx_mut()?;
     egui_extras::install_image_loaders(ctx);
@@ -348,6 +350,9 @@ pub fn ui_system(
             selection: &selection,
             select_state: &select_state,
             selection_voxels: selection_voxels.0,
+            plugins: &plugins,
+            plugin_panels: &plugin_panels,
+            param_forms: &mut param_forms,
         },
     );
     if let Some(resp) = inspector_resp {

@@ -220,6 +220,7 @@ fn main() {
         })
         .init_resource::<NewProject>()
         .init_resource::<crate::plugins::ParamForms>()
+        .init_resource::<crate::plugins::PluginPanels>()
         .init_resource::<PendingImport>()
         .insert_resource(toasts)
         .insert_resource(plugins)
@@ -244,6 +245,8 @@ fn main() {
                     .before(apply_pending_view_preset_system)
                     .before(frame_view_system)
                     .before(regenerate_mesh_system),
+                crate::plugins::refresh_plugin_panels_system
+                    .after(crate::actions::apply_actions_system),
             ),
         );
     app.init_resource::<crate::menu::AboutWindow>();
