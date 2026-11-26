@@ -1923,6 +1923,7 @@ mod tests {
                 manifest: Manifest {
                     name: "Trees".into(),
                     commands: vec![command("oak", "Oak"), command("pine", "Pine")],
+                    toolbar: Vec::new(),
                 },
             }],
             commands: vec![

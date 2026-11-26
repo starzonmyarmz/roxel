@@ -28,7 +28,72 @@ export interface Plugin {
   /** Shown in the Plugins menu. */
   name: string;
   commands: Command[];
+  /** Buttons on the tool rail, each running one of `commands`. */
+  toolbar?: ToolbarButton[];
 }
+
+/** A tool rail button. Clicking it is the same as choosing its command from the Plugins menu. */
+export interface ToolbarButton {
+  /** The `id` of one of the plugin's commands. One button per command. */
+  command: string;
+  /**
+   * A bundled icon's name, or the path of an `.svg` file relative to the
+   * plugin's module, such as `"icons/oak.svg"`. An icon Roxel can't show
+   * falls back to the `"puzzle"` icon.
+   */
+  icon: IconName | `${string}.svg`;
+  /** Shown on hover. Defaults to the command's `label`. */
+  tooltip?: string;
+}
+
+/** The icons bundled with Roxel for toolbar buttons, from Lucide. */
+export type IconName =
+  | "blend"
+  | "box"
+  | "boxes"
+  | "brick-wall"
+  | "castle"
+  | "cloud"
+  | "cone"
+  | "cylinder"
+  | "dices"
+  | "droplet"
+  | "fence"
+  | "flame"
+  | "flip-horizontal-2"
+  | "flip-vertical-2"
+  | "flower"
+  | "gem"
+  | "grid-3x3"
+  | "hammer"
+  | "heart"
+  | "house"
+  | "layers"
+  | "leaf"
+  | "moon"
+  | "mountain"
+  | "mountain-snow"
+  | "paintbrush"
+  | "palette"
+  | "puzzle"
+  | "pyramid"
+  | "rotate-cw"
+  | "scaling"
+  | "shovel"
+  | "shuffle"
+  | "snowflake"
+  | "sparkles"
+  | "sprout"
+  | "star"
+  | "sun"
+  | "tent"
+  | "torus"
+  | "tree-deciduous"
+  | "tree-pine"
+  | "trees"
+  | "wand-sparkles"
+  | "waves"
+  | "zap";
 
 export interface Command {
   /** Unique within the plugin. */
