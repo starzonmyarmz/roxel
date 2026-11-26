@@ -311,7 +311,8 @@ pub fn draw_plugin_params(
     })
 }
 
-fn param_field(
+/// The field for one param, shared by the form and plugin panels.
+pub fn param_field(
     ui: &mut egui::Ui,
     theme: &Theme,
     spec: &ParamSpec,
@@ -366,7 +367,7 @@ fn param_field(
                 ui,
                 theme,
                 &format!("plugin_param_{}", spec.id),
-                width::PREFS_DROPDOWN,
+                width::PREFS_DROPDOWN.min(ui.available_width()),
                 &options[current],
                 options,
                 current,

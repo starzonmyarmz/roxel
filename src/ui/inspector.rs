@@ -3,6 +3,7 @@
 //! menu, the rename row, the swatch grid, and applying the grid's edit.
 
 use crate::actions::{Action, ActionQueue, ActionState, Origin};
+use crate::plugins::{ParamForms, PluginPanels, Plugins};
 use crate::select::{SelectState, Selection};
 use crate::theme::{Preferences, Theme};
 use crate::tools::{
@@ -21,6 +22,7 @@ use roxel::color_space::ColorEditBuffer;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
 use roxel::io;
+use roxel::script::Row;
 
 /// Top-left of a swatch cell at a fractional grid slot, lerping between the two
 /// bracketing integer cells. Whole slots map straight to the integer cell;
@@ -99,6 +101,9 @@ pub struct Inspector<'a, 'w, 's> {
     pub selection: &'a Selection,
     pub select_state: &'a SelectState,
     pub selection_voxels: usize,
+    pub plugins: &'a Plugins,
+    pub plugin_panels: &'a PluginPanels,
+    pub param_forms: &'a mut ParamForms,
 }
 
 /// The left inspector side panel: Status / Color / Palette / Shape /
@@ -153,6 +158,7 @@ pub fn inspector_panel(
                     palette_section(ui, theme, &mut insp);
                     shape_section(ui, theme, &insp);
                     selection_section(ui, theme, &insp);
+                    plugin_sections(ui, theme, &mut insp);
                 });
             });
     });
@@ -612,6 +618,90 @@ fn selection_section(ui: &mut egui::Ui, theme: &Theme, insp: &Inspector) {
         widgets::stat_row(ui, theme, "Bounds", extent_label(aabb.extents()));
         widgets::stat_row(ui, theme, "Voxels", insp.selection_voxels.to_string());
     });
+}
+
+/// One section per plugin panel, under the built-in ones.
+fn plugin_sections(ui: &mut egui::Ui, theme: &Theme, insp: &mut Inspector) {
+    let can_run = !insp.history.is_open();
+    for view in &insp.plugin_panels.views {
+        widgets::section(ui, theme, &view.title, |ui| {
+            ui.spacing_mut().item_spacing.y = space::XS;
+            let rows = match &view.rows {
+                Ok(rows) => rows,
+                Err(msg) => {
+                    panel_error(ui, theme, msg);
+                    return;
+                }
+            };
+            for row in rows {
+                panel_row(ui, theme, insp, view.plugin, row, can_run);
+            }
+        });
+    }
+}
+
+fn panel_error(ui: &mut egui::Ui, theme: &Theme, msg: &str) {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(msg)
+                .color(theme.error)
+                .size(font::SMALL),
+        )
+        .wrap(),
+    );
+}
+
+fn panel_row(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    insp: &mut Inspector,
+    plugin: usize,
+    row: &Row,
+    can_run: bool,
+) {
+    match row {
+        Row::Text {
+            label,
+            value: Some(value),
+        } => {
+            widgets::stat_row(ui, theme, label, value.clone());
+        }
+        Row::Text { label, value: None } => widgets::hint_label(ui, theme, label),
+        Row::Button { command, label } => {
+            let Some(i) = insp.plugins.command_index(plugin, *command) else {
+                return;
+            };
+            ui.add_enabled_ui(can_run, |ui| {
+                if widgets::dialog_button(ui, theme, label, false).clicked() {
+                    insp.actions.push(Action::RunPluginFromPanel(i), Origin::Ui);
+                }
+            });
+        }
+        Row::Param { command, param } => {
+            let Some(i) = insp.plugins.command_index(plugin, *command) else {
+                return;
+            };
+            let Some((_, cmd)) = insp.plugins.command(i) else {
+                return;
+            };
+            let Some(spec) = cmd.params.get(*param) else {
+                return;
+            };
+            let mut values = insp.param_forms.values(insp.plugins, i);
+            let Some((_, value)) = values.get_mut(*param) else {
+                return;
+            };
+            let before = value.clone();
+            widgets::prefs_row(ui, theme, &spec.label, |ui| {
+                ui.push_id(("plugin_panel_param", i, *param), |ui| {
+                    crate::ui::modals::param_field(ui, theme, spec, value, insp.prefs.color_space);
+                });
+            });
+            if *value != before {
+                insp.param_forms.remember(insp.plugins, i, values);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
