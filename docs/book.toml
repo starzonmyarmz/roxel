@@ -12,13 +12,14 @@ default-theme = "light"
 preferred-dark-theme = "navy"
 additional-css = ["theme/roxel.css"]
 additional-js = ["theme/roxel.js"]
+no-section-label = true
 
 [output.html.print]
 enable = false
 
 [output.html.fold]
 enable = true
-level = 1
+level = 2
 
 [output.html.search]
 enable = true
