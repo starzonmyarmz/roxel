@@ -104,6 +104,18 @@ impl Default for ScriptCtx {
 pub struct Manifest {
     pub name: String,
     pub commands: Vec<Command>,
+    pub toolbar: Vec<ToolbarButton>,
+}
+
+/// A tool rail button that runs one of the plugin's commands.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolbarButton {
+    /// Index into [`Manifest::commands`].
+    pub command: usize,
+    /// A bundled icon name, or a `.svg` path relative to the module. The
+    /// host resolves it; anything it can't show falls back to its plugin icon.
+    pub icon: String,
+    pub tooltip: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -557,10 +569,60 @@ fn read_manifest<'js>(
         let params = read_params(ctx, file, &cmd, &format!("commands[{i}].params"))?;
         out.push(Command { id, label, params });
     }
+    let toolbar = read_toolbar(ctx, file, plugin, &out)?;
     Ok(Manifest {
         name,
         commands: out,
+        toolbar,
     })
+}
+
+fn read_toolbar<'js>(
+    ctx: &Ctx<'js>,
+    file: &str,
+    plugin: &Object<'js>,
+    commands: &[Command],
+) -> Result<Vec<ToolbarButton>, Failure<'js>> {
+    let list: Value = plugin.get("toolbar").catch(ctx)?;
+    if list.is_undefined() {
+        return Ok(Vec::new());
+    }
+    let Some(list) = list.into_array() else {
+        return Err(bad(file, "toolbar must be an array").into());
+    };
+    let mut out: Vec<ToolbarButton> = Vec::new();
+    for (i, b) in list.iter::<Value>().enumerate() {
+        let at = format!("toolbar[{i}]");
+        let Some(b) = b.catch(ctx)?.into_object() else {
+            return Err(bad(file, &format!("{at} must be an object")).into());
+        };
+        let id = string_field(ctx, file, &b, "command", &format!("{at}.command"))?;
+        let Some(command) = commands.iter().position(|c| c.id == id) else {
+            return Err(bad(file, &format!("{at}.command \"{id}\" is not a command")).into());
+        };
+        if out.iter().any(|o| o.command == command) {
+            return Err(bad(file, &format!("toolbar has two buttons for \"{id}\"")).into());
+        }
+        let icon = string_field(ctx, file, &b, "icon", &format!("{at}.icon"))?;
+        let tooltip: Value = b.get("tooltip").catch(ctx)?;
+        let tooltip = if tooltip.is_undefined() {
+            None
+        } else {
+            Some(string_field(
+                ctx,
+                file,
+                &b,
+                "tooltip",
+                &format!("{at}.tooltip"),
+            )?)
+        };
+        out.push(ToolbarButton {
+            command,
+            icon,
+            tooltip,
+        });
+    }
+    Ok(out)
 }
 
 fn string_field<'js>(
@@ -1005,6 +1067,65 @@ mod tests {
         let ids: Vec<_> = m.commands.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, ["oak", "pine"]);
         assert_eq!(m.commands[1].label, "Pine");
+        assert!(m.toolbar.is_empty());
+    }
+
+    #[test]
+    fn load_reads_the_toolbar() {
+        let src = "export default { apiVersion: 1, name: 'Trees', commands: [\
+                   { id: 'oak', label: 'Oak', run() {} },\
+                   { id: 'pine', label: 'Pine', run() {} }],\
+                   toolbar: [{ command: 'pine', icon: 'tree-pine', tooltip: 'Plant a pine' },\
+                   { command: 'oak', icon: 'icons/oak.svg' }] };";
+        let m = load("trees.js", src, &Limits::default()).unwrap();
+        assert_eq!(
+            m.toolbar,
+            [
+                ToolbarButton {
+                    command: 1,
+                    icon: "tree-pine".into(),
+                    tooltip: Some("Plant a pine".into()),
+                },
+                ToolbarButton {
+                    command: 0,
+                    icon: "icons/oak.svg".into(),
+                    tooltip: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_toolbars_are_load_errors() {
+        let cases = [
+            ("{}", "toolbar must be an array"),
+            ("[1]", "toolbar[0] must be an object"),
+            ("[{ icon: 'box' }]", "toolbar[0].command must be"),
+            (
+                "[{ command: 'nope', icon: 'box' }]",
+                "\"nope\" is not a command",
+            ),
+            ("[{ command: 'a' }]", "toolbar[0].icon must be"),
+            (
+                "[{ command: 'a', icon: 'box', tooltip: 3 }]",
+                "tooltip must be",
+            ),
+            (
+                "[{ command: 'a', icon: 'box' }, { command: 'a', icon: 'gem' }]",
+                "two buttons for \"a\"",
+            ),
+        ];
+        for (toolbar, want) in cases {
+            let src = format!(
+                "export default {{ apiVersion: 1, name: 'T', commands: [\
+                 {{ id: 'a', label: 'A', run() {{}} }}], toolbar: {toolbar} }};"
+            );
+            let err = load("t.js", &src, &Limits::default()).unwrap_err();
+            assert!(
+                matches!(&err, ScriptError::Load(m) if m.contains(want)),
+                "{toolbar}: {err}"
+            );
+        }
     }
 
     #[test]

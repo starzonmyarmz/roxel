@@ -23,7 +23,7 @@ A lightweight, open-source voxel editor for desktop. Simple to learn, fun to use
 - Import MagicaVoxel `.vox`, Qubicle `.qb`, and Goxel `.gox`
 - Export to MagicaVoxel `.vox`, Goxel `.gox`, Wavefront `.obj`, glTF `.glb` (Unity / Godot ready), transparent `.png`, and `.svg`, plus a lit, framed Roxel Shot PNG for sharing
 - Import / export Adobe Swatch Exchange `.ase` palettes
-- JavaScript plugins (experimental): generators, filters and recolors that run from the Plugins menu or the command palette, or headlessly with `rox run`
+- JavaScript plugins (experimental): generators, filters and recolors that run from the Plugins menu, the command palette or their own tool rail buttons, or headlessly with `rox run`
 - `rox` command-line tool: print a model's bounds and colors as JSON, render it to an isometric PNG, convert it to another format, or build one from a list of ops, without opening the app
 - In-app toast notifications for save / load / import / export results
 - Light / Dark / System themes with a custom canvas color, plus a floor dot grid and an RGB axis triad at the world origin, each toggled from the View menu

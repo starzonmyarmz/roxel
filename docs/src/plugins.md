@@ -2,7 +2,7 @@
 
 > **Experimental.** Plugins and the plugin API may still change before they settle. When they do, the change is listed in the changelog.
 
-A plugin is a JavaScript file that adds commands to Roxel: generators that build something, like a tree or terrain, filters that change what's there, and recolors. Plugin commands show up in the **Plugins** menu and the command palette, and run on the open model.
+A plugin is a JavaScript file that adds commands to Roxel: generators that build something, like a tree or terrain, filters that change what's there, and recolors. Plugin commands show up in the **Plugins** menu and the command palette, and some add buttons to the tool rail. They run on the open model.
 
 To write your own, see the [Plugin API](plugin-api.md).
 
@@ -41,6 +41,14 @@ Some commands ask for settings first, such as a size or a color. Their menu item
 A command works on the open model. Depending on the plugin, it can use the selection, the current color and the active palette. Its changes are **one undo step**, so a single Undo reverts the whole run. If a command changes nothing, Roxel says so and adds nothing to the undo history.
 
 When a command fails, Roxel shows the error and the model stays as it was. Every run has [limits](plugin-api.md#limits-and-errors): a command that runs longer than 5 seconds, uses too much memory or changes too many voxels is stopped, and nothing changes. While a command runs, Roxel waits for it, so a slow command pauses the app until it finishes or hits the time limit.
+
+## Toolbar buttons
+
+A plugin can also add buttons to the tool rail, in a group under the built-in tools. Clicking one runs its command, the same as choosing it from the Plugins menu, and hovering shows what it does.
+
+The rail shows up to five plugin buttons, fewer when the window is short. When plugins add more than fit, the last place holds a **⋯** button that lists the rest. Every command stays in the Plugins menu and the command palette either way. To remove a plugin's buttons, remove the plugin.
+
+If a button's icon can't be shown, it gets a puzzle-piece icon, and Roxel says why when it loads the plugin.
 
 ## What plugins can't do
 

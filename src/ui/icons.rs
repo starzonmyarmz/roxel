@@ -100,3 +100,97 @@ pub fn tool(t: Tool) -> egui::ImageSource<'static> {
         Tool::Move => move_tool(),
     }
 }
+
+macro_rules! plugin_icons {
+    ($($name:literal),* $(,)?) => {
+        /// The bundled icons a plugin's toolbar button can name.
+        pub const PLUGIN_ICON_NAMES: &[&str] = &[$($name),*];
+
+        pub fn plugin_icon(name: &str) -> Option<egui::ImageSource<'static>> {
+            match name {
+                $($name => Some(egui::include_image!(concat!("../../assets/icons/plugin/", $name, ".svg"))),)*
+                _ => None,
+            }
+        }
+    };
+}
+
+plugin_icons!(
+    "blend",
+    "box",
+    "boxes",
+    "brick-wall",
+    "castle",
+    "cloud",
+    "cone",
+    "cylinder",
+    "dices",
+    "droplet",
+    "fence",
+    "flame",
+    "flip-horizontal-2",
+    "flip-vertical-2",
+    "flower",
+    "gem",
+    "grid-3x3",
+    "hammer",
+    "heart",
+    "house",
+    "layers",
+    "leaf",
+    "moon",
+    "mountain",
+    "mountain-snow",
+    "paintbrush",
+    "palette",
+    "puzzle",
+    "pyramid",
+    "rotate-cw",
+    "scaling",
+    "shovel",
+    "shuffle",
+    "snowflake",
+    "sparkles",
+    "sprout",
+    "star",
+    "sun",
+    "tent",
+    "torus",
+    "tree-deciduous",
+    "tree-pine",
+    "trees",
+    "wand-sparkles",
+    "waves",
+    "zap",
+);
+
+/// The icon a plugin button falls back to when its own can't be shown.
+pub const PLUGIN_FALLBACK_ICON: &str = "puzzle";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_plugin_icon_name_resolves() {
+        for name in PLUGIN_ICON_NAMES {
+            assert!(plugin_icon(name).is_some(), "{name}");
+        }
+        assert!(plugin_icon(PLUGIN_FALLBACK_ICON).is_some());
+        assert!(plugin_icon("brush").is_none());
+    }
+
+    #[test]
+    fn plugin_icon_names_match_the_api_spec() {
+        let dts = include_str!("../../docs/src/roxel.d.ts");
+        let start = dts
+            .find("export type IconName =")
+            .expect("IconName in roxel.d.ts");
+        let decl = &dts[start..start + dts[start..].find(';').unwrap()];
+        let mut spec: Vec<&str> = decl.split('"').skip(1).step_by(2).collect();
+        spec.sort();
+        let mut ours = PLUGIN_ICON_NAMES.to_vec();
+        ours.sort();
+        assert_eq!(spec, ours);
+    }
+}

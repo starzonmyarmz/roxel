@@ -27,6 +27,7 @@ export default {
 - **`apiVersion`** — the API version the plugin is written for. It's `1`.
 - **`name`** — the plugin's name, shown in the [Plugins menu](plugins.md#running-a-command).
 - **`commands`** — what the plugin can do. Each command has an `id` that's unique within the plugin, a `label` shown in menus and the command palette, and a `run` function. It can also list [`params`](#params), values to ask for before it runs.
+- **`toolbar`** — optional. Buttons on the tool rail that run commands. See [Toolbar](#toolbar).
 
 Roxel checks the manifest when it loads the plugin, and refuses one with a missing field, a duplicate `id` or a `run` that isn't a function.
 
@@ -218,6 +219,49 @@ Roxel checks `params` when it loads the plugin, and refuses one with a missing `
 
 [`rox run`](command-line.md#rox-run) runs a command with its defaults, or with values you pass with `--param`.
 
+## Toolbar
+
+A plugin can put buttons on the tool rail, under the built-in tools. Each button runs one of the plugin's commands, the same as choosing it from the Plugins menu, so a command with params still opens its form first. List them in `toolbar`:
+
+```js
+export default {
+  apiVersion: 1,
+  name: "Stamps",
+  commands: [
+    {
+      id: "crate",
+      label: "Crate",
+      run(ctx) {
+        for (let x = 0; x < 2; x++)
+          for (let y = 0; y < 2; y++)
+            for (let z = 0; z < 2; z++) ctx.grid.set(x, y, z, [150, 100, 50]);
+      },
+    },
+  ],
+  toolbar: [{ command: "crate", icon: "box", tooltip: "Stamp a crate" }],
+};
+```
+
+Each button has:
+
+- **`command`** — the `id` of one of the plugin's commands. A command can have one button.
+- **`icon`** — the name of a bundled icon, or the path of your own `.svg` file. See [Icons](#icons).
+- **`tooltip`** — optional. Shown when you hover over the button. It's the command's `label` when left out.
+
+Roxel checks `toolbar` when it loads the plugin, and refuses one whose `command` isn't one of the plugin's commands, or that has two buttons for the same command.
+
+The rail has room for a few plugin buttons: at most five, and fewer when the window is short. When there are more, the last place holds a **⋯** button that lists the rest by their tooltips. Buttons appear in plugin order (sorted by file name), then in the order of each plugin's `toolbar`.
+
+### Icons
+
+Buttons show an icon only, tinted to match the theme like the built-in tools. The bundled icons are from [Lucide](https://lucide.dev/icons/):
+
+`blend`, `box`, `boxes`, `brick-wall`, `castle`, `cloud`, `cone`, `cylinder`, `dices`, `droplet`, `fence`, `flame`, `flip-horizontal-2`, `flip-vertical-2`, `flower`, `gem`, `grid-3x3`, `hammer`, `heart`, `house`, `layers`, `leaf`, `moon`, `mountain`, `mountain-snow`, `paintbrush`, `palette`, `puzzle`, `pyramid`, `rotate-cw`, `scaling`, `shovel`, `shuffle`, `snowflake`, `sparkles`, `sprout`, `star`, `sun`, `tent`, `torus`, `tree-deciduous`, `tree-pine`, `trees`, `wand-sparkles`, `waves`, `zap`.
+
+To use your own, ship an `.svg` file with the plugin and give its path relative to the plugin's module, such as `"icon.svg"` or `"icons/crate.svg"`. The path can't leave the plugin's folder. Make it a 24 × 24 icon drawn in white or `currentColor`, like [Lucide's](https://lucide.dev/icons/): Roxel tints it, so other colors come out darker, not in color. A plugin with its own icons is easiest to share as a [folder plugin](plugins.md#the-plugins-folder), with the icons next to its `index.js`.
+
+Roxel reads the file when it loads the plugin, so reload after you change it. If it can't show an icon, because the name isn't bundled, or the file is missing, isn't a valid SVG or is over 64 KB, the button shows the `puzzle` icon and Roxel says why.
+
 ## Limits and errors
 
 Every run has limits, so a plugin can't freeze Roxel:
@@ -242,7 +286,8 @@ Download these to try them, or use them as a starting point:
 
 - [`tree.js`](plugins/examples/tree.js) — a generator that plants an oak under the selection, or at the origin, with params for its height, crown size and colors.
 - [`gradient.js`](plugins/examples/gradient.js) — a recolor that shades the selection, or the whole model, from black at the bottom to the current color at the top.
+- [`mirror.js`](plugins/examples/mirror.js) — mirrors the selection, or the whole model, left to right or top to bottom, from two buttons on the tool rail.
 
 ## What plugins can't do
 
-A plugin only sees what's in `ctx`. It can't read or write files, use the network, start programs, change preferences or `import` other modules. It can't change the model except through `ctx.grid`, so every change it makes can be undone.
+A plugin only sees what's in `ctx`. Roxel reads its toolbar icon files to show them, but the plugin itself can't read or write files, use the network, start programs, change preferences or `import` other modules. It can't change the model except through `ctx.grid`, so every change it makes can be undone.

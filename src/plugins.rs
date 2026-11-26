@@ -6,13 +6,16 @@
 //! [`Action::RunPlugin`]: crate::actions::Action::RunPlugin
 
 use bevy::prelude::*;
+use bevy_egui::egui;
 use roxel::grid::{Color8, VoxelGrid};
 use roxel::history::History;
 use roxel::script::{self, Limits, Manifest, Param, ScriptCtx, ScriptError};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 use crate::select::Selection;
+use crate::ui::icons;
 
 pub struct Plugin {
     /// Shown in errors: the module's file name, or `folder/index.js`.
@@ -27,11 +30,51 @@ pub struct CommandRef {
     pub command: usize,
 }
 
+/// Largest `.svg` a toolbar button may ship.
+const MAX_ICON_BYTES: u64 = 64 * 1024;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PluginIcon {
+    /// One of [`icons::PLUGIN_ICON_NAMES`].
+    Bundled(&'static str),
+    /// The plugin's own SVG, read and checked when it loaded.
+    Svg { uri: String, bytes: Arc<[u8]> },
+}
+
+impl PluginIcon {
+    pub fn fallback() -> Self {
+        PluginIcon::Bundled(icons::PLUGIN_FALLBACK_ICON)
+    }
+
+    pub fn source(&self) -> egui::ImageSource<'static> {
+        match self {
+            PluginIcon::Bundled(name) => icons::plugin_icon(name).unwrap_or_else(|| {
+                icons::plugin_icon(icons::PLUGIN_FALLBACK_ICON).expect("fallback icon is bundled")
+            }),
+            PluginIcon::Svg { uri, bytes } => egui::ImageSource::Bytes {
+                uri: uri.clone().into(),
+                bytes: egui::load::Bytes::Shared(bytes.clone()),
+            },
+        }
+    }
+}
+
+/// A plugin's tool rail button.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RailButton {
+    /// Index into [`Plugins::commands`].
+    pub command: usize,
+    pub icon: PluginIcon,
+    pub tooltip: String,
+}
+
 #[derive(Resource, Default)]
 pub struct Plugins {
     pub list: Vec<Plugin>,
     /// Every command of every plugin, in menu order.
     pub commands: Vec<CommandRef>,
+    /// Every plugin's toolbar buttons, in plugin order.
+    pub toolbar: Vec<RailButton>,
     /// Bumped on every (re)load so menus know to rebuild.
     pub generation: u64,
 }
@@ -48,6 +91,9 @@ impl Plugins {
     pub fn reload(&mut self, dir: &Path) -> Vec<String> {
         let mut errors = Vec::new();
         self.list.clear();
+        self.toolbar.clear();
+        self.generation += 1;
+        let mut module_dirs = Vec::new();
         for path in discover(dir) {
             let file = display_name(dir, &path);
             let source = match std::fs::read_to_string(&path) {
@@ -58,11 +104,14 @@ impl Plugins {
                 }
             };
             match script::load(&file, &source, &Limits::default()) {
-                Ok(manifest) => self.list.push(Plugin {
-                    file,
-                    source,
-                    manifest,
-                }),
+                Ok(manifest) => {
+                    self.list.push(Plugin {
+                        file,
+                        source,
+                        manifest,
+                    });
+                    module_dirs.push(path.parent().unwrap_or(dir).to_path_buf());
+                }
                 Err(e) => errors.push(error_message(&file, &e)),
             }
         }
@@ -74,7 +123,37 @@ impl Plugins {
                 (0..p.manifest.commands.len()).map(move |command| CommandRef { plugin, command })
             })
             .collect();
-        self.generation += 1;
+        for (plugin, (p, module_dir)) in self.list.iter().zip(&module_dirs).enumerate() {
+            for b in &p.manifest.toolbar {
+                let command = self
+                    .commands
+                    .iter()
+                    .position(|r| {
+                        *r == CommandRef {
+                            plugin,
+                            command: b.command,
+                        }
+                    })
+                    .expect("the manifest checked toolbar commands");
+                let icon = resolve_icon(module_dir, &p.file, &b.icon, self.generation)
+                    .unwrap_or_else(|why| {
+                        errors.push(format!(
+                            "{}: toolbar icon \"{}\" {why}, so its button shows the plugin icon",
+                            p.file, b.icon
+                        ));
+                        PluginIcon::fallback()
+                    });
+                let tooltip = b
+                    .tooltip
+                    .clone()
+                    .unwrap_or_else(|| p.manifest.commands[b.command].label.clone());
+                self.toolbar.push(RailButton {
+                    command,
+                    icon,
+                    tooltip,
+                });
+            }
+        }
         errors
     }
 
@@ -140,6 +219,64 @@ fn display_name(dir: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+/// A toolbar button's icon: a bundled name, or an `.svg` path relative to
+/// the plugin module's folder. `Err` says why it can't be shown.
+pub fn resolve_icon(
+    module_dir: &Path,
+    file: &str,
+    icon: &str,
+    generation: u64,
+) -> Result<PluginIcon, String> {
+    if !icon.to_ascii_lowercase().ends_with(".svg") {
+        return icons::PLUGIN_ICON_NAMES
+            .iter()
+            .find(|&&n| n == icon)
+            .map(|&n| PluginIcon::Bundled(n))
+            .ok_or_else(|| "isn't a bundled icon".to_string());
+    }
+    let rel = Path::new(icon);
+    if !rel.components().all(|c| matches!(c, Component::Normal(_))) {
+        return Err("must be a path inside the plugin's folder".into());
+    }
+    let read_err = |e: std::io::Error| format!("can't be read: {e}");
+    let root = std::fs::canonicalize(module_dir).map_err(read_err)?;
+    let path = std::fs::canonicalize(root.join(rel)).map_err(read_err)?;
+    if !path.starts_with(&root) {
+        return Err("must be a path inside the plugin's folder".into());
+    }
+    let meta = std::fs::metadata(&path).map_err(read_err)?;
+    if !meta.is_file() {
+        return Err("isn't a file".into());
+    }
+    if meta.len() > MAX_ICON_BYTES {
+        return Err(format!("is larger than {} KB", MAX_ICON_BYTES / 1024));
+    }
+    let text = std::fs::read_to_string(&path).map_err(read_err)?;
+    let text = replace_current_color(&text);
+    usvg::Tree::from_str(&text, &usvg::Options::default())
+        .map_err(|_| "isn't a valid SVG".to_string())?;
+    Ok(PluginIcon::Svg {
+        uri: format!("bytes://plugin/{generation}/{file}/{icon}"),
+        bytes: text.into_bytes().into(),
+    })
+}
+
+/// Swaps every `currentColor` (CSS keywords are case-insensitive) for white,
+/// the color the theme tint multiplies.
+fn replace_current_color(svg: &str) -> String {
+    const KEYWORD: &str = "currentcolor";
+    let lower = svg.to_ascii_lowercase();
+    let mut out = String::with_capacity(svg.len());
+    let mut at = 0;
+    while let Some(i) = lower[at..].find(KEYWORD) {
+        out.push_str(&svg[at..at + i]);
+        out.push_str("white");
+        at += i + KEYWORD.len();
+    }
+    out.push_str(&svg[at..]);
+    out
 }
 
 /// Load and run errors already start with `file:line`; the rest don't.
@@ -515,6 +652,123 @@ mod tests {
         assert_eq!(grid.count(), 0);
     }
 
+    const ICON_SVG: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" \
+        stroke=\"currentColor\" fill=\"none\"><path d=\"M4 4h16v16H4z\"/></svg>";
+
+    fn toolbar_plugin(buttons: &str) -> String {
+        format!(
+            "export default {{ apiVersion: 1, name: 'Bar', commands: [\
+             {{ id: 'a', label: 'Alpha', run(ctx) {{}} }},\
+             {{ id: 'b', label: 'Beta', run(ctx) {{}} }}], toolbar: [{buttons}] }};"
+        )
+    }
+
+    #[test]
+    fn toolbar_buttons_index_commands_across_plugins() {
+        let dir = TmpDir::new("toolbar");
+        dir.write("a.js", DOT);
+        dir.write(
+            "b.js",
+            &toolbar_plugin(
+                "{ command: 'b', icon: 'trees', tooltip: 'Plant' }, { command: 'a', icon: 'gem' }",
+            ),
+        );
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(
+            plugins.toolbar,
+            [
+                RailButton {
+                    command: 3,
+                    icon: PluginIcon::Bundled("trees"),
+                    tooltip: "Plant".into(),
+                },
+                RailButton {
+                    command: 2,
+                    icon: PluginIcon::Bundled("gem"),
+                    tooltip: "Alpha".into(),
+                },
+            ]
+        );
+        assert_eq!(plugins.command(3).unwrap().1.id, "b");
+    }
+
+    #[test]
+    fn a_plugin_svg_loads_from_its_folder_and_tints() {
+        let dir = TmpDir::new("toolbar-svg");
+        dir.write(
+            "bar/index.js",
+            &toolbar_plugin("{ command: 'a', icon: 'icons/a.svg' }"),
+        );
+        dir.write("bar/icons/a.svg", ICON_SVG);
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let PluginIcon::Svg { uri, bytes } = &plugins.toolbar[0].icon else {
+            panic!("{:?}", plugins.toolbar[0].icon);
+        };
+        assert!(uri.ends_with("bar/index.js/icons/a.svg"), "{uri}");
+        let text = std::str::from_utf8(bytes).unwrap();
+        assert!(text.contains("stroke=\"white\""), "{text}");
+    }
+
+    #[test]
+    fn current_color_is_replaced_in_any_case() {
+        assert_eq!(
+            replace_current_color("a=\"currentColor\" b=\"CURRENTCOLOR\" c=\"#000\""),
+            "a=\"white\" b=\"white\" c=\"#000\""
+        );
+        assert_eq!(replace_current_color("none"), "none");
+    }
+
+    #[test]
+    fn icons_cant_reach_outside_the_plugin_folder_or_be_non_files() {
+        let dir = TmpDir::new("toolbar-escape");
+        dir.write("outside.svg", ICON_SVG);
+        dir.write("bar/index.js", "");
+        std::fs::create_dir_all(dir.0.join("bar/dir.svg")).unwrap();
+        let module = dir.0.join("bar");
+        assert_eq!(
+            resolve_icon(&module, "bar/index.js", "dir.svg", 1).unwrap_err(),
+            "isn't a file"
+        );
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(dir.0.join("outside.svg"), module.join("link.svg")).unwrap();
+            let err = resolve_icon(&module, "bar/index.js", "link.svg", 1).unwrap_err();
+            assert!(err.contains("inside the plugin's folder"), "{err}");
+        }
+    }
+
+    #[test]
+    fn icons_it_cant_show_fall_back_with_a_message() {
+        let dir = TmpDir::new("toolbar-bad");
+        dir.write("big.svg", &format!("{ICON_SVG}{}", " ".repeat(70 * 1024)));
+        dir.write("junk.svg", "not an svg");
+        let cases = [
+            ("nope", "isn't a bundled icon"),
+            ("brush", "isn't a bundled icon"),
+            ("missing.svg", "can't be read"),
+            ("../escape.svg", "inside the plugin's folder"),
+            ("/abs.svg", "inside the plugin's folder"),
+            ("junk.svg", "isn't a valid SVG"),
+            ("big.svg", "larger than 64 KB"),
+        ];
+        for (icon, want) in cases {
+            let err = resolve_icon(&dir.0, "t.js", icon, 1).unwrap_err();
+            assert!(err.contains(want), "{icon}: {err}");
+        }
+
+        dir.write("bar.js", &toolbar_plugin("{ command: 'a', icon: 'nope' }"));
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert_eq!(plugins.toolbar[0].icon, PluginIcon::fallback());
+        assert_eq!(
+            errors,
+            [
+                "bar.js: toolbar icon \"nope\" isn't a bundled icon, so its button shows the plugin icon"
+            ]
+        );
+    }
+
     #[test]
     fn runs_the_example_plugins_from_the_docs() {
         let dir = TmpDir::new("examples");
@@ -532,6 +786,45 @@ mod tests {
             .find(|&i| plugins.command(i).unwrap().0.file == "gradient.js")
             .unwrap();
         run_command(&plugins, gradient, input(&sel), &mut history, &mut grid).unwrap();
+        assert_eq!(history.undo.len(), 2);
+    }
+
+    #[test]
+    fn runs_the_mirror_example_from_its_toolbar_buttons() {
+        let dir = TmpDir::new("mirror");
+        dir.write("mirror.js", &example("mirror.js"));
+        let (plugins, errors) = Plugins::load_dir(&dir.0);
+        assert!(errors.is_empty(), "{errors:?}");
+        let icons: Vec<_> = plugins.toolbar.iter().map(|b| b.icon.clone()).collect();
+        assert_eq!(
+            icons,
+            [
+                PluginIcon::Bundled("flip-horizontal-2"),
+                PluginIcon::Bundled("flip-vertical-2"),
+            ]
+        );
+        let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
+        let (mut history, mut grid) = (History::default(), VoxelGrid::default());
+        grid.set(IVec3::new(0, 0, 0), Some(red));
+        grid.set(IVec3::new(2, 3, 0), Some(blue));
+        let sel = Selection::default();
+        let x = plugins.toolbar[0].command;
+        run_command(&plugins, x, input(&sel), &mut history, &mut grid).unwrap();
+        assert_eq!(grid.get(IVec3::new(2, 0, 0)), Some(red));
+        assert_eq!(grid.get(IVec3::new(0, 3, 0)), Some(blue));
+        assert_eq!(grid.count(), 2);
+
+        let boxed = Selection {
+            aabb: Some(SelectionAabb {
+                min: IVec3::ZERO,
+                max: IVec3::new(2, 3, 0),
+            }),
+            cells: None,
+        };
+        let y = plugins.toolbar[1].command;
+        run_command(&plugins, y, input(&boxed), &mut history, &mut grid).unwrap();
+        assert_eq!(grid.get(IVec3::new(2, 3, 0)), Some(red));
+        assert_eq!(grid.get(IVec3::new(0, 0, 0)), Some(blue));
         assert_eq!(history.undo.len(), 2);
     }
 

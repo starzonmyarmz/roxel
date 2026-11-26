@@ -307,6 +307,13 @@ pub fn ui_system(
     if ui_visible.0 && !modal_open {
         let island_resp = floating::tool_island(ctx, &theme, |ui| {
             floating::tool_island_contents(ui, &theme, &mut tool, &mut shape_options, &mut prefs);
+            floating::plugin_rail(
+                ui,
+                &theme,
+                &plugins.toolbar,
+                !history.is_open(),
+                &mut actions,
+            );
         });
         onboarding_anchors.tool_rail = Some(island_resp.rect);
     }

@@ -201,6 +201,8 @@ Every surface pushes `(Action, Origin)` onto `ActionQueue`; `apply_actions_syste
 
 Params: `RunPlugin(i)` on a command with `params` opens `ParamForms.open` (an `OpenForm` stamped with the plugin generation) instead of running; its menu label gets a trailing "…". `ui_system` draws it with `modals::draw_plugin_params` (counted in `modal_open`); Run queues `Action::ConfirmPluginParams` (not in `Action::all`, in `edits_scene`), whose dispatch calls `ParamForms::submit` — stale after a reload → error toast — and runs with the form values. Last values are remembered per (plugin file, command id) for the session only, and re-resolved through `script::resolve_params` on open so they fit a reloaded plugin's ranges.
 
+Toolbar: `script::Manifest.toolbar` (command index, icon string, tooltip) is flattened at load into `Plugins.toolbar: Vec<RailButton>` (command as a `Plugins::commands` index, so a click queues the same `Action::RunPlugin(i)` as the menu). `resolve_icon` turns the icon string into a `PluginIcon`: a name from `icons::PLUGIN_ICON_NAMES`, or a `.svg` path relative to the module's folder (only `Normal` path components, ≤ 64 KB, `currentColor` → `white` so the tint works, checked with `usvg`), read once at load and served as `bytes://plugin/{generation}/…` so a reload refreshes egui's cache. Anything it can't show falls back to `puzzle` with a load toast. The rail draw is `ui/floating.rs::plugin_rail` (see `src/ui/CLAUDE.md`).
+
 ## Command palette
 
 `ui/command_palette.rs` owns the resource and draw (draw logic in `src/ui/CLAUDE.md`). `CommandPalette { open, search, selected, just_opened }`. `build_catalog(&ActionState)` maps `Action::all` to `CatalogEntry`s; `draw` returns the chosen `Action` for `ui_system` to queue.
