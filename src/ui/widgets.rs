@@ -44,7 +44,25 @@ pub fn tool_button(
     icon_src: egui::ImageSource<'static>,
 ) -> egui::Response {
     let active = tool.current == kind;
+    let resp = rail_button(ui, theme, icon_src, active);
+    if resp.clicked() && tool.current != kind {
+        tool.previous = tool.current;
+        tool.current = kind;
+    }
     let label = kind.label();
+    match crate::actions::Action::SelectTool(kind).shortcut_text() {
+        Some(shortcut) => resp.on_hover_text(format!("{label}  ({shortcut})")),
+        None => resp.on_hover_text(label),
+    }
+}
+
+/// A square icon button on the tool rail; `active` marks the current tool.
+pub fn rail_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    icon_src: egui::ImageSource<'static>,
+    active: bool,
+) -> egui::Response {
     let button_size = size::TOOL_BUTTON;
 
     // Static three-state palette — no animation. The animated version stuttered
@@ -74,40 +92,30 @@ pub fn tool_button(
         .fit_to_exact_size(icon::lg_square())
         .tint(icon_tint);
 
-    let resp = ui
-        .scope(|ui| {
-            ui.spacing_mut().button_padding = pad::NONE;
-            ui.spacing_mut().interact_size = gap::NONE;
-            let w = ui.visuals_mut();
-            w.widgets.inactive.bg_fill = inactive_fill;
-            w.widgets.inactive.weak_bg_fill = inactive_fill;
-            w.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-            w.widgets.inactive.expansion = 0.0;
-            w.widgets.hovered.bg_fill = hovered_fill;
-            w.widgets.hovered.weak_bg_fill = hovered_fill;
-            w.widgets.hovered.bg_stroke = egui::Stroke::NONE;
-            w.widgets.hovered.expansion = 0.0;
-            w.widgets.active.bg_fill = hovered_fill;
-            w.widgets.active.weak_bg_fill = hovered_fill;
-            w.widgets.active.bg_stroke = egui::Stroke::NONE;
-            w.widgets.active.expansion = 0.0;
-            ui.add_sized(
-                button_size,
-                egui::Button::image(icon_img)
-                    .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(radius::INSIDE_PILL)),
-            )
-        })
-        .inner;
-
-    if resp.clicked() && tool.current != kind {
-        tool.previous = tool.current;
-        tool.current = kind;
-    }
-    match crate::actions::Action::SelectTool(kind).shortcut_text() {
-        Some(shortcut) => resp.on_hover_text(format!("{label}  ({shortcut})")),
-        None => resp.on_hover_text(label),
-    }
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = pad::NONE;
+        ui.spacing_mut().interact_size = gap::NONE;
+        let w = ui.visuals_mut();
+        w.widgets.inactive.bg_fill = inactive_fill;
+        w.widgets.inactive.weak_bg_fill = inactive_fill;
+        w.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+        w.widgets.inactive.expansion = 0.0;
+        w.widgets.hovered.bg_fill = hovered_fill;
+        w.widgets.hovered.weak_bg_fill = hovered_fill;
+        w.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+        w.widgets.hovered.expansion = 0.0;
+        w.widgets.active.bg_fill = hovered_fill;
+        w.widgets.active.weak_bg_fill = hovered_fill;
+        w.widgets.active.bg_stroke = egui::Stroke::NONE;
+        w.widgets.active.expansion = 0.0;
+        ui.add_sized(
+            button_size,
+            egui::Button::image(icon_img)
+                .stroke(egui::Stroke::NONE)
+                .corner_radius(egui::CornerRadius::same(radius::INSIDE_PILL)),
+        )
+    })
+    .inner
 }
 
 pub fn icon_only_button(
