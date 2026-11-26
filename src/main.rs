@@ -13,6 +13,7 @@ mod mesh;
 mod onboarding;
 mod open_file;
 mod picking;
+mod plugins;
 mod preview;
 mod resample;
 mod select;
@@ -111,6 +112,14 @@ fn main() {
     let (palettes, palette_load_issue) = Palettes::with_user_loaded();
     let mut toasts = Toasts::default();
     if let Some(msg) = palette_load_issue {
+        toasts.error(msg);
+    }
+    // A broken plugin's error toast would fail a scripted capture.
+    let (plugins, plugin_errors) = match (&capture, crate::plugins::plugins_dir()) {
+        (None, Some(dir)) => crate::plugins::Plugins::load_dir(&dir),
+        _ => Default::default(),
+    };
+    for msg in plugin_errors {
         toasts.error(msg);
     }
     let mut app = App::new();
@@ -212,6 +221,7 @@ fn main() {
         .init_resource::<NewProject>()
         .init_resource::<PendingImport>()
         .insert_resource(toasts)
+        .insert_resource(plugins)
         .init_resource::<crate::updater::UpdateCheck>()
         .init_resource::<CommandPalette>()
         .init_resource::<Onboarding>()
@@ -249,6 +259,7 @@ fn main() {
                     .before(crate::actions::apply_actions_system),
                 native::update_menu_enabled_system.after(native::install_menu_system),
                 native::update_recent_menu_system.after(native::install_menu_system),
+                native::update_plugins_menu_system.after(native::install_menu_system),
             ),
         );
     }

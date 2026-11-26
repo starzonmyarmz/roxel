@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use crate::GridResource;
 use crate::camera::{CameraPreset, FlybyState, PendingFrameView, PendingViewPreset};
 use crate::camera::{ZOOM_STEP_IN, ZOOM_STEP_OUT, apply_zoom};
+use crate::plugins::Plugins;
 use crate::select::Selection;
 use crate::theme::{Preferences, PreferencesWindow, ThemePref, save_preferences};
 use crate::tools::{CurrentColor, ExtraColors, RecentColors, ShapeOptions, Tool, ToolState};
@@ -201,6 +202,7 @@ pub enum Category {
     View,
     Palette,
     Preferences,
+    Plugins,
     Help,
 }
 
@@ -214,6 +216,7 @@ impl Category {
             Category::View => "View",
             Category::Palette => "Palette",
             Category::Preferences => "Pref",
+            Category::Plugins => "Plugin",
             Category::Help => "Help",
         }
     }
@@ -410,6 +413,10 @@ pub enum Action {
     ImportAse,
     ExportAse,
 
+    RunPlugin(usize),
+    ReloadPlugins,
+    OpenPluginsFolder,
+
     ShowCommandPalette,
     Preferences,
     SetTheme(ThemePref),
@@ -471,6 +478,7 @@ pub struct ActionState<'a> {
     pub current_color: Color8,
     pub prefs: &'a Preferences,
     pub recent: &'a [PathBuf],
+    pub plugins: &'a Plugins,
 }
 
 /// Read-only system params that build an [`ActionState`].
@@ -493,6 +501,7 @@ pub struct ActionStateParams<'w> {
     color: Res<'w, CurrentColor>,
     prefs: Res<'w, Preferences>,
     recent: Res<'w, RecentFiles>,
+    plugins: Res<'w, Plugins>,
 }
 
 impl ActionStateParams<'_> {
@@ -519,6 +528,7 @@ impl ActionStateParams<'_> {
             current_color: self.color.0,
             prefs: &self.prefs,
             recent: &self.recent.0,
+            plugins: &self.plugins,
         }
     }
 }
@@ -601,6 +611,8 @@ impl Action {
         Action::DeletePalette,
         Action::ImportAse,
         Action::ExportAse,
+        Action::ReloadPlugins,
+        Action::OpenPluginsFolder,
         Action::ShowCommandPalette,
         Action::Preferences,
         Action::SetTheme(ThemePref::System),
@@ -623,6 +635,7 @@ impl Action {
                 .filter(|&i| i != s.palette_choice)
                 .map(Action::SelectPalette),
         );
+        out.extend((0..s.plugins.commands.len()).map(Action::RunPlugin));
         out
     }
 
@@ -974,6 +987,22 @@ impl Action {
                 None,
             ),
 
+            Action::RunPlugin(_) => spec("Run plugin", "Run plugin", C::Plugins, "plugin", None),
+            Action::ReloadPlugins => spec(
+                "Reload plugins",
+                "Reload Plugins",
+                C::Plugins,
+                "plugin refresh scripts",
+                None,
+            ),
+            Action::OpenPluginsFolder => spec(
+                "Open plugins folder",
+                "Open Plugins Folder",
+                C::Plugins,
+                "plugin install directory scripts reveal",
+                None,
+            ),
+
             Action::ShowCommandPalette => spec(
                 "Command palette",
                 "Command Palette…",
@@ -1047,6 +1076,11 @@ impl Action {
                 .get(i)
                 .map(|p| format!("Switch to palette: {}", p.name).into())
                 .unwrap_or(Cow::Borrowed(self.spec().label)),
+            Action::RunPlugin(i) => s
+                .plugins
+                .command(i)
+                .map(|(p, c)| format!("{}: {}", p.manifest.name, c.label).into())
+                .unwrap_or(Cow::Borrowed(self.spec().label)),
             Action::ToggleFlyby if s.flyby_active => "Stop flyby camera".into(),
             Action::ToggleFloorGrid if s.prefs.show_floor_grid => "Hide floor grid".into(),
             Action::ToggleOriginAxes if s.prefs.show_origin_axes => "Hide origin axes".into(),
@@ -1062,6 +1096,11 @@ impl Action {
         match self {
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
             Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
+            Action::RunPlugin(i) => s
+                .plugins
+                .command(i)
+                .map(|(_, c)| c.label.clone().into())
+                .unwrap_or(Cow::Borrowed(self.spec().menu_label)),
             _ => self.spec().menu_label.into(),
         }
     }
@@ -1133,6 +1172,8 @@ impl Action {
             Action::RenamePalette | Action::DeletePalette => !s.active_is_builtin(),
             Action::ExportAse => dialog_ok && s.active_palette().is_some(),
             Action::SetTheme(t) => s.prefs.theme != t,
+            Action::RunPlugin(i) => i < s.plugins.commands.len(),
+            Action::ReloadPlugins | Action::OpenPluginsFolder => true,
         }
     }
 }
@@ -1149,6 +1190,7 @@ impl Action {
                 | Action::DeleteSelectionContents
                 | Action::DoubleDensity
                 | Action::HalveDensity
+                | Action::RunPlugin(_)
         )
     }
 
@@ -1360,6 +1402,7 @@ pub struct AppParams<'w> {
     updater: ResMut<'w, crate::updater::UpdateCheck>,
     about: ResMut<'w, crate::menu::AboutWindow>,
     shortcuts: ResMut<'w, ShortcutsWindow>,
+    plugins: ResMut<'w, Plugins>,
 }
 
 #[derive(SystemParam)]
@@ -1372,7 +1415,12 @@ pub struct ActionContext<'w, 's> {
 }
 
 pub fn apply_actions_system(mut queue: ResMut<ActionQueue>, mut cx: ActionContext) {
+    let generation = cx.app.plugins.generation;
     for (action, origin) in std::mem::take(&mut queue.0) {
+        // A reload earlier this frame renumbers plugin commands.
+        if matches!(action, Action::RunPlugin(_)) && cx.app.plugins.generation != generation {
+            continue;
+        }
         dispatch(action, origin, &mut cx);
     }
 }
@@ -1617,6 +1665,10 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             }
         }
 
+        Action::RunPlugin(i) => run_plugin(i, doc, edit, pal, &app.plugins),
+        Action::ReloadPlugins => reload_plugins(&mut app.plugins, &mut doc.toasts),
+        Action::OpenPluginsFolder => open_plugins_folder(&mut doc.toasts),
+
         Action::ShowCommandPalette => app.cmd_palette.toggle(),
         Action::Preferences => app.prefs_window.open = !app.prefs_window.open,
         Action::SetTheme(t) => {
@@ -1634,6 +1686,60 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
     }
 }
 
+fn run_plugin(
+    i: usize,
+    doc: &mut DocParams,
+    edit: &EditParams,
+    pal: &PaletteOpParams,
+    plugins: &Plugins,
+) {
+    let input = crate::plugins::RunInput {
+        selection: &edit.selection,
+        color: edit.color.0,
+        palette: crate::ui::display_colors(&pal.palettes, &pal.working, active_index(pal)),
+    };
+    match crate::plugins::run_command(plugins, i, input, &mut doc.history, &mut doc.grid) {
+        Ok(0) => {
+            if let Some((_, c)) = plugins.command(i) {
+                doc.toasts
+                    .info(format!("{} didn't change anything", c.label));
+            }
+        }
+        Ok(_) => {}
+        Err(msg) => doc.toasts.error(msg),
+    }
+}
+
+fn reload_plugins(plugins: &mut Plugins, toasts: &mut Toasts) {
+    let Some(dir) = crate::plugins::plugins_dir() else {
+        toasts.error("Couldn't find the plugins folder");
+        return;
+    };
+    let errors = plugins.reload(&dir);
+    if !errors.is_empty() {
+        for e in errors {
+            toasts.error(e);
+        }
+        return;
+    }
+    toasts.info(match plugins.list.len() {
+        1 => "1 plugin loaded".to_string(),
+        n => format!("{n} plugins loaded"),
+    });
+}
+
+fn open_plugins_folder(toasts: &mut Toasts) {
+    let Some(dir) = crate::plugins::plugins_dir() else {
+        toasts.error("Couldn't find the plugins folder");
+        return;
+    };
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        toasts.error(format!("Couldn't create the plugins folder: {e}"));
+        return;
+    }
+    crate::updater::open_url(&dir.to_string_lossy());
+}
+
 fn start_rename(pal: &mut PaletteOpParams, i: usize) {
     pal.rename.editing = Some(i);
     pal.rename.buf = pal.palettes.0[i].name.clone();
@@ -1642,6 +1748,13 @@ fn start_rename(pal: &mut PaletteOpParams, i: usize) {
 fn active_index(pal: &PaletteOpParams) -> usize {
     pal.choice.0.min(pal.palettes.0.len().saturating_sub(1))
 }
+
+#[cfg(test)]
+pub static NO_PLUGINS: Plugins = Plugins {
+    list: Vec::new(),
+    commands: Vec::new(),
+    generation: 0,
+};
 
 #[cfg(test)]
 mod tests {
@@ -1669,6 +1782,7 @@ mod tests {
             current_color: [10, 20, 30, 255],
             prefs,
             recent: &[],
+            plugins: &NO_PLUGINS,
         }
     }
 
@@ -1773,6 +1887,62 @@ mod tests {
         assert!(all.contains(&Action::OpenRecent(1)));
         assert!(all.contains(&Action::SelectPalette(1)));
         assert!(!all.contains(&Action::SelectPalette(0)));
+    }
+
+    fn trees() -> Plugins {
+        use roxel::script::{Command, Manifest};
+        let command = |id: &str, label: &str| Command {
+            id: id.into(),
+            label: label.into(),
+        };
+        Plugins {
+            list: vec![crate::plugins::Plugin {
+                file: "trees.js".into(),
+                source: String::new(),
+                manifest: Manifest {
+                    name: "Trees".into(),
+                    commands: vec![command("oak", "Oak"), command("pine", "Pine")],
+                },
+            }],
+            commands: vec![
+                crate::plugins::CommandRef {
+                    plugin: 0,
+                    command: 0,
+                },
+                crate::plugins::CommandRef {
+                    plugin: 0,
+                    command: 1,
+                },
+            ],
+            generation: 1,
+        }
+    }
+
+    #[test]
+    fn plugin_commands_are_listed_and_labeled() {
+        let prefs = Preferences::default();
+        let plugins = trees();
+        let mut s = state(&[], &prefs);
+        s.plugins = &plugins;
+        let all = Action::all(&s);
+        assert!(all.contains(&Action::RunPlugin(0)));
+        assert!(all.contains(&Action::RunPlugin(1)));
+        assert!(!all.contains(&Action::RunPlugin(2)));
+        assert_eq!(Action::RunPlugin(1).label(&s), "Trees: Pine");
+        assert_eq!(Action::RunPlugin(1).menu_label(&s), "Pine");
+        assert!(Action::RunPlugin(1).enabled(&s));
+        assert!(!Action::RunPlugin(2).enabled(&s));
+    }
+
+    #[test]
+    fn plugin_runs_wait_for_an_open_stroke() {
+        let prefs = Preferences::default();
+        let plugins = trees();
+        let mut s = state(&[], &prefs);
+        s.plugins = &plugins;
+        s.stroke_open = true;
+        assert!(!Action::RunPlugin(0).enabled(&s));
+        assert!(Action::ReloadPlugins.enabled(&s));
     }
 
     #[test]

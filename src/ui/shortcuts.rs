@@ -27,11 +27,12 @@ fn group_title(c: Category) -> &'static str {
         Category::View => "View",
         Category::Palette => "Palette",
         Category::Preferences => "Preferences",
+        Category::Plugins => "Plugins",
         Category::Help => "Help",
     }
 }
 
-const CATEGORY_ORDER: [Category; 8] = [
+const CATEGORY_ORDER: [Category; 9] = [
     Category::Tools,
     Category::Edit,
     Category::View,
@@ -39,6 +40,7 @@ const CATEGORY_ORDER: [Category; 8] = [
     Category::Shape,
     Category::Palette,
     Category::Preferences,
+    Category::Plugins,
     Category::Help,
 ];
 

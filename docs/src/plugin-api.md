@@ -2,7 +2,7 @@
 
 > **Experimental.** The plugin API may still change before it settles. When it does, the change is listed in the changelog.
 
-A plugin is a JavaScript file that adds commands to Roxel: generators that build something, filters that change what's there, and recolors. This page is the reference for writing one. [`roxel.d.ts`](roxel.d.ts) describes the same API as TypeScript types, and your editor can use it for autocomplete.
+A plugin is a JavaScript file that adds commands to Roxel: generators that build something, filters that change what's there, and recolors. This page is the reference for writing one; to install and run plugins, see [Plugins](plugins.md). [`roxel.d.ts`](roxel.d.ts) describes the same API as TypeScript types, and your editor can use it for autocomplete.
 
 ## The manifest
 
@@ -25,7 +25,7 @@ export default {
 ```
 
 - **`apiVersion`** — the API version the plugin is written for. It's `1`.
-- **`name`** — the plugin's name, shown in the Plugins menu.
+- **`name`** — the plugin's name, shown in the [Plugins menu](plugins.md#running-a-command).
 - **`commands`** — what the plugin can do. Each command has an `id` that's unique within the plugin, a `label` shown in menus and the command palette, and a `run` function.
 
 Roxel checks the manifest when it loads the plugin, and refuses one with a missing field, a duplicate `id` or a `run` that isn't a function.
