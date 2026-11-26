@@ -4,9 +4,11 @@
 //! `Frame::popup` and anchored by pivot against `crate::ui::canvas_rect(ctx)` so
 //! they nest cleanly beside any registered side panel.
 
+use crate::actions::{Action, ActionQueue, Origin};
+use crate::plugins::RailButton;
 use crate::theme::{Preferences, Theme};
 use crate::tools::{ShapeOptions, Tool, ToolState};
-use crate::ui::tokens::{gap, pad, radius, shadow, space, swatch};
+use crate::ui::tokens::{font, gap, icon, pad, radius, shadow, size, space, stroke, swatch};
 use crate::ui::{icons, widgets};
 use bevy_egui::egui;
 use roxel::shapes::ShapePrimitive;
@@ -14,11 +16,11 @@ use roxel::shapes::ShapePrimitive;
 // The menu pill is Win/Linux only (macOS uses the native menu), so its
 // contents helper and the deps it pulls in are gated to match.
 #[cfg(not(target_os = "macos"))]
-use crate::actions::{Action, ActionQueue, ActionState, Origin};
+use crate::actions::ActionState;
 #[cfg(not(target_os = "macos"))]
 use crate::menu::{MenuEntry, NO_PLUGINS_LABEL, menu_bar, recent_item_label};
 #[cfg(not(target_os = "macos"))]
-use crate::ui::tokens::{font, icon, width};
+use crate::ui::tokens::width;
 
 /// Frame used for every floating surface. Panel fill, rounded to
 /// [`radius::PILL`] so corners read the same on every floating element. No
@@ -245,6 +247,81 @@ pub fn tool_island_contents(
     widgets::tool_button(ui, theme, tool, Tool::Move, icons::tool(Tool::Move));
 }
 
+/// Plugin buttons shown on the rail at most, counting the overflow button.
+const MAX_PLUGIN_SLOTS: usize = 5;
+
+/// How many of `total` plugin buttons the rail shows when `room` button
+/// slots fit, and whether the rest go behind an overflow button, which takes
+/// the last slot. With no room at all, none show and there's no overflow
+/// button either.
+pub fn plugin_slots(total: usize, room: usize) -> (usize, bool) {
+    let room = room.min(MAX_PLUGIN_SLOTS);
+    if room == 0 {
+        (0, false)
+    } else if total <= room {
+        (total, false)
+    } else {
+        (room.saturating_sub(1), true)
+    }
+}
+
+/// Plugin toolbar buttons under a separator after the built-in tools. Each
+/// queues the same [`Action::RunPlugin`] as its Plugins menu item.
+pub fn plugin_rail(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    buttons: &[RailButton],
+    can_run: bool,
+    actions: &mut ActionQueue,
+) {
+    if buttons.is_empty() {
+        return;
+    }
+    let slot = size::TOOL_BUTTON.y + space::SX;
+    let separator = space::SX + stroke::NORMAL;
+    let chrome = 2.0 * (space::FLOAT_GAP + pad::DEFAULT.x);
+    let free = crate::ui::canvas_rect(ui.ctx()).height() - chrome - ui.min_rect().height();
+    let room = ((free - separator) / slot).floor().max(0.0) as usize;
+    let (shown, overflow) = plugin_slots(buttons.len(), room);
+    if shown == 0 && !overflow {
+        return;
+    }
+
+    widgets::rail_separator(ui, theme);
+    ui.add_enabled_ui(can_run, |ui| {
+        for b in &buttons[..shown] {
+            ui.add_space(space::SX);
+            let resp = widgets::rail_button(ui, theme, b.icon.source(), false)
+                .on_hover_text(&b.tooltip)
+                .on_disabled_hover_text(&b.tooltip);
+            if resp.clicked() {
+                actions.push(Action::RunPlugin(b.command), Origin::Ui);
+            }
+        }
+        if !overflow {
+            return;
+        }
+        ui.add_space(space::SX);
+        let more = widgets::rail_button(ui, theme, icons::ellipsis(), false)
+            .on_hover_text("More plugin commands");
+        egui::Popup::menu(&more)
+            .align(egui::RectAlign::LEFT_END)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+            .show(|ui| {
+                ui.spacing_mut().button_padding = pad::MENU;
+                for b in &buttons[shown..] {
+                    let image = egui::Image::new(b.icon.source())
+                        .fit_to_exact_size(icon::md_square())
+                        .tint(theme.text);
+                    let label = egui::RichText::new(&b.tooltip).size(font::BODY);
+                    if ui.add(egui::Button::image_and_text(image, label)).clicked() {
+                        actions.push(Action::RunPlugin(b.command), Origin::Ui);
+                    }
+                }
+            });
+    });
+}
+
 #[cfg(not(target_os = "macos"))]
 fn menu_item(
     ui: &mut egui::Ui,
@@ -393,5 +470,33 @@ pub fn pill_menu_contents(
         if resp.on_hover_text("Open the release page").clicked() {
             out.push(Action::CheckForUpdates, Origin::Ui);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_buttons_that_fit_all_show() {
+        assert_eq!(plugin_slots(0, 4), (0, false));
+        assert_eq!(plugin_slots(3, 4), (3, false));
+        assert_eq!(plugin_slots(4, 4), (4, false));
+    }
+
+    #[test]
+    fn the_rest_go_behind_an_overflow_button_in_the_last_slot() {
+        assert_eq!(plugin_slots(5, 4), (3, true));
+        assert_eq!(plugin_slots(2, 1), (0, true));
+        assert_eq!(plugin_slots(2, 0), (0, false));
+    }
+
+    #[test]
+    fn a_tall_rail_still_caps_plugin_buttons() {
+        assert_eq!(
+            plugin_slots(MAX_PLUGIN_SLOTS, 50),
+            (MAX_PLUGIN_SLOTS, false)
+        );
+        assert_eq!(plugin_slots(20, 50), (MAX_PLUGIN_SLOTS - 1, true));
     }
 }

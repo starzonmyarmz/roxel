@@ -4852,6 +4852,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+ "usvg",
  "winit",
  "winres",
 ]

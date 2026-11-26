@@ -29,7 +29,7 @@ Roxel reads and writes the common voxel formats (MagicaVoxel, Qubicle, Goxel) an
 - **[Tools](tools.md)** Brush, erase, paint, eyedrop, shape, select, and move. Shapes come in 2D and extruded 3D, spheres included.
 - **[Palettes](palettes.md)** Sweetie 16, PICO-8, DawnBringer, Endesga 32 and more built in, plus your own palettes and `.ase` import / export.
 - **[Import & Export](import-export.md)** `.rox` projects, MagicaVoxel `.vox`, Qubicle `.qb`, Goxel `.gox`, glTF, OBJ, PNG and SVG.
-- **[Plugins](plugins.md)** Add your own generators, filters and recolors in JavaScript, and run them from the Plugins menu. Experimental.
+- **[Plugins](plugins.md)** Add your own generators, filters and recolors in JavaScript, and run them from the Plugins menu or their own tool rail buttons. Experimental.
 - **[Everything else](preferences.md)** An open-world grid, Light / Dark / System themes, a floor dot grid, an RGB axis triad, and a hideable, canvas-first UI.
 
 </div>

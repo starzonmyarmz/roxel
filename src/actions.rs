@@ -1773,6 +1773,7 @@ fn active_index(pal: &PaletteOpParams) -> usize {
 pub static NO_PLUGINS: Plugins = Plugins {
     list: Vec::new(),
     commands: Vec::new(),
+    toolbar: Vec::new(),
     generation: 0,
 };
 
@@ -1936,6 +1937,7 @@ mod tests {
                     command: 1,
                 },
             ],
+            toolbar: Vec::new(),
             generation: 1,
         }
     }

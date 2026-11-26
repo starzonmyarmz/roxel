@@ -118,6 +118,21 @@ pub fn rail_button(
     .inner
 }
 
+/// A hairline across the tool rail between groups of buttons.
+pub fn rail_separator(ui: &mut egui::Ui, theme: &Theme) {
+    ui.add_space(space::SX);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(size::TOOL_BUTTON.x, stroke::NORMAL),
+        egui::Sense::hover(),
+    );
+    let painter = ui.painter();
+    painter.hline(
+        rect.x_range(),
+        painter.round_to_pixel_center(rect.center().y),
+        egui::Stroke::new(stroke::HAIR, theme.border),
+    );
+}
+
 pub fn icon_only_button(
     ui: &mut egui::Ui,
     theme: &Theme,
