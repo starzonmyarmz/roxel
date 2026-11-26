@@ -207,6 +207,7 @@ pub mod width {
     /// wide enough for all three actions on one row.
     pub const MODAL_CONFIRM: f32 = 304.0;
     pub const MODAL_ABOUT: f32 = 280.0;
+    pub const MODAL_PLUGIN_PARAMS: f32 = 320.0;
     pub const MODAL_SHORTCUTS: f32 = 400.0;
     /// Export-Shot tweak panel — the preview sits left, the knob column right,
     /// so the modal stays short enough to fit the app window.

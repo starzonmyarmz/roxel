@@ -219,6 +219,7 @@ fn main() {
             base_focus: Some(default_camera_focus()),
         })
         .init_resource::<NewProject>()
+        .init_resource::<crate::plugins::ParamForms>()
         .init_resource::<PendingImport>()
         .insert_resource(toasts)
         .insert_resource(plugins)

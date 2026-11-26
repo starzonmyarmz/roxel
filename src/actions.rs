@@ -413,7 +413,11 @@ pub enum Action {
     ImportAse,
     ExportAse,
 
+    /// Runs a command, or opens its params form when it has params.
     RunPlugin(usize),
+    /// Runs the command in the open params form with the form's values.
+    /// Only the form queues it; it isn't listed anywhere.
+    ConfirmPluginParams,
     ReloadPlugins,
     OpenPluginsFolder,
 
@@ -987,7 +991,9 @@ impl Action {
                 None,
             ),
 
-            Action::RunPlugin(_) => spec("Run plugin", "Run plugin", C::Plugins, "plugin", None),
+            Action::RunPlugin(_) | Action::ConfirmPluginParams => {
+                spec("Run plugin", "Run plugin", C::Plugins, "plugin", None)
+            }
             Action::ReloadPlugins => spec(
                 "Reload plugins",
                 "Reload Plugins",
@@ -1096,11 +1102,11 @@ impl Action {
         match self {
             Action::DuplicatePalette if s.active_is_builtin() => "Save as new palette".into(),
             Action::CheckForUpdates if s.update_tag.is_some() => download_label(s),
-            Action::RunPlugin(i) => s
-                .plugins
-                .command(i)
-                .map(|(_, c)| c.label.clone().into())
-                .unwrap_or(Cow::Borrowed(self.spec().menu_label)),
+            Action::RunPlugin(i) => match s.plugins.command(i) {
+                Some((_, c)) if c.params.is_empty() => c.label.clone().into(),
+                Some((_, c)) => format!("{}…", c.label).into(),
+                None => Cow::Borrowed(self.spec().menu_label),
+            },
             _ => self.spec().menu_label.into(),
         }
     }
@@ -1173,7 +1179,7 @@ impl Action {
             Action::ExportAse => dialog_ok && s.active_palette().is_some(),
             Action::SetTheme(t) => s.prefs.theme != t,
             Action::RunPlugin(i) => i < s.plugins.commands.len(),
-            Action::ReloadPlugins | Action::OpenPluginsFolder => true,
+            Action::ConfirmPluginParams | Action::ReloadPlugins | Action::OpenPluginsFolder => true,
         }
     }
 }
@@ -1191,6 +1197,7 @@ impl Action {
                 | Action::DoubleDensity
                 | Action::HalveDensity
                 | Action::RunPlugin(_)
+                | Action::ConfirmPluginParams
         )
     }
 
@@ -1403,6 +1410,7 @@ pub struct AppParams<'w> {
     about: ResMut<'w, crate::menu::AboutWindow>,
     shortcuts: ResMut<'w, ShortcutsWindow>,
     plugins: ResMut<'w, Plugins>,
+    param_forms: ResMut<'w, crate::plugins::ParamForms>,
 }
 
 #[derive(SystemParam)]
@@ -1665,7 +1673,17 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
             }
         }
 
-        Action::RunPlugin(i) => run_plugin(i, doc, edit, pal, &app.plugins),
+        Action::RunPlugin(i) => {
+            if !app.param_forms.open(&app.plugins, i) {
+                run_plugin(i, &[], doc, edit, pal, &app.plugins);
+            }
+        }
+        Action::ConfirmPluginParams => match app.param_forms.submit(&app.plugins) {
+            Some((i, params)) => run_plugin(i, &params, doc, edit, pal, &app.plugins),
+            None => doc
+                .toasts
+                .error("Plugins were reloaded, so the command didn't run. Choose it again."),
+        },
         Action::ReloadPlugins => reload_plugins(&mut app.plugins, &mut doc.toasts),
         Action::OpenPluginsFolder => open_plugins_folder(&mut doc.toasts),
 
@@ -1688,6 +1706,7 @@ pub fn dispatch(action: Action, origin: Origin, cx: &mut ActionContext) {
 
 fn run_plugin(
     i: usize,
+    params: &[(String, roxel::script::Param)],
     doc: &mut DocParams,
     edit: &EditParams,
     pal: &PaletteOpParams,
@@ -1697,6 +1716,7 @@ fn run_plugin(
         selection: &edit.selection,
         color: edit.color.0,
         palette: crate::ui::display_colors(&pal.palettes, &pal.working, active_index(pal)),
+        params,
     };
     match crate::plugins::run_command(plugins, i, input, &mut doc.history, &mut doc.grid) {
         Ok(0) => {
@@ -1894,6 +1914,7 @@ mod tests {
         let command = |id: &str, label: &str| Command {
             id: id.into(),
             label: label.into(),
+            params: Vec::new(),
         };
         Plugins {
             list: vec![crate::plugins::Plugin {
@@ -1942,7 +1963,27 @@ mod tests {
         s.plugins = &plugins;
         s.stroke_open = true;
         assert!(!Action::RunPlugin(0).enabled(&s));
+        assert!(!Action::ConfirmPluginParams.enabled(&s));
         assert!(Action::ReloadPlugins.enabled(&s));
+    }
+
+    #[test]
+    fn plugin_commands_with_params_get_an_ellipsis_in_menus() {
+        let prefs = Preferences::default();
+        let mut plugins = trees();
+        plugins.list[0].manifest.commands[1]
+            .params
+            .push(roxel::script::ParamSpec {
+                id: "h".into(),
+                label: "Height".into(),
+                kind: roxel::script::ParamKind::Bool { default: false },
+            });
+        let mut s = state(&[], &prefs);
+        s.plugins = &plugins;
+        assert_eq!(Action::RunPlugin(0).menu_label(&s), "Oak");
+        assert_eq!(Action::RunPlugin(1).menu_label(&s), "Pine…");
+        assert_eq!(Action::RunPlugin(1).label(&s), "Trees: Pine");
+        assert!(!Action::all(&s).contains(&Action::ConfirmPluginParams));
     }
 
     #[test]

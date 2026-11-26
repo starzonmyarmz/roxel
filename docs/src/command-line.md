@@ -154,6 +154,7 @@ A color is a name from `colors` or an inline `#rrggbb` or `#rrggbbaa`. `colors` 
 rox run tree.js -o tree.rox
 rox run gradient.js castle.rox --color "#ffcc00"
 rox run trees.js forest.vox -o forest.glb --command pine
+rox run tree.js -o tall-tree.rox --param height=12 --param leaves=#3c8c3c
 ```
 
 Runs a command from a [plugin](plugin-api.md), a JavaScript file, on an existing model or on an empty scene, and saves the result to `-o`. Without `-o` the input file is overwritten. The output can be any format `rox convert` writes. If the plugin fails or hits a limit, nothing is written and `rox` prints the file, the line and the error.
@@ -163,6 +164,9 @@ Runs a command from a [plugin](plugin-api.md), a JavaScript file, on an existing
 | `-o`, `--output <path>` | The file to write. Required without an input file. | the input file |
 | `--command <id>` | The command to run. Required when the plugin has more than one. | the plugin's only command |
 | `--color <color>` | The current color the command sees as `ctx.color`, `#rrggbb` or `#rrggbbaa` | `#ffffff` |
+| `--param <id>=<value>` | Sets one of the command's [params](plugin-api.md#params). Repeat it for each param you set, once per param. | the param's default |
+
+A `--param` value is a number for `number` and `int` params, `true` or `false` for a `bool`, `#rrggbb` or `#rrggbbaa` for a `color`, and one of the options for a `choice`. A value that's out of range, not a whole number for an `int`, or for a param the command doesn't have is an error, and nothing is written.
 
 The command sees the input's palette as `ctx.palette`: a `.rox` file's saved palette, or the colors a `.vox` file uses. Nothing is selected, so `ctx.selection` is `null`. The run is limited the same way as in the app; see [Limits and errors](plugin-api.md#limits-and-errors).
 

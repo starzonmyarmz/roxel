@@ -21,6 +21,7 @@ Usage:
   rox apply <file> <ops.ron|-> [-o <out>]
   rox apply --new <ops.ron|-> -o <out>
   rox run <plugin.js> [file] [-o <out>] [--command <id>] [--color #rrggbb[aa]]
+          [--param <id>=<value>]...
 
 Reads .rox, .vox, .qb and .gox files.
 
@@ -45,6 +46,8 @@ Run options:
   -o, --output <path>   File to write
   --command <id>        Command to run, when the plugin has several
   --color <color>       The current color, ctx.color [default: #ffffff]
+  --param <id>=<value>  Set a param of the command; repeat for several
+                        [default: the param's default]
 
   -h, --help            Show this help
   -V, --version         Show the version";
@@ -76,6 +79,7 @@ enum Command {
         output: PathBuf,
         command: Option<String>,
         color: [u8; 4],
+        params: Vec<(String, String)>,
     },
 }
 
@@ -194,6 +198,7 @@ fn parse_run(args: &[String]) -> Result<Command> {
     let mut output = None;
     let mut command = None;
     let mut color = [255; 4];
+    let mut params = Vec::new();
     let mut positional = Vec::new();
     let mut it = args.iter();
     while let Some(arg) = it.next() {
@@ -209,6 +214,17 @@ fn parse_run(args: &[String]) -> Result<Command> {
                 let v = value()?;
                 color = color::parse_hex(v)
                     .ok_or_else(|| anyhow!("--color must be #rrggbb or #rrggbbaa, not '{v}'"))?;
+            }
+            "--param" => {
+                let v = value()?;
+                let (id, val) = v
+                    .split_once('=')
+                    .filter(|(id, _)| !id.is_empty())
+                    .ok_or_else(|| anyhow!("--param must be <id>=<value>, not '{v}'"))?;
+                if params.iter().any(|(seen, _)| seen == id) {
+                    bail!("--param {id} is given twice");
+                }
+                params.push((id.to_string(), val.to_string()));
             }
             s if s.starts_with('-') && s.len() > 1 => bail!("unknown option '{s}'"),
             _ => positional.push(arg.as_str()),
@@ -230,6 +246,7 @@ fn parse_run(args: &[String]) -> Result<Command> {
         output,
         command,
         color,
+        params,
     })
 }
 
@@ -264,6 +281,7 @@ fn run(cmd: Command) -> Result<()> {
             output,
             command,
             color,
+            params,
         } => run::run(
             &script,
             input.as_deref(),
@@ -271,6 +289,7 @@ fn run(cmd: Command) -> Result<()> {
             run::Options {
                 command: command.as_deref(),
                 color,
+                params: &params,
             },
         )?,
     }
@@ -435,16 +454,19 @@ mod tests {
                 output: "scene.rox".into(),
                 command: None,
                 color: [255; 4],
+                params: Vec::new(),
             }
         );
         assert_eq!(
-            parse("run --color #10203080 -o out.vox plugin.js --command oak").unwrap(),
+            parse("run --color #10203080 -o out.vox plugin.js --command oak --param h=4 --param kind=a=b")
+                .unwrap(),
             Command::Run {
                 script: "plugin.js".into(),
                 input: None,
                 output: "out.vox".into(),
                 command: Some("oak".into()),
                 color: [0x10, 0x20, 0x30, 0x80],
+                params: vec![("h".into(), "4".into()), ("kind".into(), "a=b".into())],
             }
         );
     }
@@ -458,6 +480,19 @@ mod tests {
             ("run a.js -o", "needs a value"),
             ("run a.js --command", "needs a value"),
             ("run a.js -o b.rox --color red", "--color"),
+            ("run a.js -o b.rox --param", "needs a value"),
+            (
+                "run a.js -o b.rox --param size",
+                "--param must be <id>=<value>",
+            ),
+            (
+                "run a.js -o b.rox --param =4",
+                "--param must be <id>=<value>",
+            ),
+            (
+                "run a.js -o b.rox --param n=1 --param n=4",
+                "--param n is given twice",
+            ),
             ("run a.js -o b.rox --select 1", "unknown option"),
         ] {
             let err = parse(args).unwrap_err().to_string();

@@ -36,6 +36,8 @@ The **Plugins** menu has a submenu for each plugin, named after it, listing its 
 
 Commands are in the command palette (<kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd>) too, as the plugin name and the command, for example "Tree: Oak Tree". Search for "plugin" to list them all.
 
+Some commands ask for settings first, such as a size or a color. Their menu items end in "…", and choosing one opens a form. Click **Run** (or press <kbd>Enter</kbd>, except while you're typing a number, when it finishes the number) to run the command with those settings, or **Cancel** (<kbd>Esc</kbd>) to close the form without running it. The form starts with the settings you used last time for that command, until you quit Roxel.
+
 A command works on the open model. Depending on the plugin, it can use the selection, the current color and the active palette. Its changes are **one undo step**, so a single Undo reverts the whole run. If a command changes nothing, Roxel says so and adds nothing to the undo history.
 
 When a command fails, Roxel shows the error and the model stays as it was. Every run has [limits](plugin-api.md#limits-and-errors): a command that runs longer than 5 seconds, uses too much memory or changes too many voxels is stopped, and nothing changes. While a command runs, Roxel waits for it, so a slow command pauses the app until it finishes or hits the time limit.

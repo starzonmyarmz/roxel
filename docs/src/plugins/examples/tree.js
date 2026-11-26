@@ -1,5 +1,6 @@
 // Plants an oak: a trunk with a round crown of leaves. It stands on the
-// floor under the middle of the selection, or at the origin.
+// floor under the middle of the selection, or at the origin. Its params
+// set the trunk height, the crown size and both colors.
 export default {
   apiVersion: 1,
   name: "Tree",
@@ -7,11 +8,14 @@ export default {
     {
       id: "oak",
       label: "Oak Tree",
+      params: [
+        { id: "height", label: "Height", type: "int", min: 1, max: 32, default: 6 },
+        { id: "radius", label: "Crown", type: "int", min: 1, max: 12, default: 3 },
+        { id: "trunk", label: "Trunk", type: "color", default: [96, 62, 40] },
+        { id: "leaves", label: "Leaves", type: "color", default: [124, 190, 60] },
+      ],
       run(ctx) {
-        const trunk = [96, 62, 40];
-        const leaves = [124, 190, 60];
-        const height = 6;
-        const radius = 3;
+        const { height, radius, trunk, leaves } = ctx.params;
 
         let [bx, by, bz] = [0, 0, 0];
         if (ctx.selection) {

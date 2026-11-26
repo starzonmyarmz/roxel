@@ -18,6 +18,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+mod params;
+pub use params::{ParamKind, ParamSpec, resolve_params};
+
 pub const API_VERSION: i32 = 1;
 
 /// Distinct cells one run may stage. Each staged cell costs ~40 bytes on the
@@ -97,16 +100,17 @@ impl Default for ScriptCtx {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Manifest {
     pub name: String,
     pub commands: Vec<Command>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Command {
     pub id: String,
     pub label: String,
+    pub params: Vec<ParamSpec>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,13 +173,14 @@ pub fn run(
     let grid = loan.grid();
     let result = host.context.with(|ctx| {
         let (manifest, plugin) = host.check(&ctx, file, eval_manifest(&ctx, file, source))?;
-        if !manifest.commands.iter().any(|c| c.id == cx.command) {
+        let Some(command) = manifest.commands.iter().find(|c| c.id == cx.command) else {
             return Err(ScriptError::UnknownCommand(cx.command.clone()));
-        }
+        };
+        let params = resolve_params(&command.params, &cx.params);
         let run_fn = command_run(&plugin, &cx.command).catch(&ctx);
         let run_fn = host.check(&ctx, file, run_fn.map_err(Into::into))?;
         let out = (|| {
-            let js_ctx = build_ctx(&ctx, &grid, &staged, cx)?;
+            let js_ctx = build_ctx(&ctx, &grid, &staged, cx, &params)?;
             run_fn.call::<_, Value>((js_ctx,))
         })()
         .catch(&ctx);
@@ -549,7 +554,8 @@ fn read_manifest<'js>(
         if out.iter().any(|c| c.id == id) {
             return Err(bad(file, &format!("has two commands with id \"{id}\"")).into());
         }
-        out.push(Command { id, label });
+        let params = read_params(ctx, file, &cmd, &format!("commands[{i}].params"))?;
+        out.push(Command { id, label, params });
     }
     Ok(Manifest {
         name,
@@ -571,6 +577,176 @@ fn string_field<'js>(
     }
 }
 
+fn read_params<'js>(
+    ctx: &Ctx<'js>,
+    file: &str,
+    cmd: &Object<'js>,
+    path: &str,
+) -> Result<Vec<ParamSpec>, Failure<'js>> {
+    let list: Value = cmd.get("params").catch(ctx)?;
+    if list.is_undefined() {
+        return Ok(Vec::new());
+    }
+    let Some(list) = list.into_array() else {
+        return Err(bad(file, &format!("{path} must be an array")).into());
+    };
+    let mut out: Vec<ParamSpec> = Vec::new();
+    for (j, p) in list.iter::<Value>().enumerate() {
+        let at = format!("{path}[{j}]");
+        let Some(p) = p.catch(ctx)?.into_object() else {
+            return Err(bad(file, &format!("{at} must be an object")).into());
+        };
+        let id = string_field(ctx, file, &p, "id", &format!("{at}.id"))?;
+        if out.iter().any(|s| s.id == id) {
+            return Err(bad(file, &format!("{path} has two params with id \"{id}\"")).into());
+        }
+        let label = string_field(ctx, file, &p, "label", &format!("{at}.label"))?;
+        let ty = string_field(ctx, file, &p, "type", &format!("{at}.type"))?;
+        let kind = read_param_kind(ctx, file, &p, &at, &ty)?;
+        out.push(ParamSpec { id, label, kind });
+    }
+    Ok(out)
+}
+
+fn read_param_kind<'js>(
+    ctx: &Ctx<'js>,
+    file: &str,
+    p: &Object<'js>,
+    at: &str,
+    ty: &str,
+) -> Result<ParamKind, Failure<'js>> {
+    let field = |key: &str, what: &str, conv: &dyn Fn(&Value<'js>) -> bool| {
+        let v: Value = p.get(key).catch(ctx)?;
+        if v.is_undefined() {
+            return Ok(None);
+        }
+        if !conv(&v) {
+            return Err(Failure::from(bad(
+                file,
+                &format!("{at}.{key} must be {what}"),
+            )));
+        }
+        Ok(Some(v))
+    };
+    let number = |v: &Value| v.as_number().is_some_and(f64::is_finite);
+    let int = |v: &Value| int_value(v).is_some();
+    let out_of_range = |key: &str| Failure::from(bad(file, &format!("{at}.{key} is out of range")));
+    let kind = match ty {
+        "number" => {
+            let get = |key| -> Result<Option<f64>, Failure<'js>> {
+                Ok(field(key, "a number", &number)?.and_then(|v| v.as_number()))
+            };
+            let (min, max) = (get("min")?, get("max")?);
+            if let (Some(lo), Some(hi)) = (min, max)
+                && lo > hi
+            {
+                return Err(out_of_range("min"));
+            }
+            let default = get("default")?.unwrap_or_else(|| params::zero_in_range(min, max));
+            if min.is_some_and(|m| default < m) || max.is_some_and(|m| default > m) {
+                return Err(out_of_range("default"));
+            }
+            ParamKind::Number { default, min, max }
+        }
+        "int" => {
+            let get = |key| -> Result<Option<i32>, Failure<'js>> {
+                Ok(field(key, "an integer", &int)?.and_then(|v| int_value(&v)))
+            };
+            let (min, max) = (get("min")?, get("max")?);
+            if let (Some(lo), Some(hi)) = (min, max)
+                && lo > hi
+            {
+                return Err(out_of_range("min"));
+            }
+            let default = get("default")?.unwrap_or_else(|| params::zero_in_range(min, max));
+            if min.is_some_and(|m| default < m) || max.is_some_and(|m| default > m) {
+                return Err(out_of_range("default"));
+            }
+            ParamKind::Int { default, min, max }
+        }
+        "bool" => ParamKind::Bool {
+            default: field("default", "true or false", &|v| v.is_bool())?
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+        },
+        "color" => ParamKind::Color {
+            default: field(
+                "default",
+                "[r, g, b] or [r, g, b, a] of integers 0-255",
+                &|v| color_value(v).is_some(),
+            )?
+            .and_then(|v| color_value(&v))
+            .unwrap_or([255; 4]),
+        },
+        "choice" => {
+            let options = read_options(ctx, file, p, at)?;
+            let default = match field("default", "a string", &|v| v.is_string())? {
+                None => 0,
+                Some(v) => {
+                    let s: String = v.get().catch(ctx)?;
+                    options.iter().position(|o| *o == s).ok_or_else(|| {
+                        bad(file, &format!("{at}.default must be one of its options"))
+                    })?
+                }
+            };
+            ParamKind::Choice { options, default }
+        }
+        other => {
+            return Err(bad(
+                file,
+                &format!(
+                    "{at}.type must be \"number\", \"int\", \"bool\", \"color\" or \"choice\", not \"{other}\""
+                ),
+            )
+            .into());
+        }
+    };
+    Ok(kind)
+}
+
+fn read_options<'js>(
+    ctx: &Ctx<'js>,
+    file: &str,
+    p: &Object<'js>,
+    at: &str,
+) -> Result<Vec<String>, Failure<'js>> {
+    let err = || {
+        Failure::from(bad(
+            file,
+            &format!("{at}.options must be an array of strings"),
+        ))
+    };
+    let list: Value = p.get("options").catch(ctx)?;
+    let Some(list) = list.into_array() else {
+        return Err(err());
+    };
+    let mut out: Vec<String> = Vec::new();
+    for v in list.iter::<Value>() {
+        let v = v.catch(ctx)?;
+        let s = match v.as_string().map(|s| s.to_string()) {
+            Some(Ok(s)) if !s.is_empty() => s,
+            _ => return Err(err()),
+        };
+        if out.contains(&s) {
+            return Err(bad(file, &format!("{at}.options has \"{s}\" twice")).into());
+        }
+        out.push(s);
+    }
+    if out.is_empty() {
+        return Err(bad(file, &format!("{at}.options must not be empty")).into());
+    }
+    Ok(out)
+}
+
+fn int_value(v: &Value) -> Option<i32> {
+    if let Some(i) = v.as_int() {
+        return Some(i);
+    }
+    v.as_float()
+        .filter(|f| f.fract() == 0.0 && *f >= f64::from(i32::MIN) && *f <= f64::from(i32::MAX))
+        .map(|f| f as i32)
+}
+
 fn command_run<'js>(plugin: &Object<'js>, id: &str) -> rquickjs::Result<Function<'js>> {
     let commands: Array = plugin.get("commands")?;
     for cmd in commands.iter::<Object>() {
@@ -587,6 +763,7 @@ fn build_ctx<'js>(
     grid: &Rc<VoxelGrid>,
     staged: &Rc<RefCell<Staged>>,
     cx: &ScriptCtx,
+    params: &[(String, Param)],
 ) -> rquickjs::Result<Object<'js>> {
     let out = Object::new(ctx.clone())?;
     out.set("grid", grid_object(ctx, grid, staged)?)?;
@@ -601,17 +778,17 @@ fn build_ctx<'js>(
         palette.set(i, color_js(ctx, Some(*c))?)?;
     }
     out.set("palette", palette)?;
-    let params = Object::new(ctx.clone())?;
-    for (key, value) in &cx.params {
+    let js_params = Object::new(ctx.clone())?;
+    for (key, value) in params {
         let v = match value {
             Param::Number(n) => Value::new_number(ctx.clone(), *n),
             Param::Bool(b) => Value::new_bool(ctx.clone(), *b),
             Param::Text(s) => rquickjs::String::from_str(ctx.clone(), s)?.into_value(),
             Param::Color(c) => color_js(ctx, Some(*c))?,
         };
-        params.set(key.as_str(), v)?;
+        js_params.set(key.as_str(), v)?;
     }
-    out.set("params", params)?;
+    out.set("params", js_params)?;
     Ok(out)
 }
 
@@ -749,41 +926,31 @@ fn point<'js>(
 }
 
 fn int<'js>(ctx: &Ctx<'js>, what: &str, axis: &str, v: &Value<'js>) -> rquickjs::Result<i32> {
-    if let Some(i) = v.as_int() {
-        return Ok(i);
-    }
-    match v.as_float() {
-        Some(f) if f.fract() == 0.0 && f >= f64::from(i32::MIN) && f <= f64::from(i32::MAX) => {
-            Ok(f as i32)
-        }
-        _ => Err(Exception::throw_type(
-            ctx,
-            &format!("{what}: {axis} must be an integer"),
-        )),
-    }
+    int_value(v)
+        .ok_or_else(|| Exception::throw_type(ctx, &format!("{what}: {axis} must be an integer")))
 }
 
 fn color_arg<'js>(ctx: &Ctx<'js>, what: &str, v: &Value<'js>) -> rquickjs::Result<Color8> {
-    let err = || {
+    color_value(v).ok_or_else(|| {
         Exception::throw_type(
             ctx,
             &format!("{what}: color must be [r, g, b] or [r, g, b, a] of integers 0-255"),
         )
-    };
-    let arr = v.as_array().ok_or_else(err)?;
+    })
+}
+
+fn color_value(v: &Value) -> Option<Color8> {
+    let arr = v.as_array()?;
     let len = arr.len();
     if len != 3 && len != 4 {
-        return Err(err());
+        return None;
     }
     let mut out = [255u8; 4];
     for (i, slot) in out.iter_mut().enumerate().take(len) {
-        let n: Value = arr.get(i)?;
-        *slot = n
-            .as_int()
-            .and_then(|n| u8::try_from(n).ok())
-            .ok_or_else(err)?;
+        let n: Value = arr.get(i).ok()?;
+        *slot = u8::try_from(n.as_int()?).ok()?;
     }
-    Ok(out)
+    Some(out)
 }
 
 fn color_js<'js>(ctx: &Ctx<'js>, c: Option<Color8>) -> rquickjs::Result<Value<'js>> {
@@ -875,6 +1042,25 @@ mod tests {
         assert_eq!(grid.get(IVec3::new(3, 7, 3)), None);
         let (min, max) = grid.bounding_box().unwrap();
         assert_eq!((min, max), (IVec3::new(-3, 0, -3), IVec3::new(3, 10, 3)));
+    }
+
+    #[test]
+    fn example_tree_takes_its_size_and_colors_from_params() {
+        let mut grid = VoxelGrid::default();
+        let cx = ScriptCtx {
+            params: vec![
+                ("height".into(), Param::Number(2.0)),
+                ("radius".into(), Param::Number(1.0)),
+                ("trunk".into(), Param::Color(RED)),
+            ],
+            ..ctx("oak")
+        };
+        let edits = run("tree.js", TREE, &mut grid, &cx).unwrap();
+        apply(&edits, &mut History::default(), &mut grid);
+        assert_eq!(grid.get(IVec3::new(0, 1, 0)), Some(RED));
+        assert_eq!(grid.get(IVec3::new(1, 3, 0)), Some([124, 190, 60, 255]));
+        let (min, max) = grid.bounding_box().unwrap();
+        assert_eq!((min, max), (IVec3::new(-1, 0, -1), IVec3::new(1, 4, 1)));
     }
 
     #[test]
@@ -1002,8 +1188,14 @@ mod tests {
             ],
             ..Default::default()
         };
-        let src = plugin(
-            "const eq = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) \
+        let src = "export default { apiVersion: 1, name: 'T', commands: [{ id: 'go', label: 'Go',\
+             params: [\
+               { id: 'size', label: 'Size', type: 'int' },\
+               { id: 'hollow', label: 'Hollow', type: 'bool' },\
+               { id: 'kind', label: 'Kind', type: 'choice', options: ['pine', 'oak'] },\
+               { id: 'leaf', label: 'Leaf', type: 'color' }],\
+             run(ctx) {\
+             const eq = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) \
                  throw new Error(JSON.stringify(a) + ' != ' + JSON.stringify(b)); };\
              eq(ctx.grid.get(3, 4, 5), [1, 2, 3, 4]);\
              eq(ctx.grid.get(0, 0, 0), null);\
@@ -1011,9 +1203,163 @@ mod tests {
              eq(ctx.color, [9, 8, 7, 255]);\
              eq(ctx.palette, [[255, 0, 0, 255]]);\
              eq(ctx.params, { size: 4, hollow: true, kind: 'oak', leaf: [0, 128, 0, 255] });\
-             eq(ctx.selection, null);",
+             eq(ctx.selection, null); } }] };";
+        run("t.js", src, &mut grid, &cx).unwrap();
+    }
+
+    const PARAMS: &str = "export default { apiVersion: 1, name: 'T', commands: [{ id: 'go', label: 'Go',\
+        params: [\
+          { id: 'height', label: 'Height', type: 'int', min: 2, max: 20, default: 6 },\
+          { id: 'scale', label: 'Scale', type: 'number', min: 0.5 },\
+          { id: 'hollow', label: 'Hollow', type: 'bool', default: true },\
+          { id: 'leaf', label: 'Leaves', type: 'color', default: [10, 200, 30] },\
+          { id: 'kind', label: 'Kind', type: 'choice', options: ['oak', 'pine'], default: 'pine' }],\
+        run(ctx) { ctx.grid.set(0, 0, 0, [1, 1, 1]);\
+          if (JSON.stringify(ctx.params) !== JSON.stringify(globalThis.want))\
+            throw new Error(JSON.stringify(ctx.params)); } }] };";
+
+    #[test]
+    fn load_reads_params() {
+        let m = load("p.js", PARAMS, &Limits::default()).unwrap();
+        let p = &m.commands[0].params;
+        let ids: Vec<_> = p.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["height", "scale", "hollow", "leaf", "kind"]);
+        assert_eq!(p[0].label, "Height");
+        assert_eq!(
+            p[0].kind,
+            ParamKind::Int {
+                default: 6,
+                min: Some(2),
+                max: Some(20)
+            }
         );
-        run("t.js", &src, &mut grid, &cx).unwrap();
+        assert_eq!(
+            p[1].kind,
+            ParamKind::Number {
+                default: 0.5,
+                min: Some(0.5),
+                max: None
+            }
+        );
+        assert_eq!(p[2].kind, ParamKind::Bool { default: true });
+        assert_eq!(
+            p[3].kind,
+            ParamKind::Color {
+                default: [10, 200, 30, 255]
+            }
+        );
+        assert_eq!(
+            p[4].kind,
+            ParamKind::Choice {
+                options: vec!["oak".into(), "pine".into()],
+                default: 1
+            }
+        );
+        let m = load("t.js", &plugin(""), &Limits::default()).unwrap();
+        assert!(m.commands[0].params.is_empty());
+    }
+
+    fn run_params(given: Vec<(String, Param)>, want: &str) -> Result<Vec<Edit>, ScriptError> {
+        let src = format!("globalThis.want = {want};\n{PARAMS}");
+        let cx = ScriptCtx {
+            params: given,
+            ..ctx("go")
+        };
+        run("p.js", &src, &mut VoxelGrid::default(), &cx)
+    }
+
+    #[test]
+    fn a_run_without_values_sees_the_defaults() {
+        run_params(
+            Vec::new(),
+            "{ height: 6, scale: 0.5, hollow: true, leaf: [10, 200, 30, 255], kind: 'pine' }",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn given_values_are_checked_against_the_declarations() {
+        let given = vec![
+            ("height".into(), Param::Number(99.4)),
+            ("scale".into(), Param::Number(2.25)),
+            ("hollow".into(), Param::Text("no".into())),
+            ("kind".into(), Param::Text("oak".into())),
+            ("extra".into(), Param::Bool(true)),
+        ];
+        run_params(
+            given,
+            "{ height: 20, scale: 2.25, hollow: true, leaf: [10, 200, 30, 255], kind: 'oak' }",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn malformed_params_are_load_errors() {
+        let cmd = |params: &str| {
+            format!(
+                "export default {{ apiVersion: 1, name: 'T', commands: [\
+                 {{ id: 'go', label: 'Go', params: {params}, run() {{}} }}] }};"
+            )
+        };
+        let cases = [
+            ("{}", "commands[0].params must be an array"),
+            ("[1]", "commands[0].params[0] must be an object"),
+            ("[{ label: 'A', type: 'bool' }]", "params[0].id must be"),
+            ("[{ id: 'a', type: 'bool' }]", "params[0].label must be"),
+            ("[{ id: 'a', label: 'A' }]", "params[0].type must be"),
+            ("[{ id: 'a', label: 'A', type: 'text' }]", "not \"text\""),
+            (
+                "[{ id: 'a', label: 'A', type: 'bool' }, { id: 'a', label: 'B', type: 'bool' }]",
+                "two params with id \"a\"",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'number', min: '1' }]",
+                "min must be a number",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'int', max: 1.5 }]",
+                "max must be an integer",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'int', min: 3, max: 1 }]",
+                "min is out of range",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'number', max: 1, default: 2 }]",
+                "default is out of range",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'bool', default: 1 }]",
+                "true or false",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'color', default: '#fff' }]",
+                "default must be [r, g, b]",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'choice' }]",
+                "options must be an array",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'choice', options: [] }]",
+                "must not be empty",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'choice', options: ['x', 'x'] }]",
+                "\"x\" twice",
+            ),
+            (
+                "[{ id: 'a', label: 'A', type: 'choice', options: ['x'], default: 'y' }]",
+                "default must be one of its options",
+            ),
+        ];
+        for (params, want) in cases {
+            let err = load("m.js", &cmd(params), &Limits::default()).unwrap_err();
+            assert!(
+                matches!(&err, ScriptError::Load(m) if m.contains(want)),
+                "{params}: {err}"
+            );
+        }
     }
 
     #[test]

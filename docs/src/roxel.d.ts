@@ -36,11 +36,66 @@ export interface Command {
   /** Shown in menus and the command palette. */
   label: string;
   /**
+   * Values the command asks for before it runs. Roxel shows a form with one
+   * field per param, and the values land in `ctx.params` by `id`.
+   */
+  params?: Param[];
+  /**
    * Runs the command. Must be synchronous. Changes made through
    * `ctx.grid` apply when it returns, as one undo step; if it throws,
    * nothing changes.
    */
   run(ctx: Context): void;
+}
+
+/** A value a command asks for. Its `type` picks the field Roxel shows. */
+export type Param = NumberParam | IntParam | BoolParam | ColorParam | ChoiceParam;
+
+interface ParamBase {
+  /** Unique within the command. The key of the value in `ctx.params`. */
+  id: string;
+  /** Shown next to the field. */
+  label: string;
+}
+
+/** A number. A slider when it has both `min` and `max`, else a number field. */
+export interface NumberParam extends ParamBase {
+  type: "number";
+  min?: number;
+  max?: number;
+  /** Defaults to 0, or the nearest of `min` and `max` when 0 is out of range. */
+  default?: number;
+}
+
+/** A whole number. A slider when it has both `min` and `max`, else a number field. */
+export interface IntParam extends ParamBase {
+  type: "int";
+  min?: number;
+  max?: number;
+  /** Defaults to 0, or the nearest of `min` and `max` when 0 is out of range. */
+  default?: number;
+}
+
+/** A checkbox. */
+export interface BoolParam extends ParamBase {
+  type: "bool";
+  /** Defaults to `false`. */
+  default?: boolean;
+}
+
+/** A color swatch. The value is always `[r, g, b, a]`. */
+export interface ColorParam extends ParamBase {
+  type: "color";
+  /** Defaults to white. */
+  default?: ColorInput;
+}
+
+/** A dropdown of strings. The value is the chosen string. */
+export interface ChoiceParam extends ParamBase {
+  type: "choice";
+  options: string[];
+  /** One of `options`. Defaults to the first. */
+  default?: string;
 }
 
 export interface Context {
@@ -51,7 +106,7 @@ export interface Context {
   color: Color;
   /** The colors of the active palette, in order. */
   palette: Color[];
-  /** Parameter values for this run, by name. */
+  /** A value for every param the command declares, by `id`. */
   params: Record<string, number | boolean | string | Color>;
 }
 

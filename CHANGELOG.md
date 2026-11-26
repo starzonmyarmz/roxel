@@ -9,7 +9,8 @@ Add bullets under `## [Unreleased]`, grouped as Added, Changed, Fixed or Removed
 ### Added
 
 - Plugins: drop JavaScript plugins in the plugins folder and run their commands from the new Plugins menu or the command palette. Plugins are experimental and may still change.
-- `rox run` runs a JavaScript plugin command on a model and saves the result. Plugins are experimental and may still change.
+- `rox run` runs a JavaScript plugin command on a model and saves the result, with `--param` to set the command's settings. Plugins are experimental and may still change.
+- Plugin commands can ask for settings (numbers, checkboxes, colors and choices) in a form before they run. The form remembers what you used last time.
 
 ## [1.4.0] - 2026-11-24
 
