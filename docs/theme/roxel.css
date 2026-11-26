@@ -303,6 +303,10 @@ blockquote {
     }
 }
 
+.chapter-fold-toggle {
+    display: none;
+}
+
 .on-this-page {
     margin-inline-start: 1.2rem;
     padding-inline-start: 0.4rem;
